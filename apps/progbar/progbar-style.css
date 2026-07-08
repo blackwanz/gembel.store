@@ -1,0 +1,306 @@
+/* CYBERPUNK PROGRESS ENGINE VISUAL STYLING - V3 (ULTRA-WIDE FIXED) */
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    background-color: #060709;
+    color: #cbd5e1;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+    padding: 10px; /* Jarak aman dari pinggir monitor */
+}
+
+.cyber-container {
+    width: 100%;
+    max-width: none; /* KUNCI UTAMA: Batas 1100px dihapus agar bisa selebar browser */
+    height: 100%; 
+    background: linear-gradient(145deg, #0f1115 0%, #090a0d 100%);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+    border-radius: 16px;
+    padding: 16px; 
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+/* HEADER STYLE */
+.cyber-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding-bottom: 14px;
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.status-indicator {
+    width: 8px;
+    height: 8px;
+    background-color: #334155;
+    border-radius: 50%;
+    transition: all 0.3s ease;
+}
+
+.status-indicator.active {
+    background-color: #00ff66;
+    box-shadow: 0 0 10px #00ff66, 0 0 20px #00ff66;
+}
+
+.brand-title {
+    font-size: 1.15rem;
+    font-weight: 800;
+    letter-spacing: 2px;
+    color: #f8fafc;
+}
+
+.header-right {
+    text-align: right;
+}
+
+.current-date {
+    font-size: 0.8rem;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.current-time {
+    font-size: 1.1rem;
+    color: #00ecff;
+    font-weight: bold;
+    text-shadow: 0 0 8px rgba(0, 236, 255, 0.3);
+}
+
+/* TARGET TIME STRIP */
+.target-bar {
+    margin-top: 10px;
+    font-size: 0.75rem;
+    letter-spacing: 1px;
+    display: flex;
+    gap: 6px;
+}
+
+.target-bar .label { color: #475569; }
+.target-bar .value { color: #94a3b8; }
+
+/* MAIN CONTAINMENT AREA */
+.cyber-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 15px; 
+    margin-top: 20px;
+    min-height: 0;
+}
+
+.report-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.section-title {
+    font-size: 0.75rem;
+    letter-spacing: 1.5px;
+    color: #475569;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+}
+
+.report-list {
+    flex: 1;
+    overflow-y: auto;
+    background: rgba(0, 0, 0, 0.3);
+    padding: 8px;
+    border-radius: 10px;
+}
+
+.report-list::-webkit-scrollbar { width: 5px; }
+.report-list::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
+.report-list::-webkit-scrollbar-thumb { background: #1e293b; }
+
+/* DYNAMIC REPORT ROW */
+.report-row {
+    background: rgba(30, 41, 59, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.02);
+    padding: 12px;
+    margin-bottom: 10px;
+    position: relative;
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.report-row.active-row {
+    background: rgba(0, 236, 255, 0.02);
+    border: 1px solid rgba(0, 236, 255, 0.1);
+}
+
+.row-meta {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.8rem;
+    gap: 10px;
+    padding-right: 25px;
+}
+
+.row-date { color: #94a3b8; font-weight: bold; }
+.row-totals { color: #e2e8f0; }
+.row-segments { display: flex; gap: 12px; font-size: 0.75rem; }
+
+.delete-btn {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    background: transparent;
+    border: none;
+    color: #64748b;
+    font-size: 1.2rem;
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.delete-btn:hover {
+    color: #ff3366;
+    text-shadow: 0 0 8px #ff3366;
+}
+
+.row-bar-container { width: 100%; }
+
+.mini-progress-bar {
+    width: 100%;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+    overflow: hidden;
+    display: flex;
+}
+
+/* TIME REMAINING COUNTDOWN TEXT */
+.countdown-section {
+    text-align: center;
+    padding: 10px 0;
+}
+
+.countdown-display {
+    font-size: 2.2rem;
+    font-weight: bold;
+    color: #ff2d55;
+    letter-spacing: 2px;
+    text-shadow: 0 0 15px rgba(255, 45, 85, 0.3);
+}
+
+/* PROGRESS BAR CONTAINER WITH NEON GREY GLOW & RADIAL EMISSION */
+.cyber-footer {
+    margin-top: 15px;
+}
+
+.progress-btn-container {
+    width: 100%;
+    height: 54px;
+    background: #22262f;
+    border: 1px solid #7a8c9e;
+    position: relative;
+    cursor: pointer;
+    overflow: hidden;
+    border-radius: 12px;
+    box-shadow: 0 0 18px rgba(122, 140, 158, 0.45), 
+                inset 0 0 12px rgba(122, 140, 158, 0.25);
+    transition: all 0.3s ease;
+}
+
+.progress-btn-container:hover {
+    box-shadow: 0 0 25px rgba(122, 140, 158, 0.65), 
+                inset 0 0 15px rgba(122, 140, 158, 0.35);
+    border-color: #9ab0c7;
+}
+
+/* INFORMATIVE MID-OVERLAY TEXT */
+.progress-status-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 0.75rem;
+    font-weight: bold;
+    letter-spacing: 2px;
+    color: #ffffff;
+    text-shadow: 0 0 4px #000000, 0 0 10px rgba(255,255,255,0.6);
+    z-index: 10;
+    opacity: 0; /* DIKEMBALIKAN KE 0 SESUAI PERMINTAAN */
+    pointer-events: none;
+    text-transform: uppercase;
+}
+
+.progress-bar-base {
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    display: flex;
+}
+
+/* NEON SHIFTING CHROMATIC SEGMENTS */
+.seg-green {
+    background: linear-gradient(90deg, #00cb52, #00ff66);
+    box-shadow: 0 0 14px #00ff66;
+    height: 100%;
+}
+
+.seg-blue {
+    background: linear-gradient(90deg, #0077cc, #0099ff);
+    box-shadow: 0 0 14px #0099ff;
+    height: 100%;
+}
+
+.seg-orange {
+    background: linear-gradient(90deg, #e67300, #ff9900);
+    box-shadow: 0 0 14px #ff9900;
+    height: 100%;
+}
+
+/* GLOBAL SHARED COLOR CODES FOR TEXT */
+.text-green { color: #00ff66; }
+.text-blue { color: #0099ff; }
+.text-orange { color: #ff9900; }
+/* DATA IMPORT / EXPORT */
+.data-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    justify-content: flex-end;
+}
+.data-btn {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #94a3b8;
+    font-family: inherit;
+    font-size: 0.7rem;
+    letter-spacing: 1.5px;
+    padding: 7px 14px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-transform: uppercase;
+}
+.data-btn:hover {
+    color: #00ecff;
+    border-color: rgba(0, 236, 255, 0.4);
+    box-shadow: 0 0 12px rgba(0, 236, 255, 0.15);
+}

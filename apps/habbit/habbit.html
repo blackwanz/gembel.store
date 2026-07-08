@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<!--
+============================================================
+ HABIT — Gembel AI PIK
+============================================================
+ REQUIRED SUPABASE SETUP — jalanin sekali di SQL Editor.
+ Script lengkapnya ada di file terpisah: habit_setup.sql
+ (bikin tabel public.habit + index + RLS policy + realtime).
+
+ Ringkasan tabelnya:
+  create table public.habit (
+    id          uuid primary key default gen_random_uuid(),
+    user_id     uuid not null references auth.users(id) on delete cascade,
+    type        text not null check (type in ('activity','expense')),
+    activity    text not null check (char_length(activity) >= 3),
+    amount      numeric,
+    status      text not null default 'berjalan' check (status in ('berjalan','selesai')),
+    start_time  timestamptz not null default now(),
+    end_time    timestamptz,
+    created_at  timestamptz not null default now(),
+    constraint expense_requires_amount check (
+      type <> 'expense' or (amount is not null and amount > 0)
+    ),
+    constraint activity_has_no_amount check (
+      type <> 'activity' or amount is null
+    )
+  );
+  -- + index, RLS (private per user), realtime → lihat habit_setup.sql
+
+ Catatan keamanan:
+  - Semua validasi (panjang aktivitas, nominal harus angka > 0) dicek DUA kali:
+    di JS (biar responsif) dan di CHECK constraint tabel (sumber kebenaran —
+    nggak bisa ditembus dari luar client ini).
+  - RLS bikin data 100% privat: user_id selalu dari sesi login (auth.uid()),
+    bukan dari input form, dan user lain nggak bisa baca baris kamu sama sekali.
+  - Semua teks dari user di-escape (escapeHtml) sebelum masuk DOM — anti-XSS.
+  - Tombol submit di-disable selama proses kirim, biar nggak kepencet dobel.
+============================================================
+-->
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aktivitas &amp; Pengeluaran — Gembel AI PIK</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="habbit.css">
+</head>
+<body>
+
+<div class="top">
+  <div class="brand">
+    <div class="brand-mark">GP</div>
+    <div>
+      <div class="brand-txt">Aktivitas &amp; Pengeluaran</div>
+      <div class="brand-sub">GEMBEL AI PIK</div>
+    </div>
+  </div>
+  <div class="top-right">
+    <a class="back-link" href="../../dashboard.html">← Dashboard</a>
+    <div class="who">
+      <div class="who-badge" id="who-badge">··</div>
+      <div>
+        <div class="who-name" id="who-name">…</div>
+        <div class="who-sub">Akun kamu</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="page-head">
+    <h1>Lo lagi ngapain?</h1>
+    <p>Ketik aktivitasnya, gas — waktu mulai &amp; selesai kecatet otomatis. Kalau ini soal duit keluar, tinggal centang &amp; isi nominalnya.</p>
+  </div>
+
+  <div class="grid">
+    <!-- ================= FORM ================= -->
+    <div class="card">
+      <h2>Aktivitas</h2>
+      <div class="field" id="f-activity" style="margin-top:2px;">
+        <input type="text" id="in-activity" placeholder="Contoh: Main badminton" maxlength="200">
+        <div class="err-text">Ketik dulu aktivitasnya (minimal 3 karakter).</div>
+      </div>
+
+      <div class="check-row" onclick="document.getElementById('in-finance').click()">
+        <input type="checkbox" id="in-finance" onclick="event.stopPropagation(); toggleFinance(this.checked)">
+        <div>
+          <div class="ct-title">Ini keluar duit</div>
+          <div class="ct-sub">Centang kalau aktivitas ini ada pengeluarannya.</div>
+        </div>
+      </div>
+
+      <div class="finance-fields" id="finance-fields">
+        <div class="field" id="f-amount">
+          <label>Nominal</label>
+          <div class="amount-wrap">
+            <span class="prefix">Rp</span>
+            <input type="text" inputmode="numeric" id="in-amount" placeholder="100000">
+          </div>
+          <div class="err-text">Isi nominalnya dalam angka, lebih dari 0.</div>
+        </div>
+      </div>
+
+      <button class="btn btn-primary btn-block" id="submit-btn" onclick="handleSubmit()">🚀 Gas, Mulai!</button>
+    </div>
+
+    <!-- ================= RIGHT COLUMN ================= -->
+    <div>
+      <div class="card" style="margin-bottom:20px;">
+        <h2>Sedang berjalan</h2>
+        <p class="hint">Aktivitas kamu yang masih jalan sekarang.</p>
+        <div id="running-list">
+          <div class="skeleton"></div>
+          <div class="skeleton"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Riwayat kamu</h2>
+        <div class="filter-row" id="hist-filter">
+          <div class="chip-filter active" data-range="24h" onclick="setHistRange('24h')">24 Jam</div>
+          <div class="chip-filter" data-range="month" onclick="setHistRange('month')">Bulanan</div>
+          <div class="chip-filter" data-range="year" onclick="setHistRange('year')">Tahunan</div>
+        </div>
+        <div id="history-list">
+          <div class="skeleton"></div>
+          <div class="skeleton"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="../../assets/supabaseClient.js"></script>
+<script src="../../assets/auth.js"></script>
+<script src="habbit.js"></script>
+</body>
+</html>

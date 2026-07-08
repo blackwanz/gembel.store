@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Meditate Space — Gembel AI PIK</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../assets/soft.css">
+<link rel="stylesheet" href="meditate.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="../../assets/supabaseClient.js"></script>
+</head>
+<body class="soft-dark">
+
+<div class="soft-top">
+  <div class="soft-brand">
+    <div class="mark">🧘</div>
+    <div>
+      <div class="t1">Meditate Space</div>
+      <div class="t2">Gembel AI PIK</div>
+    </div>
+  </div>
+  <a class="soft-back" href="../../dashboard.html">← Dashboard</a>
+</div>
+
+<div class="soft-wrap narrow">
+
+  <!-- ===== PLAYER ===== -->
+  <div class="card player-card fade-in">
+    <div class="orb-stage">
+      <div class="breath-ring r1"></div>
+      <div class="breath-ring r2"></div>
+      <div class="orb" id="orb"><span class="orb-icon">🧘‍♂️</span></div>
+    </div>
+
+    <div class="now-playing">
+      <div class="np-label pill accent" id="np-state">IDLE</div>
+      <h2 id="np-title">Nothing playing</h2>
+      <p class="np-sub" id="np-sub">Pick a track from your library below.</p>
+    </div>
+
+    <div class="seek-row">
+      <span class="mono time" id="time-cur">0:00</span>
+      <input type="range" id="seek" min="0" max="100" value="0" step="0.1" disabled>
+      <span class="mono time" id="time-dur">0:00</span>
+    </div>
+
+    <div class="transport">
+      <button class="t-btn" id="btn-prev" title="Previous">⏮</button>
+      <button class="t-btn main" id="btn-play" title="Play / Pause">▶</button>
+      <button class="t-btn" id="btn-next" title="Next">⏭</button>
+      <button class="t-btn mode" id="btn-mode" title="Playback mode">🔁 all</button>
+    </div>
+
+    <p class="wake-note" id="wake-note">🌙 Screen wake-lock aktif — layar nggak bakal sleep.</p>
+    <audio id="audio-engine"></audio>
+  </div>
+
+  <!-- ===== LIBRARY ===== -->
+  <div class="card fade-in">
+    <div class="lib-head">
+      <div>
+        <h2>Your library</h2>
+        <p class="hint" style="margin-bottom:0;">Audio pribadi lo, tersimpan di akun lo. <span id="lib-count" class="mono"></span></p>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="btn-refresh">↻ Refresh</button>
+    </div>
+    <div id="track-list">
+      <div class="skeleton"></div>
+      <div class="skeleton"></div>
+    </div>
+  </div>
+
+  <!-- ===== UPLOAD ===== -->
+  <div class="card fade-in">
+    <h2>Add audio</h2>
+    <p class="hint">Upload rekaman meditasi, ambience, atau musik tidur lo (mp3 / m4a / wav / ogg).</p>
+    <label class="dropzone" id="dropzone">
+      <input type="file" id="audio-file-input" accept="audio/*" multiple hidden>
+      <span class="dz-icon">🎵</span>
+      <span class="dz-text"><b>Pilih file</b> atau drop di sini — bisa banyak sekaligus</span>
+      <span class="dz-picked" id="dz-picked"></span>
+    </label>
+    <button id="btn-upload-audio" class="btn btn-primary btn-block" style="margin-top:14px;">⬆ Upload to Library</button>
+    <div id="upload-status" class="status-log"></div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="meditate.js"></script>
+</body>
+</html>

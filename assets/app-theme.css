@@ -1,0 +1,19 @@
+/* ============================================================
+   PLACEHOLDER — assets/app-theme.css was referenced by
+   index.html, dashboard.html, and admin.html, but was never
+   included in any upload, so its real content isn't available
+   here.
+
+   Paste your existing assets/app-theme.css content into this
+   file. It's the design system behind the marketing/auth page
+   (index.html), the app dashboard (dashboard.html), and the
+   admin panel — nav bar, hero section, buttons, cards, the
+   ticket/apps-grid layout, auth forms, color tokens like
+   --text-main / --text-muted / --primary, etc.
+
+   Until the real file is dropped in, these three pages will
+   render as unstyled HTML (structure works, no visual design).
+   This is UNRELATED to assets/soft.css, which is the separate
+   design system already built for the 4 mini-apps (devil,
+   meditate, portfolio, trademaster) — don't merge the two.
+   ============================================================ */
