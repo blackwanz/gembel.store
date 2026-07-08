@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gembel AI PIK — Warung Kode Digital</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/app-theme.css">
+</head>
+<body>
+
+<section id="view-landing" class="view active">
+  <nav class="nav">
+    <div>
+      <div class="logo display"><span class="g">GEMBEL</span> <span class="e">AI PIK</span></div>
+      <div class="logo-sub">WARUNG KODE DIGITAL</div>
+    </div>
+    <div class="nav-actions">
+      <button class="theme-toggle" onclick="toggleTheme()" title="Ganti tema">🌙</button>
+      <button class="btn btn-ghost" onclick="showView('auth'); switchAuthTab('login')">Masuk</button>
+      <button class="btn btn-primary" onclick="showView('auth'); switchAuthTab('signup')">Pesan App</button>
+    </div>
+  </nav>
+
+  <div class="hero">
+    <div class="eyebrow"><span class="dot"></span> TERIMA ORDER — SLOT TERBATAS</div>
+    <h1 class="display">Gue Coding,<br>Lo <span class="accent">Pake</span>.</h1>
+    <p>Butuh tools buat trading, tugas, atau kerjaan yang spesifik banget buat gaya lo? Tulis spesifikasinya, gue racik jadi aplikasi jalan — bukan janji, langsung jadi.</p>
+    <div class="hero-actions">
+      <button class="btn btn-primary btn-lg" onclick="showView('auth'); switchAuthTab('signup')">Pesan App Sekarang →</button>
+      <button class="btn btn-ghost btn-lg" onclick="document.getElementById('cara-kerja').scrollIntoView({behavior:'smooth'})">Lihat Cara Kerja</button>
+    </div>
+  </div>
+
+  <div class="section" id="cara-kerja">
+    <div class="section-head">
+      <div class="kicker">CARA KERJA</div>
+      <h2>3 langkah, kelar.</h2>
+    </div>
+    <div class="steps">
+      <div class="step-card">
+        <div class="step-num mono">01</div>
+        <h3>Daftar</h3>
+        <p>Bikin akun, nggak pake ribet. Email sama password doang.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-num mono">02</div>
+        <h3>Tulis prompt</h3>
+        <p>Jelasin app yang lo mau — buat apa, fiturnya apa, gaya kerja lo gimana.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-num mono">03</div>
+        <h3>Pake appnya</h3>
+        <p>Buka langsung lewat browser, atau unduh versi APK-nya.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="section" id="demo">
+    <div class="section-head">
+      <div class="kicker">LIVE DEMO</div>
+      <h2>Ketik prompt, app jadi.</h2>
+    </div>
+    <div class="demo-wrap">
+      <div class="demo-terminal">
+        <div class="demo-term-head">
+          <span class="td r"></span><span class="td y"></span><span class="td g"></span>
+          <span class="demo-term-title mono">gembel-ai-pik — prompt</span>
+        </div>
+        <div class="demo-term-body">
+          <span class="mono demo-prompt-label">&gt;</span>
+          <span class="mono" id="demo-typed"></span><span class="demo-caret"></span>
+        </div>
+        <button class="btn btn-primary btn-block" id="demo-btn" onclick="runDemo()">▶ Generate App</button>
+      </div>
+      <div class="demo-output" id="demo-output">
+        <div class="demo-app-card" id="demo-app-1">
+          <div class="tool-icon">📅</div>
+          <h3>Kalender Produktivitas</h3>
+          <p>Goals harian, tracking angka, progress bulanan — sinkron ke akun lo.</p>
+          <span class="badge st-selesai">SELESAI ✓</span>
+        </div>
+        <div class="demo-app-card" id="demo-app-2">
+          <div class="tool-icon">⚡</div>
+          <h3>Neon Flow — Time Tracker</h3>
+          <p>Tracker sesi kerja gaya cyberpunk, target waktu harian, laporan per warna.</p>
+          <span class="badge st-selesai">SELESAI ✓</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section" id="testimoni">
+    <div class="section-head">
+      <div class="kicker">KATA MEREKA</div>
+      <h2>Testimoni member.</h2>
+    </div>
+    <div class="testi-grid">
+      <div class="testi-card">
+        <p>"Minta app kalender custom, jadi dalam sehari. Sekarang tiap hari kepake buat tracking target."</p>
+        <div class="testi-who"><div class="u-mini">RD</div><div><b>Rudi</b><span>Trader</span></div></div>
+      </div>
+      <div class="testi-card">
+        <p>"Time tracker-nya niat banget, sampe kepikiran fitur yang gue sendiri gak kepikiran. Recommended."</p>
+        <div class="testi-who"><div class="u-mini">SA</div><div><b>Sari</b><span>Freelancer</span></div></div>
+      </div>
+      <div class="testi-card">
+        <p>"Tulis prompt seadanya aja langsung dipahamin. Revisi juga cepet, gak pake drama."</p>
+        <div class="testi-who"><div class="u-mini">BW</div><div><b>Bowo</b><span>Mahasiswa</span></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-head">
+      <div class="kicker">PILIHAN</div>
+      <h2>Sesuai kebutuhan lo.</h2>
+    </div>
+    <div class="tiers">
+      <div class="tier-card clickable" onclick="showView('auth'); switchAuthTab('signup')">
+        <h3>Free Tier</h3>
+        <p style="color:var(--text-muted);font-size:13.5px;">Buat yang mau nyoba dulu.</p>
+        <div class="tier-price">Gratis</div>
+        <ul>
+          <li>Template app siap pakai</li>
+          <li>Kustomisasi ringan</li>
+          <li>Akses via browser</li>
+        </ul>
+        <button class="btn btn-ghost btn-block" style="margin-top:14px;">Mulai Gratis →</button>
+      </div>
+      <div class="tier-card featured clickable" onclick="showView('auth'); switchAuthTab('signup')">
+        <div class="tier-badge">PALING DIPILIH</div>
+        <h3>Elite Tier</h3>
+        <p style="color:var(--text-muted);font-size:13.5px;">Buat app kustom yang beneran spesifik.</p>
+        <div class="tier-price">Saweran <span>/ sesuai kompleksitas</span></div>
+        <ul>
+          <li>App custom dari nol</li>
+          <li>Prioritas antrian</li>
+          <li>Unduh APK + browser</li>
+          <li>Revisi langsung ke gue</li>
+        </ul>
+        <button class="btn btn-primary btn-block" style="margin-top:14px;">Pesan Sekarang →</button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="site-footer">© 2026 Gembel AI PIK — bagian dari Gembel Elite. Jujur, apa adanya, dan tetep ngoding.</footer>
+</section>
+
+<section id="view-auth" class="view">
+  <nav class="nav">
+    <div class="logo display"><span class="g">GEMBEL</span> <span class="e">AI PIK</span></div>
+    <button class="btn btn-ghost btn-sm" onclick="showView('landing')">← Kembali</button>
+  </nav>
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="auth-tabs">
+        <div class="auth-tab active" id="tab-login" onclick="switchAuthTab('login')">Masuk</div>
+        <div class="auth-tab" id="tab-signup" onclick="switchAuthTab('signup')">Daftar</div>
+      </div>
+
+      <div id="form-msg" class="form-msg"></div>
+
+      <form id="login-form" onsubmit="return false;" style="display:block;">
+        <h2 id="login-heading">Masuk ke warung</h2>
+        <div class="sub">Lanjutin order app lo, atau bikin yang baru.</div>
+        <div class="field">
+          <label>Email</label>
+          <input type="email" id="login-email" placeholder="nama@email.com" autocomplete="email" required>
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password" required>
+        </div>
+        <div class="forgot-link" onclick="handleForgotPassword()">Lupa password?</div>
+        <button type="submit" class="btn btn-primary btn-block" id="login-submit" onclick="handleLogin()">Masuk →</button>
+        <div class="login-foot">Belum punya akun? <a onclick="switchAuthTab('signup')">Daftar gratis</a></div>
+      </form>
+
+      <form id="signup-form" onsubmit="return false;" style="display:none;">
+        <h2>Bikin akun baru</h2>
+        <div class="sub">Sekali daftar, semua app lo hidup di satu dashboard.</div>
+        <div class="field">
+          <label>Nama</label>
+          <input type="text" id="signup-name" placeholder="Nama lo" autocomplete="name" required>
+        </div>
+        <div class="field">
+          <label>Email</label>
+          <input type="email" id="signup-email" placeholder="nama@email.com" autocomplete="email" required>
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <input type="password" id="signup-password" placeholder="Min. 8 karakter, huruf besar, angka, simbol" autocomplete="new-password" required minlength="8">
+          <div style="font-size:11.5px;color:var(--text-faint);margin-top:5px;">Min. 8 karakter, 1 huruf besar, 1 angka, 1 simbol.</div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block" id="signup-submit" onclick="handleSignup()">Daftar gratis →</button>
+        <div class="login-foot">Udah punya akun? <a onclick="switchAuthTab('login')">Masuk di sini</a></div>
+      </form>
+
+      <form id="otp-form" onsubmit="return false;" style="display:none;">
+        <h2>Cek email lo 📩</h2>
+        <div class="sub">Gue kirim kode 6 digit ke <b id="otp-email-label">email lo</b>. Masukin di sini (cek folder spam juga).</div>
+        <div class="field">
+          <label>Kode verifikasi</label>
+          <input type="text" id="otp-code" class="otp-input" placeholder="······" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
+        </div>
+        <button type="submit" class="btn btn-primary btn-block" id="otp-submit" onclick="handleVerifyOtp()">Verifikasi →</button>
+        <div class="login-foot">Nggak nerima kode? <a onclick="handleResendOtp()">Kirim ulang</a></div>
+      </form>
+
+      <form id="reset-form" onsubmit="return false;" style="display:none;">
+        <h2>Bikin password baru</h2>
+        <div class="sub">Ketik password baru buat akun lo.</div>
+        <div class="field">
+          <label>Password baru</label>
+          <input type="password" id="reset-password" placeholder="Min. 8 karakter, huruf besar, angka, simbol" autocomplete="new-password" required minlength="8">
+        </div>
+        <div class="field">
+          <label>Ulangi password baru</label>
+          <input type="password" id="reset-password2" placeholder="Ketik ulang" autocomplete="new-password" required minlength="8">
+        </div>
+        <button type="submit" class="btn btn-primary btn-block" id="reset-submit" onclick="handleResetPassword()">Simpan password baru →</button>
+      </form>
+    </div>
+  </div>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="assets/supabaseClient.js"></script>
+<script src="assets/auth.js"></script>
+<script src="index.js"></script>
+</body>
+</html>

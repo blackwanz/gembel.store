@@ -1,0 +1,23 @@
+/* ============================================================
+   PLACEHOLDER — assets/calendar-style.css was referenced by
+   apps/calendar/calendar.html but was never included in any
+   upload, so its real content isn't available here.
+
+   Paste your existing assets/calendar-style.css content into
+   this file. It's the base design system for the calendar app —
+   .calendar-grid, .calendar-day, .goal-card, .mini-month
+   (year view), .modal-overlay / .modal-box, the light/dark
+   [data-theme] color tokens (--border, --surface, --primary,
+   --text-main, etc. — calendar.js's applyTheme() toggles
+   data-theme on <html> and expects this file to react to it).
+
+   apps/calendar/calendar.css (already split out from the old
+   inline <style> block) loads AFTER this file and only contains
+   the small topbar override layer — it assumes this base file
+   provides the color tokens and the actual calendar/goal styling.
+
+   Until the real file is dropped in, the calendar page will
+   render as unstyled HTML (structure and all JS logic work,
+   no visual design, and the theme toggle button will have
+   nothing to actually change).
+   ============================================================ */

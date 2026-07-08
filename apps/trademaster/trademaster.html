@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trade Master — Gembel AI PIK</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../assets/soft.css">
+<link rel="stylesheet" href="trademaster.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="../../assets/supabaseClient.js"></script>
+</head>
+<body>
+
+<div class="soft-top">
+  <div class="soft-brand">
+    <div class="mark">🛡️</div>
+    <div>
+      <div class="t1">Trade Master</div>
+      <div class="t2">Risk-locked terminal · MT5</div>
+    </div>
+  </div>
+  <div class="conn-chip" id="conn-chip">
+    <span class="conn-dot" id="conn-dot"></span>
+    <span id="conn-label">Disconnected</span>
+  </div>
+</div>
+
+<div class="soft-wrap">
+
+  <!-- ===== LOCKOUT BANNER ===== -->
+  <div class="lockout-banner hidden" id="lockout-banner">
+    <span class="lb-icon">🔒</span>
+    <div>
+      <b id="lb-title">Trading locked.</b>
+      <span id="lb-sub">Lo udah kena batas harian. Balik lagi setelah day reset.</span>
+    </div>
+    <span class="mono lb-count" id="lb-countdown">--:--:--</span>
+  </div>
+
+  <div class="tm-grid">
+
+    <!-- ============ LEFT COLUMN ============ -->
+    <div>
+      <!-- CONNECT -->
+      <div class="card" id="connect-card">
+        <h2>MT5 Bridge</h2>
+        <p class="hint">Terminal ini ngomong ke server bridge yang jalanin MT5 lo (lihat <span class="mono">mt5_bridge.py</span>).</p>
+        <div class="field">
+          <label>Bridge server URL</label>
+          <input type="text" id="bridge-url" placeholder="http://127.0.0.1:5000" value="http://127.0.0.1:5000">
+        </div>
+        <button class="btn btn-primary btn-block" id="btn-connect">⚡ Connect</button>
+        <div class="bridge-status mono" id="bridge-status"></div>
+      </div>
+
+      <!-- THE RULES (LOCKED) -->
+      <div class="card rules-card">
+        <div class="rules-head">
+          <h2>System Lock</h2>
+          <span class="pill rose">🔒 NOT EDITABLE</span>
+        </div>
+        <p class="hint">Aturan ini dikunci. Nggak ada tombol edit — itu fiturnya, bukan bug.</p>
+        <ul class="rules-list">
+          <li><span>Max daily loss</span><b class="mono" id="rule-daily">1% equity = $—</b></li>
+          <li><span>Risk per trade</span><b class="mono" id="rule-per-trade">10% of limit = $—</b></li>
+          <li><span>Max trades / day</span><b class="mono">10</b></li>
+          <li><span>Breach daily limit</span><b class="rose-text">Locked until reset</b></li>
+          <li><span>Floating loss ≥ limit</span><b class="rose-text">FORCE CLOSE ALL</b></li>
+          <li><span>Journal before trade</span><b>Reason + SL + TP wajib</b></li>
+        </ul>
+      </div>
+
+      <!-- DAY STATUS -->
+      <div class="card">
+        <h2>Today</h2>
+        <p class="hint">Reset otomatis tengah malam waktu lo.</p>
+        <div class="day-stats">
+          <div class="d-stat"><span>Day-start equity</span><b class="mono" id="ds-start">$—</b></div>
+          <div class="d-stat"><span>Current equity</span><b class="mono" id="ds-equity">$—</b></div>
+          <div class="d-stat"><span>Today P/L</span><b class="mono" id="ds-pl">$—</b></div>
+          <div class="d-stat"><span>Trades used</span><b class="mono" id="ds-trades">0 / 10</b></div>
+        </div>
+        <div class="risk-meter">
+          <div class="rm-label"><span>Daily loss used</span><span class="mono" id="rm-pct">0%</span></div>
+          <div class="rm-track"><div class="rm-fill" id="rm-fill" style="width:0%"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ RIGHT COLUMN ============ -->
+    <div>
+      <!-- NEW TRADE -->
+      <div class="card" id="trade-card">
+        <div class="rules-head">
+          <h2>New trade</h2>
+          <span class="pill accent" id="live-price-pill">— </span>
+        </div>
+        <p class="hint">Jurnal dulu, baru boleh eksekusi. Lot dihitung otomatis dari risk lo — nggak bisa diganti.</p>
+
+        <div class="trade-row">
+          <div class="field" id="f-symbol" style="flex:1;">
+            <label>Symbol</label>
+            <select id="in-symbol">
+              <option value="XAUUSD">XAUUSD (Gold)</option>
+              <option value="BTCUSD">BTCUSD</option>
+              <option value="EURUSD">EURUSD</option>
+            </select>
+          </div>
+          <div class="field" style="flex:1;">
+            <label>Direction</label>
+            <div class="side-toggle">
+              <button class="side-btn buy active" id="side-buy">▲ BUY</button>
+              <button class="side-btn sell" id="side-sell">▼ SELL</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="trade-row">
+          <div class="field" id="f-sl" style="flex:1;">
+            <label>Stop Loss <span class="req">wajib</span></label>
+            <input type="number" id="in-sl" placeholder="0.00" step="any">
+            <div class="err-text" id="err-sl">SL wajib dan harus di sisi rugi dari harga sekarang.</div>
+          </div>
+          <div class="field" id="f-tp" style="flex:1;">
+            <label>Take Profit <span class="req">wajib</span></label>
+            <input type="number" id="in-tp" placeholder="0.00" step="any">
+            <div class="err-text" id="err-tp">TP wajib dan harus di sisi profit dari harga sekarang.</div>
+          </div>
+        </div>
+
+        <div class="lot-box">
+          <div>
+            <span class="lot-label">LOCKED LOT (auto)</span>
+            <b class="mono" id="calc-lot">0.00</b>
+          </div>
+          <div>
+            <span class="lot-label">RISK THIS TRADE</span>
+            <b class="mono" id="calc-risk">$0.00</b>
+          </div>
+          <div>
+            <span class="lot-label">R : R</span>
+            <b class="mono" id="calc-rr">—</b>
+          </div>
+        </div>
+
+        <div class="field" id="f-reason">
+          <label>Journal — kenapa lo entry? <span class="req">min. 10 karakter</span></label>
+          <textarea id="in-reason" placeholder="Contoh: break structure H1 + retest OB, momentum searah bias harian…" maxlength="500"></textarea>
+          <div class="err-text">Tulis alasan entry yang jelas dulu (minimal 10 karakter).</div>
+        </div>
+
+        <button class="btn btn-primary btn-block" id="btn-execute" disabled>🚀 Journal &amp; Execute</button>
+      </div>
+
+      <!-- OPEN POSITIONS -->
+      <div class="card">
+        <div class="rules-head">
+          <h2>Open positions</h2>
+          <button class="btn btn-danger-ghost btn-sm" id="btn-close-all">Close all</button>
+        </div>
+        <div id="positions-list"><div class="empty">Belum connect ke bridge.</div></div>
+      </div>
+
+      <!-- JOURNAL -->
+      <div class="card">
+        <h2>Trade journal</h2>
+        <p class="hint">Otomatis kecatet tiap eksekusi — nggak bisa trade tanpa jurnal.</p>
+        <div id="journal-list"><div class="empty">Belum ada entry hari ini.</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="trademaster.js"></script>
+</body>
+</html>

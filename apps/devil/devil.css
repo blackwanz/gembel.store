@@ -1,0 +1,63 @@
+/* Devil Diary — elegant soft-dark, dual mood */
+
+.diary-hero{
+  text-align:center;
+  margin:22px 0 30px;
+}
+.diary-hero h1{ font-size:26px; letter-spacing:-.01em; }
+.diary-hero .subtitle{ color:var(--muted); font-size:14px; margin-top:6px; }
+
+.mood-orb{
+  width:110px; height:110px; border-radius:50%;
+  margin:0 auto 20px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:44px;
+  background:radial-gradient(circle at 35% 30%, var(--surface-2) 0%, var(--surface) 70%);
+  border:1px solid var(--border);
+  box-shadow:var(--shadow), inset 0 0 34px rgba(0,0,0,.35);
+  transition:box-shadow .6s ease;
+}
+.mood-orb.angel{
+  border-color:rgba(121,184,240,.4);
+  box-shadow:0 0 44px -6px rgba(121,184,240,.35), inset 0 0 34px rgba(121,184,240,.08);
+}
+.mood-orb.devil{
+  border-color:rgba(240,140,160,.4);
+  box-shadow:0 0 44px -6px rgba(227,108,134,.4), inset 0 0 34px rgba(227,108,134,.1);
+  animation:devil-breathe 3.2s ease-in-out infinite;
+}
+@keyframes devil-breathe{
+  0%,100%{ box-shadow:0 0 34px -8px rgba(227,108,134,.3), inset 0 0 30px rgba(227,108,134,.08); }
+  50%    { box-shadow:0 0 56px -6px rgba(227,108,134,.5), inset 0 0 40px rgba(227,108,134,.14); }
+}
+
+.mood-card{ padding:26px; }
+.mood-card.angel{
+  background:linear-gradient(170deg, var(--sky-soft) 0%, var(--surface) 46%);
+  border-color:rgba(121,184,240,.28);
+}
+.mood-card.devil{
+  background:linear-gradient(170deg, var(--rose-soft) 0%, var(--surface) 46%);
+  border-color:rgba(240,140,160,.28);
+}
+.mood-head{
+  display:flex; align-items:center; justify-content:space-between;
+  margin-bottom:12px;
+}
+.mood-sub{ color:var(--muted); font-size:13.5px; margin-bottom:16px; }
+.mood-card textarea{ min-height:130px; margin-bottom:16px; font-size:14px; }
+.mood-card.angel textarea:focus{ border-color:var(--sky); box-shadow:0 0 0 3.5px rgba(121,184,240,.2); }
+.mood-card.devil textarea:focus{ border-color:var(--rose); box-shadow:0 0 0 3.5px rgba(240,140,160,.2); }
+
+.angel-count{ font-family:var(--font-mono); color:var(--sky); font-size:16px; }
+.angel-progress{ font-size:12px; color:var(--faint); }
+
+.progress-track{
+  height:8px; border-radius:99px; overflow:hidden;
+  background:var(--surface-2); border:1px solid var(--border);
+  margin-bottom:18px;
+}
+.progress-fill{ height:100%; border-radius:99px; transition:width .6s cubic-bezier(.2,.8,.2,1); }
+.progress-fill.sky{ background:linear-gradient(90deg, var(--sky-deep), var(--sky)); }
+
+.hidden{ display:none; }
