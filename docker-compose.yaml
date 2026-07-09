@@ -2,15 +2,13 @@ services:
   blue:
     build: .
     container_name: gembelfun_blue
-    restart: always
-    ports:
-      - "3000:80"  # <--- Ubah 3000 yang kanan jadi 80
     restart: unless-stopped
+    ports:
+      - "3000:80"
 
   green:
     build: .
-    restart: always
     container_name: gembelfun_green
-    ports:
-      - "3001:80"  # <--- Ubah 3000 yang kanan jadi 80
     restart: unless-stopped
+    ports:
+      - "3001:80"
