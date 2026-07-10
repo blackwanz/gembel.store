@@ -16,6 +16,7 @@
     <div class="logo display" style="font-size:16px;"><span class="g">GEMBEL</span> <span class="e">AI PIK</span></div>
     <div class="dash-tabs">
       <div class="dash-tab active" data-tab="apps" onclick="switchTab('apps')">My Apps</div>
+      <div class="dash-tab" data-tab="katalog" onclick="switchTab('katalog')">Katalog App</div>
       <div class="dash-tab" data-tab="profil" onclick="switchTab('profil')">Profil</div>
     </div>
   </div>
@@ -35,7 +36,7 @@
 
 <div class="dash-body">
 
-  <!-- ===== TAB: MY APPS ===== -->
+  <!-- ===== TAB: MY APPS (tickets) ===== -->
   <div id="tab-apps" class="tab-panel">
     <div class="dash-head">
       <div>
@@ -57,30 +58,26 @@
           <h3>Mau app apa hari ini?</h3>
         </div>
         <p>Jelasin app yang lo butuhin, sedetail mungkin — gue racik jadi aplikasi jalan.</p>
-        <input type="text" id="new-title" placeholder="Judul singkat (opsional)">
-        <textarea id="new-prompt" placeholder="Contoh: aplikasi buat hitung target tabungan bulanan, ada grafik progress-nya..."></textarea>
+        <input type="text" id="new-title" placeholder="Judul singkat (opsional)" maxlength="120">
+        <textarea id="new-prompt" placeholder="Contoh: aplikasi buat hitung target tabungan bulanan, ada grafik progress-nya..." maxlength="2000"></textarea>
         <button class="btn btn-primary btn-block" id="submit-request-btn" onclick="submitRequest()">✨ Generate App →</button>
       </div>
 
-      <div class="tool-card">
-        <div class="tool-icon">📅</div>
-        <div>
-          <h3>Kalender Produktivitas</h3>
-          <p>App bawaan lo — goals harian, tracking angka, dan progress bulanan. Selalu aktif, gratis buat semua member.</p>
-        </div>
-        <button class="btn btn-primary btn-block" onclick="window.location.href='apps/calendar/calendar.html'">Buka Kalender →</button>
-      </div>
-
-      <div class="tool-card">
-        <div class="tool-icon">⚡</div>
-        <div>
-          <h3>Neon Flow — Time Tracker</h3>
-          <p>Progress tracker gaya cyberpunk — lacak sesi kerja lo per warna (fokus/istirahat/lainnya) sampai target waktu harian. Data tersimpan di akun lo.</p>
-        </div>
-        <button class="btn btn-primary btn-block" onclick="window.location.href='apps/progbar/progbar.html'">Buka Neon Flow →</button>
-      </div>
-
       <div id="requests-loading" class="skeleton"></div>
+    </div>
+  </div>
+
+  <!-- ===== TAB: KATALOG APP (plan-gated apps table) ===== -->
+  <div id="tab-katalog" class="tab-panel" style="display:none;">
+    <div class="dash-head">
+      <div>
+        <h1>Katalog App</h1>
+        <p>App siap pakai yang tersedia buat plan lo saat ini.</p>
+      </div>
+    </div>
+
+    <div class="apps-grid" id="catalog-grid">
+      <div id="catalog-loading" class="skeleton"></div>
     </div>
   </div>
 
@@ -105,6 +102,7 @@
     <div class="panel" style="max-width:440px;margin-top:18px;">
       <div class="panel-head"><h2>Update profil</h2></div>
       <div style="padding:4px 2px;">
+        <div id="profile-msg" class="form-msg"></div>
         <div class="field">
           <label>Nama lengkap</label>
           <input type="text" id="edit-name" placeholder="Nama lengkap lo" maxlength="80">

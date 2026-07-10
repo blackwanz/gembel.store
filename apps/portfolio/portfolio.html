@@ -9,6 +9,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../../assets/soft.css">
 <link rel="stylesheet" href="portfolio.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="../../assets/supabaseClient.js"></script>
 </head>
 <body>
 
@@ -24,9 +26,19 @@
 </div>
 
 <div class="soft-wrap">
+
+  <!-- ===== AUTH-BLOCKED BANNER — hidden by default, shown by JS via requireAuthOrBlock() ===== -->
+  <div class="lockout-banner hidden" id="auth-banner">
+    <span class="lb-icon">🚫</span>
+    <div>
+      <b>Belum login.</b>
+      <span>Portfolio butuh akun — login dulu di halaman lain (lihat <span class="mono">supabaseClient.js</span>), lalu refresh halaman ini.</span>
+    </div>
+  </div>
+
   <div class="page-head">
     <h1>Your holdings, priced live.</h1>
-    <p>Crypto langsung dari Binance. Stock dicoba via feed publik — kalau gagal, datanya ditandai merah, bukan dikarang.</p>
+    <p>Crypto langsung dari Binance. Stock dicoba via feed publik — kalau gagal, datanya ditandai merah, bukan dikarang. Asset lain (emas, reksadana, dll) dicatat qty-nya aja, nggak ada feed harga.</p>
   </div>
 
   <div class="stat-row">
@@ -49,13 +61,18 @@
     <div>
       <div class="card">
         <h2>Add asset</h2>
-        <p class="hint">Simbol manual. Crypto contohnya <b>BTCUSD</b>, <b>ETH</b>, <b>SOLUSDT</b> — stock contohnya <b>AAPL</b>, <b>TSLA</b>, <b>BBCA.JK</b>.</p>
+        <p class="hint">Simbol manual. Crypto contohnya <b>BTCUSD</b>, <b>ETH</b>, <b>SOLUSDT</b> — stock contohnya <b>AAPL</b>, <b>TSLA</b>, <b>BBCA.JK</b> — lainnya (emas, reksadana, dll) bebas.</p>
         <div class="field" id="f-type">
           <label>Type</label>
           <select id="in-type">
             <option value="crypto">Crypto (Binance)</option>
             <option value="stock">Stock</option>
+            <option value="saham">Saham</option>
+            <option value="emas">Emas</option>
+            <option value="reksadana">Reksadana</option>
+            <option value="lainnya">Lainnya</option>
           </select>
+          <div class="err-text">Pilih type asset dulu.</div>
         </div>
         <div class="field" id="f-symbol">
           <label>Symbol</label>
@@ -66,6 +83,10 @@
           <label>Quantity <span style="font-weight:500;color:var(--faint);">(boleh desimal)</span></label>
           <input type="number" id="in-qty" placeholder="10" min="0" step="any">
           <div class="err-text">Quantity harus angka lebih dari 0.</div>
+        </div>
+        <div class="field" id="f-satuan">
+          <label>Satuan <span style="font-weight:500;color:var(--faint);">(opsional — lot / gram / lembar / coin)</span></label>
+          <input type="text" id="in-satuan" placeholder="coin" maxlength="20" autocomplete="off">
         </div>
         <button class="btn btn-primary btn-block" id="btn-add">＋ Add to portfolio</button>
       </div>
@@ -101,7 +122,7 @@
       <div class="hold-head">
         <div>
           <h2>Holdings</h2>
-          <p class="hint" style="margin-bottom:0;">Auto-refresh tiap 30 detik.</p>
+          <p class="hint" style="margin-bottom:0;">Auto-refresh tiap 30 detik. Dihitung dari total riwayat transaksi (portofolio_h).</p>
         </div>
         <button class="btn btn-ghost btn-sm" id="btn-refresh">↻ Refresh prices</button>
       </div>

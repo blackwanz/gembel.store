@@ -1,10 +1,27 @@
 // ============================================================
 // SYSTEM BOOT // WELCOME TO GEMBEL AI PIK
-// v2 — cloud storage relasional: focus_sessions (1 baris per sesi)
-//      + focus_session_segments (1 baris per warna). Nggak ada blob
-//      JSON lagi, nggak ada tulis-ke-cloud tiap detik: durasi dihitung
-//      dari timestamp mulai/selesai, jadi otomatis kebal throttling
-//      tab background DAN sesi aktif bisa di-resume dari device lain.
+// v3 — ditulis ulang buat skema tabel baru:
+//   progbar_c  : 1 baris per SESSION aktif (current_state jsonb = seluruh
+//                state live: startTime/targetTime/activeColor/segments).
+//                Ditulis ulang (UPDATE current_state) tiap ganti warna,
+//                bukan bikin baris per-segmen kayak versi lama.
+//   progbar_h  : 1 baris per (user, effective_date) — prog_history jsonb
+//                nyimpen ARRAY sesi yang SELESAI di hari itu (di-bucket
+//                berdasarkan tanggal MULAI sesi). Ini yang dibaca balik
+//                buat render panel laporan (LAPORAN SESI).
+//   progbar_h2 : log historis per-segmen, WRITE-ONLY (nggak pernah dibaca
+//                balik sama app ini) — 1 baris per potongan warna tiap
+//                sesi selesai, buat kebutuhan analytics/export di luar app.
+//                Asumsi satuan: duration & total_second_pool dalam DETIK,
+//                total_hours dalam JAM (silakan sesuaikan kalau beda).
+//
+// CATATAN PENTING: penulisan ke progbar_h di sini pakai pola baca-lalu-
+// tulis (SELECT existing row, gabung array, UPDATE/INSERT) — bukan
+// .upsert()/onConflict — karena kita nggak bisa mastiin ada unique
+// constraint di (user_id, effective_date) di sisi DB. Kalau constraint itu
+// ADA, pola ini tetap benar; kalau BELUM ada, sebaiknya ditambahin biar
+// "cuma 1 jsonb per effective_date" beneran terjamin di level DB juga
+// (proteksi dari race antar-device/tab).
 // ============================================================
 console.log("%cSYSTEM BOOT // WELCOME TO GEMBEL AI PIK", "color: #00ffcc; font-size: 16px; font-weight: bold; background: #111; padding: 5px;");
 
@@ -13,7 +30,7 @@ let UID = 'anon';
 let IS_GUEST = true;
 const K_HISTORY  = () => `cyber_${UID}_history`;
 const K_STATE    = () => `cyber_${UID}_state`;
-const K_MIGRATED = () => `cyber_${UID}_migrated_v2`;
+const K_MIGRATED = () => `cyber_${UID}_migrated_v3`;
 const TARGET_DURATION_MS = 12 * 60 * 60 * 1000; // Standar Sesi 12 Jam
 const SEGMENT_COLORS = ['green', 'blue', 'orange'];
 
@@ -43,14 +60,40 @@ function calculateTargetTime(startTime) {
     return new Date(startTime.getTime() + TARGET_DURATION_MS);
 }
 
+// Tanggal lokal YYYY-MM-DD (bukan UTC) — dipakai buat kolom `date`
+// (effective_date, start_date, end_date). Pola sama kayak calendar.html
+// biar konsisten & bebas masalah pergeseran timezone.
+function localDateStr(d) {
+    const dt = new Date(d);
+    return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+}
+
+// uuid v4 — session_id di-generate DI BROWSER pas sesi mulai.
+function uuidv4() {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+        const bytes = crypto.getRandomValues(new Uint8Array(16));
+        bytes[6] = (bytes[6] & 0x0f) | 0x40;
+        bytes[8] = (bytes[8] & 0x3f) | 0x80;
+        const hex = [...bytes].map(b => b.toString(16).padStart(2, '0'));
+        return `${hex.slice(0, 4).join('')}-${hex.slice(4, 6).join('')}-${hex.slice(6, 8).join('')}-${hex.slice(8, 10).join('')}-${hex.slice(10, 16).join('')}`;
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+}
+
 // ===== STATE MANAGEMENT =====
-// Sesi aktif = baris focus_sessions dengan ended_at NULL (maks. satu per
-// user, dijaga unique index di DB). Segmen nyimpen TIMESTAMP, bukan counter:
-//   segments: [{ dbId, color, startedAt: Date, endedAt: Date|null }]
-// Durasi segmen berjalan = now - startedAt -> nggak perlu sync interval.
+// Sesi aktif = 1 baris progbar_c milik session_id ini. Beda dari versi
+// lama: SEMUA segmen sesi yang lagi jalan ikut nempel di dalam
+// current_state jsonb (bukan baris terpisah per segmen), jadi tiap ganti
+// warna cuma satu UPDATE ke progbar_c.
 let state = {
     active: false,
     sessionId: null,
+    rowId: null, // id (pk) baris progbar_c, cadangan kalau session_id gagal ke-set
     startTime: null,
     targetTime: null,
     activeColor: null,
@@ -60,7 +103,7 @@ let state = {
 let HISTORY = []; // sesi selesai (ternormalisasi) buat panel laporan
 
 function resetState() {
-    state = { active: false, sessionId: null, startTime: null, targetTime: null, activeColor: null, segments: [] };
+    state = { active: false, sessionId: null, rowId: null, startTime: null, targetTime: null, activeColor: null, segments: [] };
 }
 
 function targetPoolMs() {
@@ -75,6 +118,31 @@ function liveSegments(now = new Date()) {
         color: s.color,
         duration: Math.max(0, (s.endedAt ? s.endedAt.getTime() : now.getTime()) - s.startedAt.getTime())
     }));
+}
+
+// Bentuk current_state jsonb yang ditulis ke progbar_c.
+function buildCurrentStateJSON() {
+    return {
+        startTime: state.startTime.toISOString(),
+        targetTime: state.targetTime.toISOString(),
+        activeColor: state.activeColor,
+        segments: state.segments.map(s => ({
+            color: s.color,
+            startedAt: s.startedAt.toISOString(),
+            endedAt: s.endedAt ? s.endedAt.toISOString() : null
+        }))
+    };
+}
+
+function applyCurrentStateJSON(json) {
+    state.startTime = new Date(json.startTime);
+    state.targetTime = new Date(json.targetTime || (state.startTime.getTime() + TARGET_DURATION_MS));
+    state.segments = (json.segments || []).map(s => ({
+        color: s.color,
+        startedAt: new Date(s.startedAt),
+        endedAt: s.endedAt ? new Date(s.endedAt) : null
+    }));
+    state.activeColor = json.activeColor || (state.segments.length ? state.segments[state.segments.length - 1].color : null);
 }
 
 // ===== GUEST PERSISTENCE (localStorage, kayak dulu) =====
@@ -137,7 +205,7 @@ function restoreGuestState() {
         if (rawSegs.length && rawSegs[0].startedAt) {
             // format baru: timestamp murni
             state.segments = rawSegs.map(s => ({
-                dbId: null, color: s.color,
+                color: s.color,
                 startedAt: new Date(s.startedAt),
                 endedAt: s.endedAt ? new Date(s.endedAt) : null
             }));
@@ -147,7 +215,7 @@ function restoreGuestState() {
                 const st = new Date(s.timestamp || p.startTime);
                 const isLast = i === arr.length - 1;
                 return {
-                    dbId: null, color: s.color, startedAt: st,
+                    color: s.color, startedAt: st,
                     endedAt: isLast ? null : new Date(st.getTime() + (Number(s.duration) || 0))
                 };
             });
@@ -159,30 +227,26 @@ function restoreGuestState() {
 }
 
 // ===== CLOUD: RESUME SESI TERBUKA =====
-// Dipanggil saat boot & saat insert sesi kena unique violation (device lain
-// keburu mulai sesi) -> adopsi sesi itu beserta segmen-segmennya.
+// progbar_c sekarang di-key per session_id (bukan per user_id), jadi buat
+// nemu "sesi aktif milik user ini" kita filter by user_id dan ambil yang
+// paling baru — normalnya cuma ada satu (app cuma pernah mulai satu sesi
+// dalam satu waktu), tapi kalau ada race dari 2 device kita ambil yang
+// terbaru biar nggak nyangkut di baris basi.
 async function resumeOpenSession() {
     const { data, error } = await supabase
-        .from('focus_sessions')
-        .select('*, focus_session_segments(*)')
-        .is('ended_at', null)
-        .maybeSingle();
+        .from('progbar_c')
+        .select('*')
+        .eq('user_id', UID)
+        .order('created_at', { ascending: false })
+        .limit(1);
     if (error) { console.error('resume check failed:', error); return false; }
-    if (!data) return false;
+    if (!data || !data.length) return false;
 
+    const row = data[0];
     state.active = true;
-    state.sessionId = data.id;
-    state.startTime = new Date(data.started_at);
-    state.targetTime = new Date(state.startTime.getTime() + (Number(data.target_duration_ms) || TARGET_DURATION_MS));
-    state.segments = (data.focus_session_segments || [])
-        .slice()
-        .sort((a, b) => new Date(a.started_at) - new Date(b.started_at))
-        .map(s => ({
-            dbId: s.id, color: s.color,
-            startedAt: new Date(s.started_at),
-            endedAt: s.ended_at ? new Date(s.ended_at) : null
-        }));
-    state.activeColor = state.segments.length ? state.segments[state.segments.length - 1].color : null;
+    state.sessionId = row.session_id;
+    state.rowId = row.id;
+    applyCurrentStateJSON(row.current_state || {});
     return true;
 }
 
@@ -226,56 +290,49 @@ async function switchColor(color) {
     const now = new Date();
 
     if (!state.active) {
-        // Mulai sesi baru -> INSERT satu baris focus_sessions.
+        // Mulai sesi baru -> INSERT satu baris progbar_c; session_id
+        // di-generate di browser (bukan default DB) jadi UI nggak perlu
+        // nunggu round-trip buat tau identitas sesinya.
         state.active = true;
-        state.sessionId = null;
+        state.sessionId = uuidv4();
+        state.rowId = null;
         state.startTime = now;
         state.targetTime = calculateTargetTime(now);
         state.segments = [];
 
         if (!IS_GUEST) {
             const ins = await supabase
-                .from('focus_sessions')
-                .insert({ user_id: UID, started_at: now.toISOString(), target_duration_ms: TARGET_DURATION_MS })
-                .select()
+                .from('progbar_c')
+                .insert({
+                    user_id: UID,
+                    session_id: state.sessionId,
+                    current_state: buildCurrentStateJSON(),
+                    effective_date: localDateStr(now),
+                })
+                .select('id')
                 .single();
             if (ins.error) {
-                const dup = ins.error.code === '23505' || /duplicate|unique/i.test(ins.error.message || '');
-                // Sesi terbuka udah ada (mis. dari device lain) -> resume itu.
-                if (!dup || !(await resumeOpenSession())) {
-                    console.error('cloud session create failed:', ins.error);
-                }
+                console.error('cloud session create failed:', ins.error);
             } else if (ins.data) {
-                state.sessionId = ins.data.id;
+                state.rowId = ins.data.id;
             }
         }
     }
 
-    // Tutup segmen warna sebelumnya (stempel ended_at), JANGAN di-overwrite —
-    // segmen baru selalu jadi BARIS BARU di focus_session_segments.
+    // Tutup segmen warna sebelumnya — IN-MEMORY aja, karena semua segmen
+    // sesi yang lagi live hidup DI DALAM current_state jsonb, bukan baris
+    // terpisah per segmen (beda dari progbar_h2 yang baru ditulis pas stop).
     const prev = state.segments[state.segments.length - 1];
-    if (prev && !prev.endedAt) {
-        prev.endedAt = now;
-        if (!IS_GUEST && prev.dbId != null) {
-            supabase.from('focus_session_segments')
-                .update({ ended_at: now.toISOString() })
-                .eq('id', prev.dbId)
-                .then(({ error }) => { if (error) console.error('segment close failed:', error); });
-        }
-    }
+    if (prev && !prev.endedAt) prev.endedAt = now;
 
-    const seg = { dbId: null, color: color, startedAt: now, endedAt: null };
-    state.segments.push(seg);
+    state.segments.push({ color: color, startedAt: now, endedAt: null });
     state.activeColor = color;
 
-    if (!IS_GUEST && state.sessionId) {
-        const ins = await supabase
-            .from('focus_session_segments')
-            .insert({ session_id: state.sessionId, user_id: UID, color: color, started_at: now.toISOString() })
-            .select('id')
-            .single();
-        if (ins.error) console.error('segment create failed:', ins.error);
-        else if (ins.data) seg.dbId = ins.data.id;
+    if (!IS_GUEST) {
+        supabase.from('progbar_c')
+            .update({ current_state: buildCurrentStateJSON(), updated_at: now.toISOString() })
+            .eq('session_id', state.sessionId)
+            .then(({ error }) => { if (error) console.error('progbar_c update failed:', error); });
     }
 
     saveGuestState();
@@ -285,6 +342,37 @@ async function switchColor(color) {
     renderLiveProgress();
 }
 
+// Tulis (atau gabung ke) baris progbar_h milik satu effective_date —
+// dipakai baik pas stopSession() maupun pas import. Baca dulu barisnya
+// (kalau ada), append sesi baru ke array prog_history, baru INSERT/UPDATE
+// eksplisit (bukan upsert) biar nggak gantung ke unique constraint yang
+// belum tentu ada di DB.
+async function appendToDailyHistory(effDate, sessionSummary) {
+    const existing = await supabase.from('progbar_h')
+        .select('id, prog_history')
+        .eq('user_id', UID)
+        .eq('effective_date', effDate)
+        .maybeSingle();
+    if (existing.error) { console.error('progbar_h read failed:', existing.error); return existing.error; }
+
+    const prevHistory = (existing.data && Array.isArray(existing.data.prog_history)) ? existing.data.prog_history : [];
+    const nextHistory = prevHistory.concat([sessionSummary]);
+
+    let writeRes;
+    if (existing.data && existing.data.id) {
+        writeRes = await supabase.from('progbar_h')
+            .update({ session_id: sessionSummary.sessionId, prog_history: nextHistory, updated_at: new Date().toISOString() })
+            .eq('id', existing.data.id);
+    } else {
+        writeRes = await supabase.from('progbar_h').insert({
+            user_id: UID, session_id: sessionSummary.sessionId, effective_date: effDate,
+            prog_history: nextHistory,
+        });
+    }
+    if (writeRes.error) console.error('progbar_h write failed:', writeRes.error);
+    return writeRes.error;
+}
+
 async function stopSession() {
     if (!state.active) return;
     const now = new Date();
@@ -292,34 +380,63 @@ async function stopSession() {
     const last = state.segments[state.segments.length - 1];
     if (last && !last.endedAt) last.endedAt = now;
 
+    const finishedSummary = {
+        sessionId: state.sessionId,
+        startTime: state.startTime.toISOString(),
+        endTime: now.toISOString(),
+        segments: state.segments.map(s => ({
+            color: s.color,
+            duration: Math.max(0, (s.endedAt || now).getTime() - s.startedAt.getTime())
+        }))
+    };
+
     if (IS_GUEST) {
         const history = loadGuestHistory();
         history.push({
             id: `session-${Date.now()}`,
-            startTime: state.startTime.toISOString(),
-            endTime: now.toISOString(),
-            segments: state.segments.map(s => ({
-                color: s.color,
-                duration: Math.max(0, (s.endedAt || now).getTime() - s.startedAt.getTime()),
-                timestamp: s.startedAt.toISOString()
-            }))
+            startTime: finishedSummary.startTime,
+            endTime: finishedSummary.endTime,
+            segments: finishedSummary.segments.map(s => ({ ...s, timestamp: state.startTime.toISOString() }))
         });
         saveGuestHistory(history);
-    } else if (state.sessionId) {
-        // Tutup segmen terakhir + sesi. Durasi nggak perlu dikirim:
-        // duration_ms itu kolom GENERATED dari (ended_at - started_at).
-        if (last && last.dbId != null) {
-            const up = await supabase.from('focus_session_segments')
-                .update({ ended_at: now.toISOString() })
-                .eq('id', last.dbId);
-            if (up.error) console.error('segment close failed:', up.error);
-        }
-        const done = await supabase.from('focus_sessions')
-            .update({ ended_at: now.toISOString() })
-            .eq('id', state.sessionId);
-        if (done.error) {
-            console.error('session close failed:', done.error);
-            alert('Gagal menyimpan sesi ke cloud: ' + done.error.message);
+    } else {
+        try {
+            // 1) Sesi ini nggak lagi "current" -> hapus baris progbar_c-nya.
+            const del = await supabase.from('progbar_c').delete().eq('session_id', state.sessionId);
+            if (del.error) console.error('progbar_c cleanup failed:', del.error);
+
+            // 2) Rollup harian: 1 baris progbar_h per effective_date (di-
+            // bucket ke tanggal MULAI sesi). Kalau hari itu udah ada baris
+            // (sesi lain yang selesai duluan), GABUNG ke array-nya.
+            const effDate = localDateStr(state.startTime);
+            const histErr = await appendToDailyHistory(effDate, finishedSummary);
+            if (histErr) alert('Gagal menyimpan sesi ke cloud: ' + (histErr.message || histErr));
+
+            // 3) Log historis per-segmen ke progbar_h2 — WRITE-ONLY, app ini
+            // nggak pernah baca baliknya.
+            const targetSeconds = Math.round(targetPoolMs() / 1000);
+            const segRows = state.segments
+                .filter(s => (s.endedAt || now).getTime() > s.startedAt.getTime())
+                .map(s => {
+                    const durSec = Math.round(((s.endedAt || now).getTime() - s.startedAt.getTime()) / 1000);
+                    return {
+                        user_id: UID,
+                        session_id: state.sessionId,
+                        start_date: localDateStr(s.startedAt),
+                        end_date: localDateStr(s.endedAt || now),
+                        color: s.color,
+                        duration: durSec,
+                        total_hours: Math.round((durSec / 3600) * 10000) / 10000,
+                        total_second_pool: targetSeconds,
+                    };
+                });
+            if (segRows.length) {
+                const h2 = await supabase.from('progbar_h2').insert(segRows);
+                if (h2.error) console.error('progbar_h2 insert failed:', h2.error);
+            }
+        } catch (e) {
+            console.error('stopSession cloud write failed:', e);
+            alert('Gagal menyimpan sesi ke cloud: ' + (e.message || e));
         }
     }
 
@@ -335,6 +452,10 @@ async function stopSession() {
 }
 
 // ===== DATA: HISTORY =====
+// Balikin bentuk yang sama kayak versi lama ({id,startTime,endTime,segments})
+// supaya renderReports/exportHistoryJSON/buildProgressSegmentsHTML nggak
+// perlu berubah — bedanya sumbernya sekarang progbar_h (array sesi per
+// hari), bukan tabel focus_sessions ternormalisasi.
 async function fetchHistory() {
     if (IS_GUEST) {
         return loadGuestHistory()
@@ -342,26 +463,27 @@ async function fetchHistory() {
             .sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
     }
     const { data, error } = await supabase
-        .from('focus_sessions')
-        .select('id, started_at, ended_at, focus_session_segments(color, started_at, ended_at, duration_ms)')
-        .not('ended_at', 'is', null)
-        .order('started_at', { ascending: false })
+        .from('progbar_h')
+        .select('effective_date, prog_history')
+        .eq('user_id', UID)
+        .order('effective_date', { ascending: false })
         .limit(60);
     if (error) { console.error('history load failed:', error); return []; }
-    return (data || []).map(s => ({
-        id: s.id,
-        startTime: s.started_at,
-        endTime: s.ended_at,
-        segments: (s.focus_session_segments || [])
-            .slice()
-            .sort((a, b) => new Date(a.started_at) - new Date(b.started_at))
-            .map(seg => ({
-                color: seg.color,
-                duration: (seg.duration_ms !== null && seg.duration_ms !== undefined)
-                    ? Number(seg.duration_ms)
-                    : Math.max(0, new Date(seg.ended_at || s.ended_at) - new Date(seg.started_at))
-            }))
-    }));
+
+    const flat = [];
+    (data || []).forEach(row => {
+        (row.prog_history || []).forEach(sess => {
+            flat.push({
+                id: sess.sessionId,
+                _effectiveDate: row.effective_date, // dipakai internal buat deleteReport
+                startTime: sess.startTime,
+                endTime: sess.endTime,
+                segments: (sess.segments || []).map(seg => ({ color: seg.color, duration: Number(seg.duration) || 0 }))
+            });
+        });
+    });
+    flat.sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
+    return flat;
 }
 
 // ===== UI RENDERING =====
@@ -417,10 +539,39 @@ function buildProgressSegmentsHTML(segments, totalPool) {
 window.deleteReport = async function (id) {
     if (IS_GUEST) {
         saveGuestHistory(loadGuestHistory().filter(item => item.id !== id));
-    } else {
-        // Hapus sesi -> segmen-segmennya ikut kehapus (ON DELETE CASCADE).
-        const { error } = await supabase.from('focus_sessions').delete().eq('id', id);
-        if (error) { alert('Gagal hapus sesi: ' + error.message); return; }
+        renderReports();
+        return;
+    }
+    // Sesi hidup NESTED di dalam array prog_history milik satu baris
+    // progbar_h (per hari) — jadi "hapus sesi ini" = keluarin dari array
+    // itu, lalu tulis ulang (atau hapus barisnya kalau array jadi kosong).
+    const target = HISTORY.find(s => s.id === id);
+    if (!target || !target._effectiveDate) { renderReports(); return; }
+    try {
+        const existing = await supabase.from('progbar_h')
+            .select('id, prog_history')
+            .eq('user_id', UID)
+            .eq('effective_date', target._effectiveDate)
+            .maybeSingle();
+        if (existing.error) throw existing.error;
+        const remaining = ((existing.data && existing.data.prog_history) || []).filter(s => s.sessionId !== id);
+        if (!existing.data || !existing.data.id) {
+            // baris udah kehapus/gak ketemu -- gak ada apa-apa buat dihapus
+        } else if (remaining.length === 0) {
+            const del = await supabase.from('progbar_h').delete().eq('id', existing.data.id);
+            if (del.error) throw del.error;
+        } else {
+            const up = await supabase.from('progbar_h')
+                .update({ prog_history: remaining, updated_at: new Date().toISOString() })
+                .eq('id', existing.data.id);
+            if (up.error) throw up.error;
+        }
+        // Catatan: baris progbar_h2 punya sesi ini TETAP DIBIARKAN -- itu log
+        // historis write-only, dianggap arsip permanen yang independen dari
+        // panel laporan yang kelihatan di UI.
+    } catch (e) {
+        alert('Gagal hapus sesi: ' + (e.message || e));
+        return;
     }
     renderReports();
 }
@@ -445,51 +596,89 @@ window.exportHistoryJSON = async function () {
     URL.revokeObjectURL(url);
 }
 
-// Terjemahkan satu sesi format file lama -> baris sessions + segments.
-// Timestamp segmen direkonstruksi berurutan dari startTime + durasi.
+// Terjemahkan satu sesi format file lama -> entri progbar_h (dikelompokkan
+// per effective_date, digabung ke baris yang udah ada) + baris progbar_h2
+// per segmen. Timestamp segmen direkonstruksi berurutan dari startTime +
+// durasi, sama kayak versi lama.
 async function insertImportedSessions(importedArr) {
+    const byDate = {}; // effective_date -> [] ringkasan sesi
     let okCount = 0;
+
     for (const s of importedArr) {
         if (!s || !s.startTime) continue;
         const startMs = new Date(s.startTime).getTime();
         if (!Number.isFinite(startMs)) continue;
 
         let cursor = startMs;
-        const segRows = [];
+        const segs = [];
         (s.segments || []).forEach(seg => {
             const st = seg.timestamp ? new Date(seg.timestamp).getTime() : cursor;
             const dur = Math.max(0, Number(seg.duration) || 0);
             if (!Number.isFinite(st)) return;
-            segRows.push({
+            segs.push({
                 color: SEGMENT_COLORS.indexOf(seg.color) !== -1 ? seg.color : 'green',
-                started_at: new Date(st).toISOString(),
-                ended_at: new Date(st + dur).toISOString()
+                startedAt: new Date(st),
+                endedAt: new Date(st + dur),
             });
             cursor = st + dur;
         });
 
         let endMs = s.endTime ? new Date(s.endTime).getTime() : cursor;
         if (!Number.isFinite(endMs)) endMs = cursor;
-        endMs = Math.max(endMs, startMs); // patuhi CHECK (ended_at >= started_at)
+        endMs = Math.max(endMs, startMs);
 
-        const ins = await supabase.from('focus_sessions')
-            .insert({
-                user_id: UID,
-                started_at: new Date(startMs).toISOString(),
-                ended_at: new Date(endMs).toISOString(),
-                target_duration_ms: TARGET_DURATION_MS
-            })
-            .select('id')
-            .single();
-        if (ins.error || !ins.data) { console.error('import session failed:', ins.error); continue; }
+        const sessionId = s.id || uuidv4();
+        const summary = {
+            sessionId: sessionId,
+            startTime: new Date(startMs).toISOString(),
+            endTime: new Date(endMs).toISOString(),
+            segments: segs.map(seg => ({ color: seg.color, duration: Math.max(0, seg.endedAt.getTime() - seg.startedAt.getTime()) }))
+        };
+        const dKey = localDateStr(new Date(startMs));
+        if (!byDate[dKey]) byDate[dKey] = [];
+        byDate[dKey].push(summary);
 
-        if (segRows.length) {
-            const segIns = await supabase.from('focus_session_segments')
-                .insert(segRows.map(r => ({ ...r, session_id: ins.data.id, user_id: UID })));
-            if (segIns.error) console.error('import segments failed:', segIns.error);
+        // progbar_h2: satu baris per segmen (log historis write-only)
+        const targetSeconds = Math.round(TARGET_DURATION_MS / 1000);
+        const h2Rows = segs.map(seg => {
+            const durSec = Math.round((seg.endedAt.getTime() - seg.startedAt.getTime()) / 1000);
+            return {
+                user_id: UID, session_id: sessionId,
+                start_date: localDateStr(seg.startedAt), end_date: localDateStr(seg.endedAt),
+                color: seg.color, duration: durSec,
+                total_hours: Math.round((durSec / 3600) * 10000) / 10000,
+                total_second_pool: targetSeconds,
+            };
+        });
+        if (h2Rows.length) {
+            const ins = await supabase.from('progbar_h2').insert(h2Rows);
+            if (ins.error) console.error('import progbar_h2 failed:', ins.error);
         }
         okCount++;
     }
+
+    // Gabung ke baris progbar_h yang sudah ada per tanggal (bukan overwrite).
+    for (const dKey in byDate) {
+        const sessionsForDay = byDate[dKey];
+        const existing = await supabase.from('progbar_h')
+            .select('id, prog_history').eq('user_id', UID).eq('effective_date', dKey).maybeSingle();
+        const prevHistory = (existing.data && Array.isArray(existing.data.prog_history)) ? existing.data.prog_history : [];
+        const merged = prevHistory.concat(sessionsForDay);
+        const lastSessionId = sessionsForDay[sessionsForDay.length - 1].sessionId;
+
+        let res;
+        if (existing.data && existing.data.id) {
+            res = await supabase.from('progbar_h')
+                .update({ session_id: lastSessionId, prog_history: merged, updated_at: new Date().toISOString() })
+                .eq('id', existing.data.id);
+        } else {
+            res = await supabase.from('progbar_h').insert({
+                user_id: UID, effective_date: dKey, session_id: lastSessionId, prog_history: merged,
+            });
+        }
+        if (res.error) console.error('import progbar_h write failed:', res.error);
+    }
+
     return okCount;
 }
 
@@ -507,12 +696,10 @@ window.importHistoryJSON = function (file) {
                 alert("Data history berhasil di-import!");
                 return;
             }
-            // Sama kayak perilaku lama: import MENGGANTI history yang ada.
-            // Sesi yang masih jalan nggak disentuh.
-            const del = await supabase.from('focus_sessions')
-                .delete()
-                .eq('user_id', UID)
-                .not('ended_at', 'is', null);
+            // Sama kayak perilaku lama: import MENGGANTI history yang ada
+            // (semua rollup harian progbar_h dihapus). Sesi yang masih
+            // jalan (progbar_c) nggak disentuh.
+            const del = await supabase.from('progbar_h').delete().eq('user_id', UID);
             if (del.error) { alert('Gagal mengganti history lama: ' + del.error.message); return; }
 
             await insertImportedSessions(imported);
@@ -524,7 +711,7 @@ window.importHistoryJSON = function (file) {
 }
 
 // MIGRASI SEKALI JALAN: user lama masih punya cache history era blob JSON
-// di localStorage browser ini. Kalau cloud relasional masih kosong,
+// di localStorage browser ini. Kalau cloud (progbar_h) masih kosong,
 // angkut dulu biar nggak ada sesi yang hilang.
 async function migrateLegacyProgbarLocalStorage() {
     if (localStorage.getItem(K_MIGRATED())) return;
@@ -534,8 +721,9 @@ async function migrateLegacyProgbarLocalStorage() {
         return;
     }
     const { count, error } = await supabase
-        .from('focus_sessions')
-        .select('id', { count: 'exact', head: true });
+        .from('progbar_h')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', UID);
     if (error) { console.warn('migration check skipped:', error.message); return; } // coba lagi boot berikutnya
     if ((count || 0) === 0) {
         const n = await insertImportedSessions(legacy);
@@ -587,7 +775,7 @@ async function initProgbarApp() {
     if (IS_GUEST) {
         resumed = restoreGuestState();
     } else {
-        // Sesi aktif = baris ended_at NULL di cloud -> bisa lanjut dari
+        // Sesi aktif = baris progbar_c milik user ini -> bisa lanjut dari
         // device mana pun, nggak lagi ngandelin localStorage.
         resumed = await resumeOpenSession();
         await migrateLegacyProgbarLocalStorage();
