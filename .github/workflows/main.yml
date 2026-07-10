@@ -8,7 +8,11 @@ on:
 
 jobs:
   # ==========================================
+<<<<<<< HEAD
   # JOB 1: DEPLOY KE UAT
+=======
+  # JOB 1: DEPLOY KE UAT 
+>>>>>>> dev
   # ==========================================
   deploy-uat:
     name: Deploy to UAT (Blue - Port 3000)
@@ -43,6 +47,7 @@ jobs:
       - name: Build New Environment (UAT / Blue)
         if: github.ref == 'refs/heads/uat'
         run: |
+<<<<<<< HEAD
           ssh -i ~/.ssh/id_rsa ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }} << 'ENDSSH'
             cd /var/www/gembel.store
 
@@ -57,6 +62,22 @@ jobs:
 
   # ==========================================
   # JOB 2: BACKUP & DEPLOY KE PROD
+=======
+          ssh -i ~/.ssh/id_rsa ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }} << 'EOF'
+            cd /var/www/gembel.store
+            
+            # Tarik kode khusus dari branch uat
+            git pull origin uat
+            
+            echo "Membangun versi UAT di BLUE (Port 3000)..."
+            docker compose up -d --build blue
+            
+            echo "Build selesai. Silakan test UAT di port 3000."
+          EOF
+
+  # ==========================================
+  # JOB 2: BACKUP & DEPLOY KE PROD 
+>>>>>>> dev
   # ==========================================
   deploy-prod:
     name: Backup & Promote to Prod (Green - Port 3001)
@@ -86,6 +107,7 @@ jobs:
         if: github.ref == 'refs/heads/prod'
         run: |
           mkdir -p ./backups
+<<<<<<< HEAD
 
           # Menggunakan fallback yang aman jika commit history belum panjang
           PREV_HASH=$(git rev-parse --short HEAD~1 2>/dev/null || git rev-parse --short HEAD)
@@ -98,12 +120,30 @@ jobs:
           docker run --rm postgres:17 pg_dump '${{ secrets.SUPABASE_DB_URL }}' > ./backups/$SQL_FILE
           tar -cvf ./backups/$SRC_FILE --exclude=./backups --exclude=.git .
 
+=======
+          
+          # Menggunakan fallback yang aman jika commit history belum panjang
+          PREV_HASH=$(git rev-parse --short HEAD~1 2>/dev/null || git rev-parse --short HEAD)
+          PREV_DATE=$(git log -1 --format="%ad" --date=format:'%Y%m%d' HEAD~1 2>/dev/null || date +%Y%m%d)
+          
+          SQL_FILE="gembelsql.v$PREV_DATE-$PREV_HASH.sql"
+          SRC_FILE="gembelsrc.v$PREV_DATE-$PREV_HASH.tar"
+          
+          # Menggunakan kutip tunggal (') agar password dengan simbol aman dari gangguan shell bash
+          docker run --rm postgres:17 pg_dump '${{ secrets.SUPABASE_DB_URL }}' > ./backups/$SQL_FILE
+          tar -cvf ./backups/$SRC_FILE --exclude=./backups --exclude=.git .
+          
+>>>>>>> dev
           # Setup SSH
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.VPS_IP }} >> ~/.ssh/known_hosts
+<<<<<<< HEAD
 
+=======
+          
+>>>>>>> dev
           # Kirim Backup ke VPS
           ssh -i ~/.ssh/id_rsa ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }} "mkdir -p /home/irwanto/backups/"
           scp ./backups/$SQL_FILE ./backups/$SRC_FILE ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }}:/home/irwanto/backups/
@@ -111,6 +151,7 @@ jobs:
       - name: Build & Switch Nginx (Production / Green)
         if: github.ref == 'refs/heads/prod'
         run: |
+<<<<<<< HEAD
           ssh -i ~/.ssh/id_rsa ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }} << 'ENDSSH'
             cd /var/www/gembelfun
 
@@ -128,3 +169,22 @@ jobs:
 
             echo "Promotion sukses! Production sekarang menggunakan GREEN (Port 3001)."
           ENDSSH
+=======
+          ssh -i ~/.ssh/id_rsa ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }} << 'EOF'
+            cd /var/www/gembel.store
+            
+            # Tarik kode dari branch prod
+            git pull origin prod
+            
+            echo "Membangun versi Production di GREEN (Port 3001)..."
+            docker compose up -d --build green
+            
+            echo "Meneruskan traffic Nginx ke GREEN (Port 3001)..."
+            sudo sed -i -E "s/proxy_pass http:\/\/(localhost|127\.0\.0\.1):[0-9]+/proxy_pass http:\/\/127.0.0.1:3001/g" /etc/nginx/sites-enabled/gembelstore
+            
+            # Terapkan perubahan dengan Zero Downtime
+            sudo systemctl reload nginx
+            
+            echo "Promotion sukses! Production sekarang menggunakan GREEN (Port 3001)."
+          EOF
+>>>>>>> dev
