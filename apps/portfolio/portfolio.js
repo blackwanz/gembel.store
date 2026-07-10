@@ -5,14 +5,38 @@
 //  - Stocks: best-effort via Yahoo Finance public endpoint.
 //    Browser CORS can block it — when a price can't be fetched
 //    we show a red NO DATA badge instead of inventing numbers.
-//  - Holdings persist in this browser (localStorage).
+//  - Anything that isn't crypto or a recognized stock ticker (emas,
+//    reksadana, etc.) has no live price source — it's tracked at
+//    quantity only, no $ value, no NO DATA badge (that badge means
+//    "we tried and failed", not "we don't try").
+//
+//  PERSISTENCE — Supabase table `portofolio_h` (an append-only
+//  LEDGER, not a snapshot of current holdings — this is the "_h"
+//  in the name):
+//    columns: id, user_id, type, symbol, quantity, satuan, created_at
+//  Every add is a new row with a positive quantity. There is no
+//  update/delete of history: removing a holding inserts an
+//  *offsetting negative-quantity row* for that (type, symbol) so
+//  the running sum goes back to zero. "Current holdings" is always
+//  computed client-side as SUM(quantity) GROUPed BY (type, symbol),
+//  keeping only groups whose sum is still > 0.
+//
+//  Auth: assumes a Supabase session already exists elsewhere in the
+//  app. Every row needs user_id, so without a session the page shows
+//  a blocking "not signed in" state instead of quietly failing every
+//  insert.
 // ============================================================
 
-const STORE_KEY = 'gembel_portfolio_v1';
 const REFRESH_MS = 30_000;
 
-let holdings = [];   // [{ id, type:'crypto'|'stock', symbol, qty }]
-let prices = {};     // id -> { price, changePct, ok, loading }
+// Types with a live price feed. Anything else is tracked by quantity only.
+const PRICED_TYPES = new Set(['crypto', 'stock']);
+
+let ledger = [];     // raw portofolio_h rows for this user (full history)
+let holdings = [];   // derived: [{ type, symbol, qty, satuan }] where qty > 0
+let prices = {};     // `${type}:${symbol}` -> { price, changePct, ok, loading }
+let currentUser = null;
+let removing = new Set(); // symbol keys mid-removal, to guard double-clicks
 
 /* ---------------- helpers ---------------- */
 function showToast(msg, type) {
@@ -33,11 +57,57 @@ function fmtMoney(n) {
   return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: n < 1 ? 6 : 2 });
 }
 
-function load() {
-  try { holdings = JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); }
-  catch { holdings = []; }
+function holdKey(type, symbol) { return `${type}::${symbol.toUpperCase()}`; }
+
+// Ledger quantities are summed from many float rows (adds + offsetting
+// removes), which accumulates binary-float noise like 0.6000000000000001.
+// Round to a sane precision before ever displaying a qty.
+function fmtQty(n) {
+  if (!Number.isFinite(n)) return '0';
+  const rounded = Math.round(n * 1e8) / 1e8;
+  return String(rounded);
 }
-function save() { localStorage.setItem(STORE_KEY, JSON.stringify(holdings)); }
+
+/* ---------------- auth gate ---------------- */
+function requireAuthOrBlock() {
+  const blocked = !currentUser;
+  document.getElementById('auth-banner').classList.toggle('hidden', !blocked);
+  document.getElementById('btn-add').disabled = blocked;
+  if (blocked) showToast('🔒 Belum login — nggak bisa nyimpen ke portfolio.', 'err');
+  return !blocked;
+}
+
+/* ---------------- ledger load + derive current holdings ---------------- */
+async function loadLedger() {
+  if (!currentUser) { ledger = []; holdings = []; return; }
+  const { data, error } = await supabase.from('portofolio_h')
+    .select('*')
+    .eq('user_id', currentUser.id)
+    .order('created_at', { ascending: true });
+  if (error) {
+    showToast('Gagal baca portfolio: ' + error.message, 'err');
+    ledger = [];
+  } else {
+    ledger = data || [];
+  }
+  deriveHoldings();
+}
+
+function deriveHoldings() {
+  const sums = new Map(); // key -> { type, symbol, qty, satuan }
+  for (const row of ledger) {
+    const key = holdKey(row.type, row.symbol);
+    const existing = sums.get(key) || { type: row.type, symbol: row.symbol, qty: 0, satuan: row.satuan };
+    existing.qty += Number(row.quantity) || 0;
+    existing.satuan = row.satuan || existing.satuan; // most recent non-empty satuan wins
+    sums.set(key, existing);
+  }
+  // Round away float-summation noise once, here, so both the "is this
+  // fully closed out" filter and every downstream use (rendering, the
+  // removal offset amount, value = price * qty) see a clean number.
+  for (const h of sums.values()) h.qty = Math.round(h.qty * 1e8) / 1e8;
+  holdings = [...sums.values()].filter(h => h.qty > 1e-9);
+}
 
 /* ---------------- price fetchers ---------------- */
 function binanceSymbol(sym) {
@@ -77,13 +147,19 @@ async function refreshPrices() {
   document.getElementById('btn-refresh').disabled = true;
 
   await Promise.all(holdings.map(async (h) => {
-    prices[h.id] = { ...(prices[h.id] || {}), loading: true };
+    const key = holdKey(h.type, h.symbol);
+    const type = h.type.toLowerCase();
+    if (!PRICED_TYPES.has(type)) {
+      prices[key] = { price: NaN, changePct: NaN, ok: false, loading: false, unpriced: true };
+      return;
+    }
+    prices[key] = { ...(prices[key] || {}), loading: true };
     try {
-      const p = h.type === 'crypto' ? await fetchCrypto(h.symbol) : await fetchStock(h.symbol);
-      prices[h.id] = { ...p, ok: true, loading: false };
+      const p = type === 'crypto' ? await fetchCrypto(h.symbol) : await fetchStock(h.symbol);
+      prices[key] = { ...p, ok: true, loading: false, unpriced: false };
     } catch (e) {
       console.warn(`Price fail ${h.symbol}:`, e.message);
-      prices[h.id] = { price: NaN, changePct: NaN, ok: false, loading: false };
+      prices[key] = { price: NaN, changePct: NaN, ok: false, loading: false, unpriced: false };
     }
   }));
 
@@ -101,13 +177,20 @@ function render() {
 
   let total = 0;
   let anyOk = false;
+  let anyFailed = false;
 
   body.innerHTML = holdings.map(h => {
-    const p = prices[h.id] || {};
-    const isCrypto = h.type === 'crypto';
-    let priceCell, chgCell, valueCell, failed = false;
+    const key = holdKey(h.type, h.symbol);
+    const p = prices[key] || {};
+    const typeLabel = h.type.charAt(0).toUpperCase() + h.type.slice(1);
+    let priceCell, chgCell, valueCell, rowFailed = false;
 
-    if (p.loading && p.price === undefined) {
+    if (p.unpriced) {
+      // no live feed for this asset type — quantity-only tracking, not an error
+      priceCell = `<span class="chg na">no feed</span>`;
+      chgCell = `<span class="chg na">—</span>`;
+      valueCell = `<span class="chg na">—</span>`;
+    } else if (p.loading && p.price === undefined) {
       priceCell = `<span class="price-loading">fetching…</span>`;
       chgCell = `<span class="chg na">—</span>`;
       valueCell = `<span class="price-loading">…</span>`;
@@ -122,42 +205,70 @@ function render() {
         : `<span class="chg na">—</span>`;
       valueCell = `<b>${fmtMoney(value)}</b>`;
     } else {
-      failed = true;
+      rowFailed = true;
+      anyFailed = true;
       priceCell = `<span class="no-data">⚠ NO DATA</span>`;
       chgCell = `<span class="chg na">NaN</span>`;
       valueCell = `<span class="chg down mono">NaN</span>`;
     }
 
     return `
-    <tr class="${failed ? 'row-failed' : ''}">
+    <tr class="${rowFailed ? 'row-failed' : ''}">
       <td>
         <div class="asset-cell">
-          <div class="asset-ic ${h.type}">${isCrypto ? '🪙' : '📊'}</div>
+          <div class="asset-ic ${h.type.toLowerCase() === 'crypto' ? 'crypto' : 'stock'}">${h.type.toLowerCase() === 'crypto' ? '🪙' : '📊'}</div>
           <div>
             <div class="asset-sym">${escapeHtml(h.symbol.toUpperCase())}</div>
-            <div class="asset-type">${isCrypto ? 'Crypto · Binance' : 'Stock'}</div>
+            <div class="asset-type">${escapeHtml(typeLabel)}</div>
           </div>
         </div>
       </td>
-      <td class="num">${h.qty}</td>
+      <td class="num">${fmtQty(h.qty)}${h.satuan ? ' ' + escapeHtml(h.satuan) : ''}</td>
       <td class="num">${priceCell}</td>
       <td class="num">${chgCell}</td>
       <td class="num">${valueCell}</td>
-      <td style="text-align:right;"><button class="row-del" data-del="${h.id}" title="Remove">✕</button></td>
+      <td style="text-align:right;"><button class="row-del" data-del-type="${escapeHtml(h.type)}" data-del-symbol="${escapeHtml(h.symbol)}" title="Remove">✕</button></td>
     </tr>`;
   }).join('');
 
-  document.getElementById('stat-total').textContent = anyOk || !holdings.length ? fmtMoney(total) : 'NaN';
+  // Total is only meaningful if every holding either priced OK or has no
+  // feed to begin with (never claim a total while a priced asset is failing).
+  document.getElementById('stat-total').textContent =
+    anyFailed ? 'NaN' : fmtMoney(total);
   document.getElementById('stat-assets').textContent = holdings.length;
 }
 
-document.getElementById('holdings-body').addEventListener('click', (e) => {
-  const btn = e.target.closest('[data-del]');
+document.getElementById('holdings-body').addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-del-symbol]');
   if (!btn) return;
-  holdings = holdings.filter(h => h.id !== btn.dataset.del);
-  delete prices[btn.dataset.del];
-  save();
-  render();
+  if (!requireAuthOrBlock()) return;
+
+  const type = btn.dataset.delType;
+  const symbol = btn.dataset.delSymbol;
+  const key = holdKey(type, symbol);
+  if (removing.has(key)) return;
+
+  const current = holdings.find(h => holdKey(h.type, h.symbol) === key);
+  if (!current) return;
+
+  removing.add(key);
+  btn.disabled = true;
+  try {
+    const { error } = await supabase.from('portofolio_h').insert({
+      user_id: currentUser.id,
+      type: current.type,
+      symbol: current.symbol,
+      quantity: -current.qty, // offsetting row — zeroes the running sum, keeps history intact
+      satuan: current.satuan || null,
+    });
+    if (error) { showToast('Gagal hapus: ' + error.message, 'err'); return; }
+    await loadLedger();
+    delete prices[key];
+    showToast(`${symbol.toUpperCase()} dihapus.`, 'ok');
+    render();
+  } finally {
+    removing.delete(key);
+  }
 });
 
 /* ---------------- add asset ---------------- */
@@ -168,33 +279,53 @@ function setInvalid(fieldId, invalid) {
 }
 
 document.getElementById('btn-add').addEventListener('click', async () => {
-  const type = document.getElementById('in-type').value;
+  if (!requireAuthOrBlock()) return;
+
+  const type = document.getElementById('in-type').value.trim().toLowerCase();
   const symbol = document.getElementById('in-symbol').value.trim();
   const qty = parseFloat(document.getElementById('in-qty').value);
+  const satuan = document.getElementById('in-satuan').value.trim();
 
   let ok = true;
+  if (!type) { setInvalid('f-type', true); ok = false; } else setInvalid('f-type', false);
   if (!symbol) { setInvalid('f-symbol', true); ok = false; } else setInvalid('f-symbol', false);
   if (!Number.isFinite(qty) || qty <= 0) { setInvalid('f-qty', true); ok = false; } else setInvalid('f-qty', false);
   if (!ok) return;
 
-  const id = 'a' + Date.now() + Math.random().toString(36).slice(2, 6);
-  holdings.push({ id, type, symbol, qty });
-  save();
+  const btn = document.getElementById('btn-add');
+  btn.disabled = true;
+  try {
+    const { error } = await supabase.from('portofolio_h').insert({
+      user_id: currentUser.id,
+      type,
+      symbol,
+      quantity: qty,
+      satuan: satuan || null,
+    });
+    if (error) { showToast('Gagal nambah: ' + error.message, 'err'); return; }
 
-  document.getElementById('in-symbol').value = '';
-  document.getElementById('in-qty').value = '';
-  showToast(`${symbol.toUpperCase()} ditambahkan.`, 'ok');
-  render();
-  await refreshPrices();
+    document.getElementById('in-symbol').value = '';
+    document.getElementById('in-qty').value = '';
+    document.getElementById('in-satuan').value = '';
+    showToast(`${symbol.toUpperCase()} ditambahkan.`, 'ok');
+
+    await loadLedger();
+    render();
+    await refreshPrices();
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 document.getElementById('in-type').addEventListener('change', (e) => {
-  document.getElementById('in-symbol').placeholder = e.target.value === 'crypto' ? 'BTCUSD' : 'AAPL';
+  const t = e.target.value.toLowerCase();
+  document.getElementById('in-symbol').placeholder = t === 'crypto' ? 'BTCUSD' : t === 'stock' ? 'AAPL' : 'contoh: ANTAM, XAU';
+  document.getElementById('in-satuan').placeholder = t === 'crypto' ? 'coin' : t === 'stock' ? 'lembar' : 'gram';
 });
 
 document.getElementById('btn-refresh').addEventListener('click', refreshPrices);
 
-/* ---------------- endurance mini calc ---------------- */
+/* ---------------- endurance mini calc (unchanged — not stored, pure calc) ---------------- */
 function runEnduranceCalc() {
   const contract = parseFloat(document.getElementById('calc-pair').value);
   const equity = parseFloat(document.getElementById('calc-equity').value) || 0;
@@ -208,7 +339,15 @@ function runEnduranceCalc() {
   document.getElementById(id).addEventListener('input', runEnduranceCalc));
 
 /* ---------------- init ---------------- */
-load();
-render();
-refreshPrices();
-setInterval(refreshPrices, REFRESH_MS);
+(async () => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    currentUser = user || null;
+  } catch { currentUser = null; }
+
+  requireAuthOrBlock();
+  await loadLedger();
+  render();
+  await refreshPrices();
+  setInterval(refreshPrices, REFRESH_MS);
+})();

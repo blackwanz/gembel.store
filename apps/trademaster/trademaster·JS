@@ -1,0 +1,656 @@
+// ============================================================
+// TRADE MASTER — risk-locked MT5 web terminal
+//
+//  THE LOCKED RULES (no UI exists to change them — on purpose):
+//   1. Max daily loss  = 1% of day-start equity.
+//   2. Risk per trade  = 10% of the daily limit  → 10 shots/day.
+//   3. Max 10 trades per day.
+//   4. Hit the daily limit → trading LOCKED until midnight reset.
+//   5. Floating loss reaches the limit → FORCE CLOSE ALL, then lock.
+//   6. No journal, no trade: reason (≥10 chars) + SL + TP required.
+//   7. Lot ("size") is auto-computed from risk ÷ SL distance. Read-only.
+//
+//  Talks to a local bridge server (mt5_bridge.py) that holds the
+//  real MT5 connection:
+//   GET  /health              GET  /account         GET /positions
+//   GET  /price?symbol=X      POST /order           POST /close_all
+//
+//  PERSISTENCE (Supabase is the only source of truth for trade and
+//  equity data — see the locked-flag note further down for the one
+//  narrow exception):
+//   trade_master_c  — one row per currently-open position.
+//                      Columns: id, user_id, equity, size, symbol,
+//                      direction, stop_loss, take_profit, entry_price,
+//                      reason, open_at, created_at.
+//   trade_master_h  — closed positions. Same columns + close_at.
+//                      A close = insert into trade_master_h, then
+//                      delete the matching trade_master_c row.
+//
+//  DAY-START EQUITY & TRADES-USED-TODAY are *derived*, not stored:
+//  we read every trade_master_c/trade_master_h row for this user
+//  whose open_at falls today, and take the equity value off the
+//  earliest one as the day's anchor. If there are no rows yet today,
+//  the anchor is the first live equity value seen from the bridge
+//  today (same behaviour as before). Trades-used-today is just the
+//  count of those same rows.
+//
+//  THE LOCKED FLAG ITSELF is the one piece of day-state that can't be
+//  re-derived from trade rows alone (drawdown is a function of *live*
+//  equity, which can recover intraday — re-deriving "locked" from
+//  current drawdown on every refresh would silently un-lock someone
+//  the moment their floating P/L ticks back up, which breaks "locked
+//  until reset"). So the locked flag + reason are mirrored into
+//  localStorage, keyed by user + date, purely so a page refresh
+//  can't be used to escape a lockout. It is NOT the source of truth
+//  for any trade or equity data — Supabase is, for everything else.
+//
+//  Auth: this page assumes a Supabase session already exists (set
+//  up elsewhere in the app via ../../assets/supabaseClient.js). If
+//  there's no signed-in user, every write needs a user_id we don't
+//  have, so the terminal shows a blocking "not signed in" state
+//  instead of silently failing every insert.
+// ============================================================
+
+const RULES = Object.freeze({
+  DAILY_LOSS_PCT: 0.01,   // 1% of day-start equity
+  PER_TRADE_FRACTION: 0.10, // 10% of daily limit per position
+  MAX_TRADES_PER_DAY: 10,
+  MIN_REASON_LEN: 10,
+});
+
+const CONTRACT_SIZE = { XAUUSD: 100, BTCUSD: 1, EURUSD: 100000 };
+const POLL_MS = 3000;
+
+let bridge = null;          // base URL when connected
+let account = null;         // { equity, balance, currency }
+let positions = [];         // live positions from the MT5 bridge
+let livePrice = NaN;
+let side = 'buy';            // UI direction toggle state ('buy' | 'sell')
+let day = null;              // derived: { date, startEquity, trades, locked, lockedReason }
+let openRows = [];           // trade_master_c rows for the current user (all, not just today)
+let pollHandle = null;
+let currentUser = null;      // supabase user — required for every write
+let forceClosing = false;
+let closingTickets = new Set(); // tickets currently being moved c → h, to avoid double-processing
+let executingTrade = false; // synchronous re-entrancy guard for executeTrade() — see note there
+
+/* ================= helpers ================= */
+const $ = (id) => document.getElementById(id);
+
+function showToast(msg, type) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (type ? ' ' + type : '');
+  clearTimeout(showToast._h);
+  showToast._h = setTimeout(() => t.classList.remove('show'), 3200);
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+const fmt$ = (n) => Number.isFinite(n)
+  ? (n < 0 ? '-' : '') + '$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  : '$—';
+
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function isToday(isoTs) {
+  if (!isoTs) return false;
+  return new Date(isoTs).toDateString() === new Date().toDateString();
+}
+
+/* ============ lock-flag continuity (survives refresh; see note above) ============ */
+function lockFlagKey() {
+  return currentUser ? `tm_locked_${currentUser.id}_${todayStr()}` : null;
+}
+function readPersistedLock() {
+  const key = lockFlagKey();
+  if (!key) return { locked: false, reason: '' };
+  try {
+    const raw = JSON.parse(localStorage.getItem(key) || 'null');
+    return raw && typeof raw.reason === 'string' ? { locked: true, reason: raw.reason } : { locked: false, reason: '' };
+  } catch { return { locked: false, reason: '' }; }
+}
+function writePersistedLock(reason) {
+  const key = lockFlagKey();
+  if (!key) return;
+  localStorage.setItem(key, JSON.stringify({ reason, lockedAt: new Date().toISOString() }));
+}
+
+/* ================= auth gate ================= */
+function requireAuthOrBlock() {
+  const blocked = !currentUser;
+  $('auth-banner').classList.toggle('hidden', !blocked);
+  $('btn-connect').disabled = blocked;
+  if (blocked) {
+    $('bridge-status').textContent = '✗ Nggak ada sesi login — nggak bisa nulis ke database tanpa user_id. Login dulu di halaman lain, lalu refresh.';
+    showToast('🔒 Belum login — trading dinonaktifkan.', 'err');
+  }
+  return !blocked;
+}
+
+/* ================= day state (derived from Supabase) ================= */
+// Rebuilds `day` and `openRows` from trade_master_c + trade_master_h.
+// Called on init, after every poll, and after every open/close.
+async function refreshDayState() {
+  if (!currentUser) {
+    day = { date: todayStr(), startEquity: null, trades: 0, locked: false, lockedReason: '' };
+    openRows = [];
+    return;
+  }
+
+  const [{ data: openData, error: openErr }, { data: histData, error: histErr }] = await Promise.all([
+    supabase.from('trade_master_c')
+      .select('*')
+      .eq('user_id', currentUser.id)
+      .order('open_at', { ascending: true }),
+    supabase.from('trade_master_h')
+      .select('*')
+      .eq('user_id', currentUser.id)
+      .gte('open_at', new Date(new Date().setHours(0, 0, 0, 0)).toISOString())
+      .order('open_at', { ascending: true }),
+  ]);
+
+  if (openErr) { showToast('Gagal baca trade_master_c: ' + openErr.message, 'err'); openRows = []; }
+  else openRows = openData || [];
+
+  const histToday = histErr ? [] : (histData || []);
+  if (histErr) showToast('Gagal baca trade_master_h: ' + histErr.message, 'err');
+
+  const openToday = openRows.filter(r => isToday(r.open_at));
+  const todaysRows = [...openToday, ...histToday].sort((a, b) => new Date(a.open_at) - new Date(b.open_at));
+
+  const startEquity = todaysRows.length ? Number(todaysRows[0].equity) : (day?.startEquity ?? null);
+  // Union in-memory lock state with the persisted flag — either one being
+  // true means locked. This is what makes a refresh mid-lockout stick.
+  const persisted = readPersistedLock();
+  const locked = (day?.locked || false) || persisted.locked;
+  const lockedReason = day?.lockedReason || persisted.reason || '';
+
+  day = {
+    date: todayStr(),
+    startEquity: Number.isFinite(startEquity) ? startEquity : null,
+    trades: todaysRows.length,
+    locked,
+    lockedReason,
+  };
+}
+
+function dailyLimit()  { return day?.startEquity ? day.startEquity * RULES.DAILY_LOSS_PCT : NaN; }
+function perTradeRisk(){ return dailyLimit() * RULES.PER_TRADE_FRACTION; }
+
+function lockTrading(reason) {
+  if (day.locked) return;
+  day.locked = true;
+  day.lockedReason = reason;
+  writePersistedLock(reason); // survive a refresh mid-lockout — see note at top of file
+  renderDay();
+  showToast('🔒 ' + reason, 'err');
+}
+
+function msUntilReset() {
+  const now = new Date();
+  const reset = new Date(now); reset.setHours(24, 0, 0, 0);
+  return reset - now;
+}
+
+setInterval(async () => {
+  // countdown + auto day-reset (day is null until init's refreshDayState() resolves)
+  if (day && day.date !== todayStr()) {
+    await refreshDayState();
+    renderDay();
+    renderJournal();
+  }
+  const ms = msUntilReset();
+  const h = Math.floor(ms / 3.6e6), m = Math.floor((ms % 3.6e6) / 6e4), s = Math.floor((ms % 6e4) / 1000);
+  $('lb-countdown').textContent = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}, 1000);
+
+/* ================= bridge API ================= */
+async function api(path, opts = {}) {
+  const res = await fetch(bridge + path, {
+    headers: { 'Content-Type': 'application/json' },
+    ...opts,
+  });
+  if (!res.ok) {
+    let msg = 'HTTP ' + res.status;
+    try { msg = (await res.json()).error || msg; } catch {}
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+async function connect() {
+  if (!requireAuthOrBlock()) return;
+  const url = $('bridge-url').value.trim().replace(/\/+$/, '');
+  if (!url) return;
+  $('btn-connect').disabled = true;
+  $('bridge-status').textContent = 'Connecting…';
+  try {
+    bridge = url;
+    const h = await api('/health');
+    const acc = await api('/account');
+    await onAccount(acc);
+    setConnected(true, h.mt5 ? 'MT5 live' : 'bridge ok');
+    localStorage.setItem('tm_bridge_url', url); // UI convenience only — not app data
+    clearInterval(pollHandle);
+    pollHandle = setInterval(poll, POLL_MS);
+    poll();
+    showToast('Connected to bridge ✓', 'ok');
+  } catch (e) {
+    bridge = null;
+    setConnected(false);
+    $('bridge-status').textContent = '✗ ' + e.message + ' — pastikan mt5_bridge.py jalan.';
+  } finally {
+    $('btn-connect').disabled = false;
+  }
+}
+
+function setConnected(on, label) {
+  $('conn-chip').classList.toggle('on', on);
+  $('conn-label').textContent = on ? ('Connected · ' + (label || '')) : 'Disconnected';
+  if (!on) {
+    clearInterval(pollHandle);
+    $('positions-list').innerHTML = '<div class="empty">Belum connect ke bridge.</div>';
+  }
+  updateExecuteState();
+}
+
+async function onAccount(acc) {
+  account = acc;
+  // first sight of equity today (when there's no trade row yet to anchor on) = day-start equity
+  if (day && day.startEquity === null && Number.isFinite(acc.equity)) {
+    day.startEquity = acc.equity;
+  }
+  renderDay();
+}
+
+async function poll() {
+  if (!bridge) return;
+  try {
+    const [acc, pos] = await Promise.all([api('/account'), api('/positions')]);
+    await onAccount(acc);
+    const prevPositions = positions;
+    positions = pos.positions || [];
+    renderPositions();
+    await reconcileClosedPositions(prevPositions, positions);
+    await enforceRisk();
+    refreshLivePrice();
+  } catch (e) {
+    setConnected(false);
+    $('bridge-status').textContent = '✗ koneksi putus: ' + e.message;
+  }
+}
+
+/* ============ reconcile: detect positions that closed in MT5 ============
+   The bridge/MT5 has no concept of our Supabase row id, and the schema
+   has no ticket column to key off either. We match a trade_master_c row
+   to a live position — and therefore treat a row as "still open" — on
+   (symbol, direction, entry_price). Any open_at-today row from
+   trade_master_c that no longer has a matching live position is treated
+   as closed and moved to trade_master_h.
+   NOTE: this is best-effort. Two simultaneous same-symbol/same-direction/
+   same-entry-price trades cannot be told apart; if that happens they'll
+   be closed in insertion order. */
+function findMatchingPosition(row, livePositions) {
+  return livePositions.find(p => {
+    const posDir = p.type === 0 ? 'buy' : 'sell';
+    return p.symbol === row.symbol
+      && posDir === row.direction
+      && Math.abs(Number(p.price_open) - Number(row.entry_price)) < 1e-6;
+  });
+}
+
+async function reconcileClosedPositions(prevPositions, currentPositions) {
+  if (!currentUser || !openRows.length) return;
+  const stillOpenIds = new Set();
+  for (const row of openRows) {
+    if (findMatchingPosition(row, currentPositions)) stillOpenIds.add(row.id);
+  }
+  const nowClosed = openRows.filter(r => !stillOpenIds.has(r.id) && !closingTickets.has(r.id));
+  // Reserve every row in this batch into closingTickets SYNCHRONOUSLY, right
+  // here, before the loop's first await. If poll() overlaps (a slow bridge
+  // response lets a second poll() start before this one's reconciliation
+  // loop finishes), the previous version of this function let the second
+  // call see an empty-for-that-row closingTickets and re-process rows this
+  // call had already claimed but not yet gotten to in its sequential loop
+  // — moveRowToHistory() would then run twice for the same row and insert
+  // a duplicate trade_master_h record. Claiming the whole batch up front
+  // closes that gap.
+  for (const row of nowClosed) closingTickets.add(row.id);
+  for (const row of nowClosed) {
+    await moveRowToHistory(row);
+  }
+  if (nowClosed.length) await refreshDayState();
+}
+
+async function moveRowToHistory(row) {
+  // Note: the caller (reconcileClosedPositions) already reserves row.id into
+  // closingTickets synchronously before calling this, as a batch, to close a
+  // cross-poll() race. This function only owns releasing it (below).
+  try {
+    // Drop id (let trade_master_h assign its own pk) and created_at (let the
+    // table's own default timestamp things instead of carrying over the
+    // trade_master_c row's original created_at).
+    const { id, created_at, ...rest } = row;
+    const { error: insErr } = await supabase.from('trade_master_h').insert({
+      ...rest,
+      close_at: new Date().toISOString(),
+    });
+    if (insErr) { showToast('Gagal catat closed trade: ' + insErr.message, 'err'); return; }
+    const { error: delErr } = await supabase.from('trade_master_c').delete().eq('id', id);
+    if (delErr) showToast('Gagal hapus dari open trades: ' + delErr.message, 'err');
+  } finally {
+    closingTickets.delete(row.id);
+  }
+}
+
+/* ================= THE ENFORCER ================= */
+async function enforceRisk() {
+  if (!account || !day.startEquity) return;
+  const limit = dailyLimit();
+  const drawdown = day.startEquity - account.equity; // realized + floating
+
+  if (drawdown >= limit && !day.locked) {
+    lockTrading(`Daily 1% limit breached (−${fmt$(drawdown)}).`);
+    if (positions.length && !forceClosing) {
+      forceClosing = true;
+      try {
+        await api('/close_all', { method: 'POST' });
+        showToast('⛔ FORCE CLOSE ALL — 1% harian jebol.', 'err');
+        // give MT5 a moment to settle then let the next poll's
+        // reconcileClosedPositions() move the rows to history.
+      } catch (e) {
+        showToast('Force close gagal: ' + e.message, 'err');
+      } finally {
+        forceClosing = false;
+      }
+    }
+  }
+}
+
+/* ================= rendering ================= */
+function renderDay() {
+  const limit = dailyLimit();
+  $('rule-daily').textContent = Number.isFinite(limit) ? `1% equity = ${fmt$(limit)}` : '1% equity = $—';
+  $('rule-per-trade').textContent = Number.isFinite(limit) ? `10% of limit = ${fmt$(perTradeRisk())}` : '10% of limit = $—';
+  $('ds-start').textContent = fmt$(day.startEquity);
+  $('ds-equity').textContent = fmt$(account?.equity);
+  const pl = (account && day.startEquity != null) ? account.equity - day.startEquity : NaN;
+  const plEl = $('ds-pl');
+  plEl.textContent = fmt$(pl);
+  plEl.className = 'mono ' + (pl > 0 ? 'up' : pl < 0 ? 'down' : '');
+  $('ds-trades').textContent = `${day.trades} / ${RULES.MAX_TRADES_PER_DAY}`;
+
+  const used = Number.isFinite(pl) && pl < 0 ? Math.min(100, (-pl / limit) * 100) : 0;
+  $('rm-pct').textContent = used.toFixed(0) + '%';
+  $('rm-fill').style.width = used + '%';
+
+  const banner = $('lockout-banner');
+  banner.classList.toggle('hidden', !day.locked);
+  if (day.locked) $('lb-sub').textContent = day.lockedReason + ' Balik setelah day reset.';
+
+  updateExecuteState();
+}
+
+function renderPositions() {
+  const box = $('positions-list');
+  if (!positions.length) {
+    box.innerHTML = '<div class="empty">Nggak ada posisi terbuka.</div>';
+    return;
+  }
+  box.innerHTML = positions.map(p => {
+    const up = p.profit >= 0;
+    return `
+    <div class="pos-row">
+      <span class="pos-side ${p.type === 0 ? 'buy' : 'sell'}">${p.type === 0 ? 'BUY' : 'SELL'}</span>
+      <div class="pos-main">
+        <div class="pos-sym">${escapeHtml(p.symbol)} · ${p.volume} lot</div>
+        <div class="pos-meta">open ${p.price_open} · SL ${p.sl || '—'} · TP ${p.tp || '—'}</div>
+      </div>
+      <span class="pos-pl ${up ? 'up' : 'down'}">${up ? '+' : ''}${fmt$(p.profit)}</span>
+    </div>`;
+  }).join('');
+}
+
+/* ================= live price + size math ================= */
+let priceHandle = null;
+async function refreshLivePrice() {
+  if (!bridge) return;
+  const symbol = $('in-symbol').value;
+  try {
+    const p = await api('/price?symbol=' + encodeURIComponent(symbol));
+    livePrice = side === 'buy' ? p.ask : p.bid;
+    $('live-price-pill').textContent = `${symbol} ${livePrice}`;
+  } catch {
+    livePrice = NaN;
+    $('live-price-pill').textContent = symbol + ' —';
+  }
+  recalcSize();
+}
+
+function recalcSize() {
+  const sl = parseFloat($('in-sl').value);
+  const tp = parseFloat($('in-tp').value);
+  const risk = perTradeRisk();
+  const contract = CONTRACT_SIZE[$('in-symbol').value] || 1;
+
+  let size = 0, rr = '—';
+  if (Number.isFinite(livePrice) && Number.isFinite(sl) && Number.isFinite(risk) && risk > 0) {
+    const slDist = Math.abs(livePrice - sl);
+    if (slDist > 0) {
+      size = Math.max(0.01, Math.floor((risk / (slDist * contract)) * 100) / 100);
+      if (Number.isFinite(tp)) {
+        const tpDist = Math.abs(tp - livePrice);
+        rr = '1 : ' + (tpDist / slDist).toFixed(1);
+      }
+    }
+  }
+  $('calc-lot').textContent = size ? size.toFixed(2) : '0.00';
+  $('calc-risk').textContent = fmt$(Number.isFinite(risk) ? risk : NaN);
+  $('calc-rr').textContent = rr;
+  updateExecuteState();
+  return size;
+}
+
+/* ================= validation & execute ================= */
+function validSlTp(showErrors) {
+  const sl = parseFloat($('in-sl').value);
+  const tp = parseFloat($('in-tp').value);
+  let slOk = Number.isFinite(sl), tpOk = Number.isFinite(tp);
+  if (Number.isFinite(livePrice)) {
+    if (side === 'buy')  { slOk = slOk && sl < livePrice; tpOk = tpOk && tp > livePrice; }
+    else                 { slOk = slOk && sl > livePrice; tpOk = tpOk && tp < livePrice; }
+  }
+  if (showErrors) {
+    $('f-sl').classList.toggle('invalid', !slOk);
+    $('err-sl').classList.toggle('show', !slOk);
+    $('f-tp').classList.toggle('invalid', !tpOk);
+    $('err-tp').classList.toggle('show', !tpOk);
+  }
+  return slOk && tpOk;
+}
+
+function updateExecuteState() {
+  const reason = $('in-reason').value.trim();
+  const size = parseFloat($('calc-lot').textContent);
+  const ready =
+    !!currentUser &&
+    !!bridge &&
+    !day.locked &&
+    day.trades < RULES.MAX_TRADES_PER_DAY &&
+    reason.length >= RULES.MIN_REASON_LEN &&
+    size > 0 &&
+    validSlTp(false);
+  const btn = $('btn-execute');
+  btn.disabled = !ready;
+  btn.textContent = !currentUser ? '🔒 Login required'
+    : day.locked ? '🔒 Locked until reset'
+    : day.trades >= RULES.MAX_TRADES_PER_DAY ? '🔒 10 trades used'
+    : !bridge ? 'Connect bridge first'
+    : '🚀 Journal & Execute';
+}
+
+async function executeTrade() {
+  // Synchronous re-entrancy guard, set BEFORE any await. Disabling the
+  // button happens later (after the first await), which leaves a window
+  // where a fast double-click could fire this function twice concurrently
+  // — both calls would pass the same day.trades check and both place an
+  // order. This flag closes that window immediately, with no await gap.
+  if (executingTrade) return;
+  executingTrade = true;
+  try {
+    await executeTradeInner();
+  } finally {
+    executingTrade = false;
+  }
+}
+
+async function executeTradeInner() {
+  if (!requireAuthOrBlock()) return;
+  // hard re-checks — belt and suspenders
+  await refreshDayState();
+  if (day.locked) { showToast('Trading locked sampai day reset.', 'err'); renderDay(); return; }
+  if (day.trades >= RULES.MAX_TRADES_PER_DAY) { lockTrading('10 trades used.'); return; }
+
+  const reason = $('in-reason').value.trim();
+  const reasonOk = reason.length >= RULES.MIN_REASON_LEN;
+  $('f-reason').classList.toggle('invalid', !reasonOk);
+  document.querySelector('#f-reason .err-text').classList.toggle('show', !reasonOk);
+  if (!validSlTp(true) || !reasonOk) { showToast('Lengkapi jurnal + SL/TP dulu.', 'err'); return; }
+
+  const symbol = $('in-symbol').value;
+  const sl = parseFloat($('in-sl').value);
+  const tp = parseFloat($('in-tp').value);
+  const size = recalcSize();
+  if (!(size > 0)) { showToast('Size belum valid — cek harga & SL.', 'err'); return; }
+
+  const btn = $('btn-execute');
+  btn.disabled = true; btn.textContent = 'Executing…';
+
+  try {
+    const r = await api('/order', {
+      method: 'POST',
+      body: JSON.stringify({ symbol, side, lot: size, sl, tp, comment: 'GembelTM' }),
+    });
+
+    const { error: insErr } = await supabase.from('trade_master_c').insert({
+      user_id: currentUser.id,
+      equity: Number.isFinite(account?.equity) ? account.equity : null,
+      size,
+      symbol,
+      direction: side,
+      stop_loss: sl,
+      take_profit: tp,
+      entry_price: Number.isFinite(livePrice) ? livePrice : null,
+      reason,
+      open_at: new Date().toISOString(),
+    });
+    if (insErr) throw new Error('order terkirim tapi gagal kecatet di jurnal: ' + insErr.message);
+
+    await refreshDayState();
+    showToast(`Order sent ✓ (${day.trades}/${RULES.MAX_TRADES_PER_DAY} today)`, 'ok');
+    $('in-reason').value = ''; $('in-sl').value = ''; $('in-tp').value = '';
+    renderJournal();
+  } catch (e) {
+    showToast('Order gagal: ' + e.message, 'err');
+  }
+
+  renderDay();
+  btn.disabled = false;
+  updateExecuteState();
+}
+
+/* ================= journal (today's trades, open + closed) ================= */
+async function renderJournal() {
+  const box = $('journal-list');
+  if (!currentUser) {
+    box.innerHTML = '<div class="empty">Login dulu buat lihat jurnal.</div>';
+    return;
+  }
+
+  const { data: histToday, error: histErr } = await supabase.from('trade_master_h')
+    .select('*')
+    .eq('user_id', currentUser.id)
+    .gte('open_at', new Date(new Date().setHours(0, 0, 0, 0)).toISOString())
+    .order('open_at', { ascending: false });
+  if (histErr) showToast('Gagal baca jurnal history: ' + histErr.message, 'err');
+
+  const openToday = openRows.filter(r => isToday(r.open_at));
+  const rows = [
+    ...openToday.map(r => ({ ...r, _status: 'open' })),
+    ...(histToday || []).map(r => ({ ...r, _status: 'closed' })),
+  ].sort((a, b) => new Date(b.open_at) - new Date(a.open_at));
+
+  if (!rows.length) {
+    box.innerHTML = '<div class="empty">Belum ada entry hari ini.</div>';
+    return;
+  }
+  box.innerHTML = rows.map(e => `
+    <div class="j-row">
+      <div class="j-top">
+        <span class="pos-side ${escapeHtml(e.direction)}">${escapeHtml(e.direction.toUpperCase())}</span>
+        <b>${escapeHtml(e.symbol)}</b>
+        <span class="pill ${e._status === 'closed' ? 'mint' : 'gold'}">${e._status}</span>
+        <span class="j-time">${new Date(e.open_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
+      </div>
+      <div class="j-detail">${e.size} lot @ ${e.entry_price ?? '—'} · SL ${e.stop_loss} · TP ${e.take_profit}</div>
+      <div class="j-reason">${escapeHtml(e.reason)}</div>
+    </div>`).join('');
+}
+
+/* ================= events ================= */
+$('btn-connect').addEventListener('click', connect);
+$('btn-execute').addEventListener('click', executeTrade);
+$('btn-close-all').addEventListener('click', async () => {
+  if (!bridge) { showToast('Connect dulu.', 'err'); return; }
+  try {
+    await api('/close_all', { method: 'POST' });
+    showToast('Close all sent.', 'ok');
+    // the next poll's reconcileClosedPositions() will move the rows
+    // from trade_master_c to trade_master_h once MT5 confirms.
+  }
+  catch (e) { showToast('Gagal: ' + e.message, 'err'); }
+});
+
+$('side-buy').addEventListener('click', () => setSide('buy'));
+$('side-sell').addEventListener('click', () => setSide('sell'));
+function setSide(s) {
+  side = s;
+  $('side-buy').classList.toggle('active', s === 'buy');
+  $('side-sell').classList.toggle('active', s === 'sell');
+  refreshLivePrice();
+}
+
+$('in-symbol').addEventListener('change', refreshLivePrice);
+['in-sl', 'in-tp'].forEach(id => $(id).addEventListener('input', recalcSize));
+$('in-reason').addEventListener('input', () => {
+  $('f-reason').classList.remove('invalid');
+  document.querySelector('#f-reason .err-text').classList.remove('show');
+  updateExecuteState();
+});
+
+/* ================= init ================= */
+(async () => {
+  // optional supabase session — required for any write
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    currentUser = user || null;
+  } catch { currentUser = null; }
+
+  requireAuthOrBlock();
+  await refreshDayState();
+  renderDay();
+  await renderJournal();
+
+  const savedUrl = localStorage.getItem('tm_bridge_url'); // UI convenience only
+  if (savedUrl) $('bridge-url').value = savedUrl;
+
+  // refresh price pill every 5s even before first trade
+  priceHandle = setInterval(() => { if (bridge) refreshLivePrice(); }, 5000);
+})();
