@@ -1,287 +1,263 @@
 /* ============================================================
-   AUTH GUARDS + SHARED HELPERS — Gembel AI PIK
-   ============================================================
-   Dipakai di index.html, dashboard.html, admin.html, dan
-   apps/* (calendar, progbar). Semua fungsi diekspos sebagai
-   global (bukan ES module) supaya kompatibel dengan cara
-   halaman lain manggilnya lewat onclick="..." dan <script src>.
-
-   Tabel profil sekarang bernama `user_profiles`, primary key
-   `user_id` (bukan `id`) — lihat schema.sql.
+   AUTH HELPERS — shared by every page
+   Requires supabaseClient.js to be loaded first.
    ============================================================ */
 
-// ------------------------------------------------------------
-// SESSION / PROFILE LOOKUPS
-// ------------------------------------------------------------
-
-/** User Supabase Auth yang lagi login, atau null. */
 async function getSessionUser() {
-  const { data, error } = await supabase.auth.getUser();
+  const { data, error } = await supabase.auth.getSession();
   if (error) {
-    console.error('getSessionUser:', error.message);
+    console.error("getSession error", error);
     return null;
   }
-  return data?.user || null;
+  return data.session ? data.session.user : null;
 }
 
-/** Baris user_profiles buat userId tertentu, atau null. */
 async function getProfile(userId) {
-  if (!userId) return null;
   const { data, error } = await supabase
-    .from('user_profiles')
-    .select('*')
-    .eq('user_id', userId)
-    .maybeSingle();
+    .from("profiles")
+    .select("*")
+    .eq("id", userId)
+    .single();
   if (error) {
-    console.error('getProfile:', error.message);
+    console.error("getProfile error", error);
     return null;
   }
   return data;
 }
 
-/** true kalau profile ada di plan berbayar (Elite). */
-function isElite(profile) {
-  return !!profile && profile.plan === 'elite';
-}
-
-/** true kalau profile adalah admin. */
-function isAdminProfile(profile) {
-  return !!profile && profile.role === 'admin';
-}
-
-// ------------------------------------------------------------
-// GUARDS — dipanggil di IIFE paling bawah tiap halaman
-// ------------------------------------------------------------
-
-/**
- * Wajib login. Kalau nggak, redirect ke redirectPath dan return null.
- * Kalau login tapi profilnya belum ke-provision (race dengan trigger
- * signup), tunggu sebentar lalu coba sekali lagi sebelum nyerah.
- */
-async function requireAuth(redirectPath) {
+/** Call on any page that requires a logged-in user. Redirects to login if not authed. */
+async function requireAuth(redirectTo = "index.html") {
   const user = await getSessionUser();
   if (!user) {
-    window.location.href = redirectPath;
+    window.location.href = redirectTo;
     return null;
   }
-  let profile = await getProfile(user.id);
-  if (!profile) {
-    // trigger handle_new_user() di Postgres kadang butuh sepersekian
-    // detik buat jalan setelah signUp() resolve — kasih satu kali retry.
-    await new Promise(r => setTimeout(r, 700));
-    profile = await getProfile(user.id);
-  }
+  const profile = await getProfile(user.id);
   return { user, profile };
 }
 
-/** Wajib login DAN role === 'admin'. Kalau bukan admin, tendang balik. */
-async function requireAdmin(redirectPath) {
-  const ctx = await requireAuth(redirectPath);
-  if (!ctx) return null;
-  if (!isAdminProfile(ctx.profile)) {
-    window.location.href = redirectPath;
-    return null;
-  }
-  return ctx;
+/* ============================================================
+   GUEST / DEMO MODE
+   Lets someone try the Calendar / Neon Flow apps with zero signup.
+   Guest data lives ONLY in this browser tab's sessionStorage/localStorage
+   and is never sent to Supabase — no account, no session, nothing to
+   clean up server-side.
+   ============================================================ */
+const GUEST_FLAG_KEY = "gembel_guest_mode";
+
+function isGuestSession() {
+  return sessionStorage.getItem(GUEST_FLAG_KEY) === "1";
+}
+
+/** Call from a "Coba Demo" button/link to enter guest mode. */
+function startGuestDemo(destination) {
+  sessionStorage.setItem(GUEST_FLAG_KEY, "1");
+  window.location.href = destination;
+}
+
+/** Leaves guest mode (used by the "Daftar buat nyimpen" banner CTA). */
+function exitGuestDemo() {
+  sessionStorage.removeItem(GUEST_FLAG_KEY);
+  sessionStorage.removeItem("gembel_guest_id");
 }
 
 /**
- * Sama kayak requireAuth, tapi kalau nggak ada session, cek dulu
- * apakah ini sesi "guest/demo" (disimpan di sessionStorage oleh
- * halaman app individual, misal calendar.html). Kalau iya, kasih
- * jalan dengan profile kosong + isGuest true; kalau nggak ada
- * keduanya, baru redirect.
+ * Like requireAuth(), but lets a guest session through instead of
+ * redirecting. Returns { user, profile, isGuest }. A guest user has a
+ * stable-per-tab fake id and a null profile. A real logged-in user
+ * always takes priority over guest mode.
  */
-async function requireAuthOrGuest(redirectPath) {
+async function requireAuthOrGuest(redirectTo = "index.html") {
   const user = await getSessionUser();
   if (user) {
     const profile = await getProfile(user.id);
     return { user, profile, isGuest: false };
   }
-  const guestFlag = sessionStorage.getItem('gembel_guest_demo');
-  if (guestFlag === '1') {
-    return { user: null, profile: null, isGuest: true };
+  if (isGuestSession()) {
+    let guestId = sessionStorage.getItem("gembel_guest_id");
+    if (!guestId) {
+      guestId = "guest-" + Math.random().toString(36).slice(2, 10);
+      sessionStorage.setItem("gembel_guest_id", guestId);
+    }
+    return { user: { id: guestId, email: null }, profile: null, isGuest: true };
   }
-  window.location.href = redirectPath;
+  window.location.href = redirectTo;
   return null;
 }
 
-/** Bersihin state guest/demo (dipanggil dari banner "keluar demo"). */
-function exitGuestDemo() {
-  sessionStorage.removeItem('gembel_guest_demo');
-  window.location.href = 'index.html';
+/** Call on the admin page. Bounces non-admins back to their normal dashboard. */
+async function requireAdmin(redirectTo = "dashboard.html") {
+  const ctx = await requireAuth("index.html");
+  if (!ctx) return null;
+  if (!ctx.profile || ctx.profile.role !== "admin") {
+    window.location.href = redirectTo;
+    return null;
+  }
+  return ctx;
 }
 
-// ------------------------------------------------------------
-// LOGOUT
-// ------------------------------------------------------------
+function initials(nameOrEmail) {
+  if (!nameOrEmail) return "??";
+  const base = nameOrEmail.includes("@") ? nameOrEmail.split("@")[0] : nameOrEmail;
+  const parts = base.trim().split(/\s+/);
+  const letters = parts.length > 1 ? parts[0][0] + parts[1][0] : base.substring(0, 2);
+  return letters.toUpperCase();
+}
+
 async function logout() {
   await supabase.auth.signOut();
-  window.location.href = 'index.html';
+  window.location.href = "index.html";
 }
 
-// ------------------------------------------------------------
-// FORMATTING HELPERS
-// ------------------------------------------------------------
-
-/** "Budi Santoso" -> "BS". Fallback ke "?" kalau nama kosong. */
-function initials(name) {
-  if (!name || typeof name !== 'string') return '?';
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
-
-/** Escape dasar buat cegah XSS pas nyisipin teks user ke innerHTML. */
-function escapeHtml(str) {
-  if (str === null || str === undefined) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-/** ISO timestamp -> "2 jam lalu" / "baru saja" / dst (Bahasa Indonesia). */
 function fmtRelativeTime(iso) {
-  if (!iso) return '—';
   const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return '—';
-  const diffSec = Math.floor((Date.now() - then) / 1000);
-  if (diffSec < 10) return 'baru saja';
-  if (diffSec < 60) return `${diffSec} detik lalu`;
+  const now = Date.now();
+  const diffSec = Math.floor((now - then) / 1000);
+  if (diffSec < 60) return "Baru saja";
   const diffMin = Math.floor(diffSec / 60);
   if (diffMin < 60) return `${diffMin} menit lalu`;
-  const diffHour = Math.floor(diffMin / 60);
-  if (diffHour < 24) return `${diffHour} jam lalu`;
-  const diffDay = Math.floor(diffHour / 24);
-  if (diffDay < 30) return `${diffDay} hari lalu`;
-  const diffMonth = Math.floor(diffDay / 30);
-  if (diffMonth < 12) return `${diffMonth} bulan lalu`;
-  const diffYear = Math.floor(diffMonth / 12);
-  return `${diffYear} tahun lalu`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr} jam lalu`;
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay < 7) return `${diffDay} hari lalu`;
+  const diffWeek = Math.floor(diffDay / 7);
+  if (diffWeek < 5) return `${diffWeek} minggu lalu`;
+  return new Date(iso).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
 }
 
-// ------------------------------------------------------------
-// PASSWORD VALIDATION
-// ------------------------------------------------------------
-
-/**
- * Min 8 karakter, 1 huruf besar, 1 angka, 1 simbol.
- * Return string pesan error, atau falsy (undefined) kalau password OK.
- */
-function validatePasswordStrength(pw) {
-  if (!pw || pw.length < 8) return 'Password minimal 8 karakter.';
-  if (!/[A-Z]/.test(pw)) return 'Password harus ada minimal 1 huruf besar.';
-  if (!/[0-9]/.test(pw)) return 'Password harus ada minimal 1 angka.';
-  if (!/[^A-Za-z0-9]/.test(pw)) return 'Password harus ada minimal 1 simbol (contoh: ! @ # $ %).';
-  return '';
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str ?? "";
+  return div.innerHTML;
 }
 
-// ------------------------------------------------------------
-// THEME TOGGLE
-// ------------------------------------------------------------
+/* ============ THEME (dark mode) ============ */
+function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  localStorage.setItem("gembel_theme", theme);
+  document.querySelectorAll(".theme-toggle").forEach(b => { b.textContent = theme === "dark" ? "☀️" : "🌙"; });
+}
 function toggleTheme() {
-  const html = document.documentElement;
-  const next = html.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
-  html.setAttribute('data-theme', next);
-  try { localStorage.setItem('gembel_theme', next); } catch (_) { /* storage might be blocked, non-fatal */ }
+  const cur = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+  applyTheme(cur === "dark" ? "light" : "dark");
 }
-
-(function initTheme() {
-  let saved = null;
-  try { saved = localStorage.getItem('gembel_theme'); } catch (_) { /* ignore */ }
-  if (saved) document.documentElement.setAttribute('data-theme', saved);
+// apply immediately (before paint if possible)
+(function () {
+  const saved = localStorage.getItem("gembel_theme")
+    || (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  document.documentElement.setAttribute("data-theme", saved);
+  document.addEventListener("DOMContentLoaded", () => applyTheme(saved));
 })();
 
-// ------------------------------------------------------------
-// PAYMENT MODAL — Elite upgrade flow
-// ------------------------------------------------------------
-// Menulis satu baris ke payment_request (status 'pending'). Admin
-// yang konfirmasi di admin.html, yang baru nge-set user_profiles.plan.
-// Ini pengganti modal lama yang dead-end — sekarang beneran nyambung
-// ke sebuah tabel yang bisa diproses.
-
-function _paymentModalMarkup(profile) {
-  const price = window.GEMBEL_PRICE ?? 19999;
-  const priceNormal = window.GEMBEL_PRICE_NORMAL ?? 1000000;
-  const fmt = n => 'Rp' + Number(n).toLocaleString('id-ID');
-  return `
-    <div class="modal-backdrop" id="gembel-payment-backdrop">
-      <div class="modal-card">
-        <button class="modal-close" id="gembel-payment-close" aria-label="Tutup">✕</button>
-        <div class="modal-kicker">UPGRADE ELITE ⭐</div>
-        <h2>Buka semua fitur Elite</h2>
-        <p style="color:var(--text-muted);font-size:13.5px;">
-          Antrian prioritas, akses app custom tanpa batas waktu, dan unduh APK.
-        </p>
-        <div class="modal-price">
-          <span class="now mono">${fmt(price)}</span>
-          <span class="normal mono">${fmt(priceNormal)}</span>
-        </div>
-        <div class="field">
-          <label>Catatan (opsional)</label>
-          <textarea id="gembel-payment-note" placeholder="Contoh: sudah transfer via GoPay a/n ..." maxlength="300" style="min-height:60px;"></textarea>
-        </div>
-        <div id="gembel-payment-msg" class="form-msg"></div>
-        <button class="btn btn-primary btn-block" id="gembel-payment-submit">Ajukan Upgrade →</button>
-        <p style="font-size:11.5px;color:var(--text-faint);margin-top:10px;">
-          Setelah diajukan, admin bakal konfirmasi manual dan plan lo keupdate otomatis.
-        </p>
-      </div>
-    </div>`;
+/* ============================================================
+   PLAN & PEMBAYARAN (dipakai index + dashboard)
+   ============================================================ */
+function isElite(profile) {
+  if (!profile || profile.plan !== "elite") return false;
+  if (profile.plan_until && new Date(profile.plan_until) < new Date()) return false;
+  return true;
 }
 
-/**
- * Buka modal upgrade Elite. onDone() dipanggil setelah payment_request
- * berhasil dibuat (bukan setelah admin konfirmasi — itu proses terpisah,
- * live-update lewat realtime subscription di dashboard.js).
- */
+function rupiah(n) { return "Rp " + Number(n).toLocaleString("id-ID"); }
+
 function openPaymentModal(profile, onDone) {
-  if (!profile) { console.error('openPaymentModal: profile kosong'); return; }
-  if (document.getElementById('gembel-payment-backdrop')) return; // sudah kebuka
+  if (!profile || !profile.id) { alert("Profil belum kebaca. Refresh halaman dulu ya."); return; }
+  if (document.getElementById("pay-modal")) return;
+  const price = window.GEMBEL_PRICE || 19999;
+  const normal = window.GEMBEL_PRICE_NORMAL || 1000000;
+  const disc = Math.round((1 - price / normal) * 100);
 
-  document.body.insertAdjacentHTML('beforeend', _paymentModalMarkup(profile));
-  const backdrop = document.getElementById('gembel-payment-backdrop');
-  const closeBtn = document.getElementById('gembel-payment-close');
-  const submitBtn = document.getElementById('gembel-payment-submit');
-  const msgEl = document.getElementById('gembel-payment-msg');
+  const wrap = document.createElement("div");
+  wrap.id = "pay-modal";
+  wrap.className = "pay-overlay";
+  wrap.innerHTML = `
+    <div class="pay-card">
+      <div class="pay-banner">
+        <div class="pay-banner-spark">🔥 PROMO EARLY MEMBER</div>
+        <div class="pay-banner-disc">DISKON ${disc}%</div>
+        <div class="pay-banner-sub">Kunci harga sekarang sebelum naik!</div>
+      </div>
+      <div class="pay-body">
+        <h3>Upgrade ke Elite Tier ⭐</h3>
+        <div class="pay-price">
+          <span class="old">${rupiah(normal)}</span>
+          <span class="new">${rupiah(price)}</span>
+          <span class="per">/ bulan</span>
+        </div>
+        <ul class="pay-perks">
+          <li>✅ App custom dari nol, tanpa batas waktu akses</li>
+          <li>✅ Prioritas antrian &amp; revisi langsung</li>
+          <li>✅ Unduh APK + akses browser</li>
+        </ul>
+        <p class="pay-note">Free tier tetap bisa pesan app — tapi akses tiap app cuma <b>3 jam</b> setelah jadi.</p>
+        <button class="btn btn-primary btn-block" id="pay-go">Bayar ${rupiah(price)} →</button>
+        <button class="btn btn-ghost btn-block" id="pay-skip" style="margin-top:8px;">Nanti dulu, pakai Free</button>
+      </div>
+      <div class="pay-waiting" id="pay-waiting" style="display:none;">
+        <div class="pay-spinner"></div>
+        <h3>Menunggu konfirmasi pembayaran…</h3>
+        <p>Biasanya kurang dari <b>5 menit</b>. Halaman ini bakal update otomatis begitu dikonfirmasi.</p>
+        <div class="pay-countdown mono" id="pay-countdown">05:00</div>
+        <button class="btn btn-ghost btn-block" id="pay-later" style="display:none;">Lanjut pakai Free dulu — Elite aktif otomatis begitu dikonfirmasi</button>
+      </div>
+    </div>`;
+  document.body.appendChild(wrap);
 
-  const close = () => backdrop.remove();
-  closeBtn.onclick = close;
-  backdrop.onclick = (e) => { if (e.target === backdrop) close(); };
+  const finish = () => { wrap.remove(); if (onDone) onDone(); };
+  document.getElementById("pay-skip").onclick = finish;
 
-  submitBtn.onclick = async () => {
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Mengirim…';
-    msgEl.className = 'form-msg';
+  document.getElementById("pay-go").onclick = async () => {
+    const btn = document.getElementById("pay-go");
+    btn.disabled = true; btn.textContent = "Memproses…";
+    const { error } = await supabase.from("payment_requests").insert({ user_id: profile.id, amount: price });
+    if (error) { alert("Gagal bikin tagihan: " + error.message); btn.disabled = false; btn.textContent = "Bayar " + rupiah(price) + " →"; return; }
+    if (window.GEMBEL_PAYMENT_URL) window.open(window.GEMBEL_PAYMENT_URL, "_blank", "noopener");
 
-    const note = document.getElementById('gembel-payment-note').value.trim();
-    const { error } = await supabase.from('payment_request').insert({
-      user_id: profile.user_id,
-      amount: window.GEMBEL_PRICE ?? 19999,
-      status: 'pending',
-      flag_premium: window.GEMBEL_PLAN_TARGET ?? 'elite',
-      note: note || null,
-      date_request: new Date().toISOString().slice(0, 10),
-    });
+    document.querySelector("#pay-modal .pay-body").style.display = "none";
+    document.querySelector("#pay-modal .pay-banner").style.display = "none";
+    document.getElementById("pay-waiting").style.display = "block";
 
-    submitBtn.disabled = false;
-    submitBtn.textContent = 'Ajukan Upgrade →';
+    // countdown 5 menit
+    let left = 300;
+    const cd = document.getElementById("pay-countdown");
+    const tick = setInterval(() => {
+      left--;
+      cd.textContent = String(Math.floor(left / 60)).padStart(2, "0") + ":" + String(left % 60).padStart(2, "0");
+      if (left <= 0) {
+        clearInterval(tick);
+        cd.textContent = "Masih diproses…";
+        document.getElementById("pay-later").style.display = "block";
+      }
+    }, 1000);
+    document.getElementById("pay-later").onclick = () => { clearInterval(tick); finish(); };
 
-    if (error) {
-      msgEl.textContent = 'Gagal ngirim pengajuan: ' + error.message;
-      msgEl.className = 'form-msg show error';
-      return;
-    }
-
-    msgEl.textContent = 'Pengajuan terkirim! Admin bakal konfirmasi segera.';
-    msgEl.className = 'form-msg show success';
-    setTimeout(() => {
-      close();
-      if (typeof onDone === 'function') onDone();
-    }, 1400);
+    // realtime: begitu admin konfirmasi → sukses
+    supabase
+      .channel("pay-" + profile.id)
+      .on("postgres_changes",
+        { event: "UPDATE", schema: "public", table: "payment_requests", filter: `user_id=eq.${profile.id}` },
+        (payload) => {
+          if (payload.new && payload.new.status === "confirmed") {
+            clearInterval(tick);
+            document.getElementById("pay-waiting").innerHTML =
+              `<div style="font-size:44px;">🎉</div><h3>Pembayaran dikonfirmasi!</h3><p>Akun lo sekarang <b>Elite</b>. Selamat menikmati.</p>`;
+            setTimeout(finish, 1800);
+          }
+          if (payload.new && payload.new.status === "rejected") {
+            clearInterval(tick);
+            document.getElementById("pay-waiting").innerHTML =
+              `<h3>Pembayaran ditolak</h3><p>Hubungi admin kalau lo ngerasa ini keliru.</p><button class="btn btn-ghost btn-block" onclick="document.getElementById('pay-modal').remove()">Tutup</button>`;
+          }
+        })
+      .subscribe();
   };
+}
+
+/* ============ VALIDASI PASSWORD KUAT ============ */
+function validatePasswordStrength(p) {
+  if (!p || p.length < 8) return "Password minimal 8 karakter.";
+  if (!/[A-Z]/.test(p)) return "Password harus punya minimal 1 huruf BESAR.";
+  if (!/[0-9]/.test(p)) return "Password harus punya minimal 1 angka.";
+  if (!/[^A-Za-z0-9]/.test(p)) return "Password harus punya minimal 1 simbol (contoh: ! @ # $).";
+  return null; // lolos
 }
