@@ -44,7 +44,7 @@ jobs:
         if: github.ref == 'refs/heads/uat'
         run: |
           ssh -i ~/.ssh/id_rsa ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }} << 'ENDSSH'
-            cd /var/www/gembelfun
+            cd /var/www/gembel.store
 
             # Tarik kode khusus dari branch uat
             git pull origin uat
