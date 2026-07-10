@@ -30,6 +30,15 @@
 
 <div class="soft-wrap">
 
+  <!-- ===== AUTH-BLOCKED BANNER — hidden by default, shown by JS via requireAuthOrBlock() ===== -->
+  <div class="lockout-banner hidden" id="auth-banner">
+    <span class="lb-icon">🚫</span>
+    <div>
+      <b>Belum login.</b>
+      <span>Semua transaksi butuh akun — login dulu di halaman lain (lihat <span class="mono">supabaseClient.js</span>), lalu refresh halaman ini.</span>
+    </div>
+  </div>
+
   <!-- ===== LOCKOUT BANNER ===== -->
   <div class="lockout-banner hidden" id="lockout-banner">
     <span class="lb-icon">🔒</span>
@@ -76,7 +85,7 @@
       <!-- DAY STATUS -->
       <div class="card">
         <h2>Today</h2>
-        <p class="hint">Reset otomatis tengah malam waktu lo.</p>
+        <p class="hint">Reset otomatis tengah malam waktu lo. Day-start equity diambil dari trade pertama hari ini (trade_master_c/h) — kalau belum ada trade, dari equity live pertama.</p>
         <div class="day-stats">
           <div class="d-stat"><span>Day-start equity</span><b class="mono" id="ds-start">$—</b></div>
           <div class="d-stat"><span>Current equity</span><b class="mono" id="ds-equity">$—</b></div>
@@ -98,7 +107,7 @@
           <h2>New trade</h2>
           <span class="pill accent" id="live-price-pill">— </span>
         </div>
-        <p class="hint">Jurnal dulu, baru boleh eksekusi. Lot dihitung otomatis dari risk lo — nggak bisa diganti.</p>
+        <p class="hint">Jurnal dulu, baru boleh eksekusi. Size dihitung otomatis dari risk lo — nggak bisa diganti.</p>
 
         <div class="trade-row">
           <div class="field" id="f-symbol" style="flex:1;">
@@ -133,7 +142,7 @@
 
         <div class="lot-box">
           <div>
-            <span class="lot-label">LOCKED LOT (auto)</span>
+            <span class="lot-label">LOCKED SIZE (auto)</span>
             <b class="mono" id="calc-lot">0.00</b>
           </div>
           <div>
@@ -167,7 +176,7 @@
       <!-- JOURNAL -->
       <div class="card">
         <h2>Trade journal</h2>
-        <p class="hint">Otomatis kecatet tiap eksekusi — nggak bisa trade tanpa jurnal.</p>
+        <p class="hint">Otomatis kecatet tiap eksekusi (trade_master_c) dan pindah ke history (trade_master_h) begitu posisi ditutup.</p>
         <div id="journal-list"><div class="empty">Belum ada entry hari ini.</div></div>
       </div>
     </div>

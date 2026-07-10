@@ -57,6 +57,8 @@ function setLoading(btnId, loading, label) {
   btn.textContent = loading ? 'Tunggu sebentar…' : label;
 }
 
+// Routing pasca-login: admin -> admin.html, member -> dashboard.html.
+// (role datang dari user_profiles.role lewat getProfile() di auth.js)
 async function routeAfterLogin() {
   const user = await getSessionUser();
   if (!user) return;
@@ -152,6 +154,9 @@ async function handleSignup() {
   const pwErr = validatePasswordStrength(password);
   if (pwErr) { showMsg(pwErr, 'error'); return; }
   setLoading('signup-submit', true, 'Daftar gratis →');
+  // full_name masuk ke auth metadata; trigger handle_new_user() di Postgres
+  // (lihat schema.sql) yang otomatis bikin baris user_profiles dari sini,
+  // jadi index.js sendiri nggak perlu insert manual ke user_profiles.
   const { data, error } = await supabase.auth.signUp({
     email, password,
     options: { data: { full_name: name } }

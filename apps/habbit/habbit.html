@@ -4,37 +4,38 @@
  HABIT — Gembel AI PIK
 ============================================================
  REQUIRED SUPABASE SETUP — jalanin sekali di SQL Editor.
- Script lengkapnya ada di file terpisah: habit_setup.sql
- (bikin tabel public.habit + index + RLS policy + realtime).
+ Script lengkapnya ada di file terpisah: ../../setup.sql
+ (bikin tabel habbit_h + habbit_d + index + RLS + RPC stop_habbit
+ + realtime).
 
- Ringkasan tabelnya:
-  create table public.habit (
-    id          uuid primary key default gen_random_uuid(),
-    user_id     uuid not null references auth.users(id) on delete cascade,
-    type        text not null check (type in ('activity','expense')),
-    activity    text not null check (char_length(activity) >= 3),
-    amount      numeric,
-    status      text not null default 'berjalan' check (status in ('berjalan','selesai')),
-    start_time  timestamptz not null default now(),
-    end_time    timestamptz,
-    created_at  timestamptz not null default now(),
-    constraint expense_requires_amount check (
-      type <> 'expense' or (amount is not null and amount > 0)
-    ),
-    constraint activity_has_no_amount check (
-      type <> 'activity' or amount is null
-    )
-  );
-  -- + index, RLS (private per user), realtime → lihat habit_setup.sql
+ Ringkasan tabelnya (lihat setup.sql untuk detail lengkap):
+  habbit_h = aktivitas yang LAGI JALAN sekarang. Satu baris per
+             aktivitas yang belum di-stop. Baris ini DIHAPUS begitu
+             di-stop (dipindah jadi baris baru di habbit_d).
+  habbit_d = riwayat aktivitas yang SUDAH SELESAI. Append-only,
+             nggak pernah diubah lagi setelah tercatat.
 
- Catatan keamanan:
-  - Semua validasi (panjang aktivitas, nominal harus angka > 0) dicek DUA kali:
-    di JS (biar responsif) dan di CHECK constraint tabel (sumber kebenaran —
-    nggak bisa ditembus dari luar client ini).
-  - RLS bikin data 100% privat: user_id selalu dari sesi login (auth.uid()),
-    bukan dari input form, dan user lain nggak bisa baca baris kamu sama sekali.
-  - Semua teks dari user di-escape (escapeHtml) sebelum masuk DOM — anti-XSS.
-  - Tombol submit di-disable selama proses kirim, biar nggak kepencet dobel.
+ Kenapa dipecah jadi 2 tabel (bukan 1 tabel + kolom status kayak
+ versi lama): tabel "yang lagi jalan" jadi kecil & ringan (isinya
+ cuma yang aktif sekarang), sementara riwayat jadi log yang aman
+ buat direkap/dilaporkan tanpa pernah berubah lagi.
+
+ Aktivitas di-stop lewat RPC `stop_habbit` (bukan insert+delete
+ manual dari JS) supaya perpindahan habbit_h → habbit_d jadi SATU
+ transaksi atomik — nggak ada resiko "berhasil dicatet di riwayat
+ tapi gagal dihapus dari yang lagi jalan" atau sebaliknya.
+
+ Catatan keamanan (sama seperti versi lama):
+  - Semua validasi (panjang aktivitas, nominal harus angka > 0)
+    dicek DUA kali: di JS (biar responsif) dan di CHECK constraint
+    tabel (sumber kebenaran — nggak bisa ditembus dari luar client).
+  - RLS bikin data 100% privat: user_id selalu dari sesi login
+    (auth.uid()), bukan dari input form, dan user lain nggak bisa
+    baca baris kamu sama sekali.
+  - Semua teks dari user di-escape (escapeHtml) sebelum masuk DOM —
+    anti-XSS.
+  - Tombol submit/stop di-disable selama proses kirim, biar nggak
+    kepencet dobel (lihat withBusy() di assets/shared-utils.js).
 ============================================================
 -->
 <html lang="id">
@@ -84,13 +85,13 @@
         <div class="err-text">Ketik dulu aktivitasnya (minimal 3 karakter).</div>
       </div>
 
-      <div class="check-row" onclick="document.getElementById('in-finance').click()">
-        <input type="checkbox" id="in-finance" onclick="event.stopPropagation(); toggleFinance(this.checked)">
+      <label class="check-row" for="in-finance">
+        <input type="checkbox" id="in-finance">
         <div>
           <div class="ct-title">Ini keluar duit</div>
           <div class="ct-sub">Centang kalau aktivitas ini ada pengeluarannya.</div>
         </div>
-      </div>
+      </label>
 
       <div class="finance-fields" id="finance-fields">
         <div class="field" id="f-amount">
@@ -101,9 +102,13 @@
           </div>
           <div class="err-text">Isi nominalnya dalam angka, lebih dari 0.</div>
         </div>
+        <div class="field" id="f-tag">
+          <label>Kategori (opsional)</label>
+          <input type="text" id="in-tag" placeholder="Contoh: Makan, Transport" maxlength="60">
+        </div>
       </div>
 
-      <button class="btn btn-primary btn-block" id="submit-btn" onclick="handleSubmit()">🚀 Gas, Mulai!</button>
+      <button class="btn btn-primary btn-block" id="submit-btn">🚀 Gas, Mulai!</button>
     </div>
 
     <!-- ================= RIGHT COLUMN ================= -->
@@ -120,9 +125,9 @@
       <div class="card">
         <h2>Riwayat kamu</h2>
         <div class="filter-row" id="hist-filter">
-          <div class="chip-filter active" data-range="24h" onclick="setHistRange('24h')">24 Jam</div>
-          <div class="chip-filter" data-range="month" onclick="setHistRange('month')">Bulanan</div>
-          <div class="chip-filter" data-range="year" onclick="setHistRange('year')">Tahunan</div>
+          <div class="chip-filter active" data-range="24h">24 Jam</div>
+          <div class="chip-filter" data-range="month">Bulanan</div>
+          <div class="chip-filter" data-range="year">Tahunan</div>
         </div>
         <div id="history-list">
           <div class="skeleton"></div>
@@ -138,6 +143,6 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="../../assets/supabaseClient.js"></script>
 <script src="../../assets/auth.js"></script>
-<script src="habbit.js"></script>
+<script type="module" src="habbit.js"></script>
 </body>
 </html>
