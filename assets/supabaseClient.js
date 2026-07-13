@@ -3,8 +3,8 @@
    ============================================================ */
 
 (function () {
-  const SUPABASE_URL = "https://cejmhfyyiftjsgtyzmvt.supabase.co";
-  const SUPABASE_ANON_KEY = "sb_publishable_-VtjJUw4-6bpmTH4bKXdgQ_dVaPTMQ5";
+  const SUPABASE_URL = "https://pufzmeakhiosibrxdfpp.supabase.co";
+  const SUPABASE_ANON_KEY = "sb_secret_9BwM-hRqpE2b7smhqa7Puw_QDRxDzWd";
 
   const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },

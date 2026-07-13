@@ -3,7 +3,7 @@
 ## Recommended Folder Layout
 
 ```
-gembel-pik/
+gembel.store/
 ├── index.html                 # Login/landing page (entry point)
 ├── dashboard.html             # Main hub after login — links to 4 apps
 ├── assets/

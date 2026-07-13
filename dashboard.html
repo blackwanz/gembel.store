@@ -10,7 +10,6 @@
 <link rel="stylesheet" href="assets/app-theme.css">
 </head>
 <body>
-
 <div class="dash-top">
   <div style="display:flex;align-items:center;gap:28px;">
     <div class="logo display" style="font-size:16px;"><span class="g">GEMBEL</span> <span class="e">AI PIK</span></div>
@@ -32,9 +31,7 @@
     <button class="btn btn-ghost btn-sm" onclick="logout()">Keluar</button>
   </div>
 </div>
-
 <div class="dash-body">
-
   <!-- ===== TAB: MY APPS ===== -->
   <div id="tab-apps" class="tab-panel">
     <div class="dash-head">
@@ -43,13 +40,11 @@
         <p>Semua yang udah lo pesan, hidup di sini.</p>
       </div>
     </div>
-
     <div class="stat-row">
       <div class="stat"><div class="label">Total Request</div><div class="value" id="stat-total">0</div></div>
       <div class="stat"><div class="label">Lagi Diproses</div><div class="value" id="stat-proses">0</div></div>
       <div class="stat"><div class="label">Selesai</div><div class="value" id="stat-selesai">0</div></div>
     </div>
-
     <div class="apps-grid" id="apps-grid">
       <div class="new-card prompt-hero">
         <div class="prompt-hero-head">
@@ -61,13 +56,10 @@
         <textarea id="new-prompt" placeholder="Contoh: aplikasi buat hitung target tabungan bulanan, ada grafik progress-nya..."></textarea>
         <button class="btn btn-primary btn-block" id="submit-request-btn" onclick="submitRequest()">✨ Generate App →</button>
       </div>
-
       <div id="installed-apps-slot"></div>
-
       <div id="requests-loading" class="skeleton"></div>
     </div>
   </div>
-
   <!-- ===== TAB: PROFIL ===== -->
   <div id="tab-profil" class="tab-panel" style="display:none;">
     <div class="dash-head">
@@ -85,7 +77,6 @@
         <tr><td style="color:var(--text-faint);">Member sejak</td><td id="profil-since">—</td></tr>
       </table>
     </div>
-
     <div class="panel" style="max-width:440px;margin-top:18px;">
       <div class="panel-head"><h2>Update profil</h2></div>
       <div style="padding:4px 2px;">
@@ -117,9 +108,7 @@
       </div>
     </div>
   </div>
-
 </div>
-
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="assets/supabaseClient.js"></script>
 <script src="assets/auth.js"></script>
@@ -127,35 +116,75 @@
 let CURRENT_USER = null;
 let CURRENT_PROFILE = null;
 
-// ===== INSTALLED_APPS =====
-// Hardcoded for now — the real `apps` table (apps_id, apps_desc, start_date,
-// end_date) has no column to store a path/title/icon, so there's nothing to
-// drive this from yet. When that changes (e.g. an app_url/title/icon column
-// gets added, or this starts reading user_profiles.plan to gate access),
-// this array is the one place to swap for a Supabase query — everything
-// below (renderInstalledApps) already reads from this array, not from HTML,
-// so the render logic won't need to change.
-const INSTALLED_APPS = [
-  { icon: '📅', title: 'Kalender Produktivitas', desc: 'Goals harian, tracking angka, dan progress bulanan. Selalu aktif, gratis buat semua member.', url: 'apps/calendar/calendar.html' },
-  { icon: '⚡', title: 'Neon Flow — Time Tracker', desc: 'Progress tracker gaya cyberpunk — lacak sesi kerja lo per warna (fokus/istirahat/lainnya) sampai target waktu harian. Data tersimpan di akun lo.', url: 'apps/progbar/progbar.html' },
-  { icon: '🧘', title: 'Meditate Space', desc: 'Sesi meditasi terpandu buat reset fokus lo di tengah hari.', url: 'apps/meditate/meditate.html' },
-  { icon: '💼', title: 'Portfolio Live', desc: 'Lacak holdings crypto & stock lo dengan harga real-time. Data tersimpan di akun lo.', url: 'apps/portfolio/portfolio.html' },
-  { icon: '🛡️', title: 'Trade Master', desc: 'Terminal trading risk-locked yang nyambung ke MT5.', url: 'apps/trademaster/trademaster.html' },
-  { icon: '⏱️', title: 'Habit Tracker', desc: 'Catat aktivitas harian lo — mulai/stop sesi, lihat riwayatnya kapan aja.', url: 'apps/habbit/habbit.html' },
+// ===== INSTALLED_APPS: last-known-good fallback only =====
+// This is NOT the source of truth anymore — public.apps (Supabase) is.
+// It exists purely so the grid never goes silently blank if the fetch in
+// loadInstalledApps() fails (network blip, RLS misconfigured, etc). Keep it
+// roughly in sync if you want the fallback to look current, but it is not
+// required for normal operation — normal operation reads from the database.
+const INSTALLED_APPS_FALLBACK = [
+  { icon: '📅', title: 'Kalender Produktivitas', description: 'Goals harian, tracking angka, dan progress bulanan. Selalu aktif, gratis buat semua member.', url: 'apps/calendar/calendar.html', min_plan: 'free' },
+  { icon: '⚡', title: 'Neon Flow — Time Tracker', description: 'Progress tracker gaya cyberpunk — lacak sesi kerja lo per warna (fokus/istirahat/lainnya) sampai target waktu harian. Data tersimpan di akun lo.', url: 'apps/progbar/progbar.html', min_plan: 'free' },
+  { icon: '🧘', title: 'Meditate Space', description: 'Sesi meditasi terpandu buat reset fokus lo di tengah hari.', url: 'apps/meditate/meditate.html', min_plan: 'free' },
+  { icon: '💼', title: 'Portfolio Live', description: 'Lacak holdings crypto & stock lo dengan harga real-time. Data tersimpan di akun lo.', url: 'apps/portfolio/portfolio.html', min_plan: 'free' },
+  { icon: '🛡️', title: 'Trade Master', description: 'Terminal trading risk-locked yang nyambung ke MT5.', url: 'apps/trademaster/trademaster.html', min_plan: 'free' },
+  { icon: '⏱️', title: 'Habit Tracker', description: 'Catat aktivitas harian lo — mulai/stop sesi, lihat riwayatnya kapan aja.', url: 'apps/habbit/habbit.html', min_plan: 'free' },
 ];
 
-function renderInstalledApps() {
-  const slot = document.getElementById('installed-apps-slot');
-  if (!slot) return;
-  slot.innerHTML = INSTALLED_APPS.map(app => `
-    <div class="tool-card">
-      <div class="tool-icon">${app.icon}</div>
+// plan rank used to compare "does this user's plan meet this app's min_plan"
+const PLAN_RANK = { free: 0, elite: 1 };
+
+function userPlanTier(profile) {
+  return isElite(profile) || profile?.role === 'admin' ? 'elite' : 'free';
+}
+
+// Renders one app card. Locked state triggers only when an app's min_plan
+// is 'elite' and the viewer doesn't have elite/admin — every seeded row is
+// currently 'free', so this branch is inert today by design (per your plan
+// to test gating later) but doesn't need another code change to switch on:
+// just update a row's min_plan to 'elite' in Supabase.
+function renderAppCard(app) {
+  const locked = PLAN_RANK[app.min_plan || 'free'] > PLAN_RANK[userPlanTier(CURRENT_PROFILE)];
+  return `
+    <div class="tool-card${locked ? ' tool-card-locked' : ''}">
+      <div class="tool-icon">${escapeHtml(app.icon || '📦')}</div>
       <div>
-        <h3>${escapeHtml(app.title)}</h3>
-        <p>${escapeHtml(app.desc)}</p>
+        <h3>${escapeHtml(app.title)}${locked ? ' <span class="plan-badge elite" style="font-size:10px;">ELITE ⭐</span>' : ''}</h3>
+        <p>${escapeHtml(app.description || '')}</p>
       </div>
-      <button class="btn btn-primary btn-block" onclick="window.location.href='${app.url}'">Buka ${escapeHtml(app.title)} →</button>
-    </div>`).join('');
+      ${locked
+        ? `<button class="btn btn-ghost btn-block" onclick="openPaymentModal(CURRENT_PROFILE, () => location.reload())">🔒 Upgrade buat buka</button>`
+        : `<button class="btn btn-primary btn-block" onclick="window.location.href='${escapeAttr(app.url)}'">Buka ${escapeHtml(app.title)} →</button>`}
+    </div>`;
+}
+
+function renderInstalledAppsInto(slot, apps) {
+  if (!slot) return;
+  if (!apps || apps.length === 0) {
+    slot.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">Belum ada app yang tersedia saat ini.</div>`;
+    return;
+  }
+  slot.innerHTML = apps.map(renderAppCard).join('');
+}
+
+// Fetches the shared app catalog from Supabase (public.apps). Falls back to
+// the last-known-good local list on any error so the grid is never left
+// blank — a real outage should degrade to "slightly stale" not "empty".
+async function loadInstalledApps() {
+  const slot = document.getElementById('installed-apps-slot');
+  try {
+    const { data, error } = await supabase
+      .from('apps')
+      .select('icon, title, description, url, min_plan')
+      .eq('is_active', true)
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    renderInstalledAppsInto(slot, data);
+  } catch (err) {
+    console.error('loadInstalledApps failed, using fallback list:', err);
+    renderInstalledAppsInto(slot, INSTALLED_APPS_FALLBACK);
+  }
 }
 
 function switchTab(name) {
@@ -163,11 +192,9 @@ function switchTab(name) {
   document.getElementById('tab-apps').style.display = name === 'apps' ? 'block' : 'none';
   document.getElementById('tab-profil').style.display = name === 'profil' ? 'block' : 'none';
 }
-
 function statusLabel(s) {
   return { antre: 'ANTRE', diproses: 'DIPROSES', selesai: 'SELESAI' }[s] || s.toUpperCase();
 }
-
 function renderTicket(req) {
   const num = '#' + req.id.slice(0, 6).toUpperCase();
   const title = req.title && req.title.trim() ? req.title : 'App baru lo';
@@ -175,7 +202,6 @@ function renderTicket(req) {
   const expired = !elite && req.expires_at && new Date(req.expires_at) < new Date();
   const canOpen = req.status === 'selesai' && req.app_url && !expired;
   const canDownload = req.status === 'selesai' && req.apk_url && !expired;
-
   let expiryHtml = '';
   if (!elite && req.status === 'selesai' && req.expires_at) {
     if (expired) {
@@ -184,7 +210,6 @@ function renderTicket(req) {
       expiryHtml = `<span class="ticket-expiry" data-expires="${req.expires_at}">⏰ sisa akses: menghitung…</span>`;
     }
   }
-
   return `
     <div class="ticket st-${req.status}" data-id="${req.id}">
       <div class="ticket-head">
@@ -205,7 +230,6 @@ function renderTicket(req) {
       </div>
     </div>`;
 }
-
 // hitung mundur sisa akses free tier tiap detik
 setInterval(() => {
   let anyExpired = false;
@@ -217,25 +241,24 @@ setInterval(() => {
   });
   if (anyExpired) loadRequests();
 }, 1000);
-
 function updateStats(requests) {
   document.getElementById('stat-total').textContent = requests.length;
   document.getElementById('stat-proses').textContent = requests.filter(r => r.status === 'diproses').length;
   document.getElementById('stat-selesai').textContent = requests.filter(r => r.status === 'selesai').length;
 }
-
 async function loadRequests() {
+  // NOTE: table is "app_requests" (plural) — the previous singular
+  // "app_request" doesn't exist in the database, which was silently failing
+  // every load/insert/realtime call. Fixed here and in submitRequest() plus
+  // both postgres_changes filters below.
   const { data, error } = await supabase
-    .from('app_request')
+    .from('app_requests')
     .select('*')
     .eq('user_id', CURRENT_USER.id)
     .order('created_at', { ascending: false });
-
   const loadingEl = document.getElementById('requests-loading');
   if (loadingEl) loadingEl.remove();
-
   document.querySelectorAll('.ticket').forEach(el => el.remove());
-
   if (error) {
     console.error(error);
     return;
@@ -244,27 +267,22 @@ async function loadRequests() {
   const grid = document.getElementById('apps-grid');
   data.forEach(req => grid.insertAdjacentHTML('beforeend', renderTicket(req)));
 }
-
 async function submitRequest() {
   const titleEl = document.getElementById('new-title');
   const promptEl = document.getElementById('new-prompt');
   const text = promptEl.value.trim();
   if (!text) { promptEl.focus(); return; }
-
   const btn = document.getElementById('submit-request-btn');
   btn.disabled = true;
   btn.textContent = 'Ngirim…';
-
-  const { error } = await supabase.from('app_request').insert({
+  const { error } = await supabase.from('app_requests').insert({
     user_id: CURRENT_USER.id,
     title: titleEl.value.trim() || null,
     prompt: text,
     status: 'antre',
   });
-
   btn.disabled = false;
-  btn.textContent = 'Kirim prompt →';
-
+  btn.textContent = '✨ Generate App →';
   if (error) {
     alert('Gagal kirim: ' + error.message);
     return;
@@ -273,7 +291,6 @@ async function submitRequest() {
   promptEl.value = '';
   await loadRequests();
 }
-
 function fillProfile() {
   const name = CURRENT_PROFILE?.full_name || CURRENT_USER.email;
   document.getElementById('chip-avatar').textContent = initials(name);
@@ -285,9 +302,7 @@ function fillProfile() {
   const upBtn = document.getElementById('upgrade-btn');
   if (upBtn) upBtn.style.display = (elite || CURRENT_PROFILE?.role === 'admin') ? 'none' : 'inline-flex';
   document.getElementById('chip-avatar').classList.toggle('admin', CURRENT_PROFILE?.role === 'admin');
-
   document.getElementById('profil-email').textContent = CURRENT_USER.email;
-
   // isi form update profil
   document.getElementById('edit-name').value = CURRENT_PROFILE?.full_name || '';
   document.getElementById('edit-phone').value = CURRENT_PROFILE?.phone || '';
@@ -304,7 +319,6 @@ function fillProfile() {
     ? new Date(CURRENT_PROFILE.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
     : '—';
 }
-
 async function saveProfile() {
   const btn = document.getElementById('save-profile-btn');
   btn.disabled = true; btn.textContent = 'Menyimpan…';
@@ -323,34 +337,53 @@ async function saveProfile() {
   btn.textContent = 'Tersimpan ✓';
   setTimeout(() => { btn.textContent = 'Simpan profil'; }, 1800);
 }
-
 (async () => {
   const ctx = await requireAuth('index.html');
   if (!ctx) return;
   CURRENT_USER = ctx.user;
   CURRENT_PROFILE = ctx.profile;
   fillProfile();
-  renderInstalledApps();
+  await loadInstalledApps();
   await loadRequests();
-
   // live-update ticket status the moment an admin changes it
   supabase
     .channel('own-requests-' + CURRENT_USER.id)
     .on('postgres_changes',
-      { event: '*', schema: 'public', table: 'app_request', filter: `user_id=eq.${CURRENT_USER.id}` },
+      { event: '*', schema: 'public', table: 'app_requests', filter: `user_id=eq.${CURRENT_USER.id}` },
       () => loadRequests()
     )
     .subscribe();
-
   // kalau admin konfirmasi pembayaran pas lo lagi buka dashboard -> plan keupdate live
   supabase
     .channel('own-profile-' + CURRENT_USER.id)
     .on('postgres_changes',
       { event: 'UPDATE', schema: 'public', table: 'user_profiles', filter: `user_id=eq.${CURRENT_USER.id}` },
-      async () => { CURRENT_PROFILE = await getProfile(CURRENT_USER.id); fillProfile(); loadRequests(); }
+      async () => { CURRENT_PROFILE = await getProfile(CURRENT_USER.id); fillProfile(); loadInstalledApps(); loadRequests(); }
+    )
+    .subscribe();
+  // live-update the app catalog itself (new apps appear without a refresh —
+  // this is what makes adding app #7..#100 need zero client-side changes)
+  supabase
+    .channel('apps-catalog')
+    .on('postgres_changes',
+      { event: '*', schema: 'public', table: 'apps' },
+      () => loadInstalledApps()
     )
     .subscribe();
 })();
+
+// escapeAttr: escapeHtml (from assets/auth.js) is safe for text nodes but
+// HTML-attribute contexts additionally need quotes escaped even when the
+// surrounding markup already uses double quotes — used for the onclick URL
+// above so a title/url containing a quote can't break out of the attribute.
+function escapeAttr(str) {
+  return String(str ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');
+}
 </script>
 </body>
 </html>
