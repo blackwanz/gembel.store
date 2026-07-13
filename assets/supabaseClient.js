@@ -4,7 +4,7 @@
 
 (function () {
   const SUPABASE_URL = "https://pufzmeakhiosibrxdfpp.supabase.co";
-  const SUPABASE_ANON_KEY = "sb_secret_9BwM-hRqpE2b7smhqa7Puw_QDRxDzWd";
+  const SUPABASE_ANON_KEY = "sb_publishable_1UkDP9PomkuLAvkwurA0nQ__DiaCbsC";
 
   const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
