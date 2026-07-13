@@ -1,0 +1,1901 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🔧 DEBUG DASHBOARD — Gembel AI PIK</title>
+
+<!-- ================================================================
+  DEBUG HARNESS untuk auth Supabase — Gembel AI PIK
+  ----------------------------------------------------------------
+  File ini SENGAJA single-file (semua CSS & JS inline) supaya nggak
+  ada lagi drama "file JS/CSS-nya ke-load atau nggak". Satu-satunya
+  dependency luar cuma CDN Supabase.
+
+  Script pertama di bawah ini WAJIB paling atas — dia masang:
+    1. Penangkap console.log/warn/error dari SEMUA script
+    2. Penangkap JS error + SYNTAX ERROR file lain (pakai window
+       'error' event, kelihatan nama file + baris)
+    3. Pembungkus window.fetch -> semua request & response Supabase
+       kecatat utuh (URL, method, headers, body, status, durasi)
+================================================================= -->
+<script>
+(function () {
+  'use strict';
+
+  var DBG = window.DBG = {
+    page: 'dashboard',
+    entries: [],
+    net: [],
+    netById: {},
+    seq: 0,
+    entrySeq: 0,
+    ready: false,
+    reveal: false,
+    fileErrors: {},
+    ownClient: null,
+    activeClientKey: '__none__',
+    authSub: null,
+    lastEmail: '',
+    cap: 600
+  };
+
+  /* ---------- util: waktu ---------- */
+  DBG.stamp = function () {
+    var d = new Date();
+    return d.toLocaleTimeString('id-ID', { hour12: false }) + '.' + String(d.getMilliseconds()).padStart(3, '0');
+  };
+
+  /* ---------- util: serialisasi aman (Error, circular, DOM) ---------- */
+  DBG.safeClone = function (v, depth, seen) {
+    depth = depth || 0;
+    seen = seen || (typeof WeakSet !== 'undefined' ? new WeakSet() : null);
+    if (v === null) return null;
+    var t = typeof v;
+    if (t === 'undefined') return '(undefined)';
+    if (t === 'number' || t === 'boolean' || t === 'string') return v;
+    if (t === 'function') return '[function ' + (v.name || 'anonim') + ']';
+    if (t === 'bigint') return v.toString() + 'n';
+    if (t === 'symbol') return v.toString();
+    if (v instanceof Error) {
+      var o = { name: v.name, message: v.message };
+      var ks = Object.getOwnPropertyNames(v);
+      for (var i = 0; i < ks.length; i++) {
+        var k = ks[i];
+        if (k === 'name' || k === 'message') continue;
+        try { o[k] = k === 'stack' ? String(v[k]) : DBG.safeClone(v[k], depth + 1, seen); } catch (e) {}
+      }
+      return o;
+    }
+    if (typeof Node !== 'undefined' && v instanceof Node) return '[DOM <' + String(v.nodeName || '').toLowerCase() + '>]';
+    if (depth > 6) return '[…kedalaman>6, dipotong]';
+    if (t === 'object') {
+      if (seen) { if (seen.has(v)) return '[circular]'; seen.add(v); }
+      if (Array.isArray(v)) {
+        var arr = [];
+        for (var j = 0; j < v.length && j < 100; j++) arr.push(DBG.safeClone(v[j], depth + 1, seen));
+        if (v.length > 100) arr.push('…(' + (v.length - 100) + ' item lagi dipotong)');
+        return arr;
+      }
+      var out = {}, n = 0;
+      for (var key in v) {
+        if (++n > 120) { out['…'] = '(dipotong, >120 keys)'; break; }
+        try { out[key] = DBG.safeClone(v[key], depth + 1, seen); }
+        catch (e2) { out[key] = '[tidak terbaca: ' + e2.message + ']'; }
+      }
+      return out;
+    }
+    try { return String(v); } catch (e3) { return '[?]'; }
+  };
+
+  /* ---------- util: masking rahasia (password/token) di TAMPILAN ----------
+     Data asli tetap tersimpan; masking cuma pas render & copy.
+     Toggle "tampilkan rahasia" di header buat buka. */
+  DBG.SECRET_KEY_RE = /password|passwd|secret|apikey|api_key|authorization|access_token|refresh_token|provider_token|token_hash|anon_key/i;
+  DBG.maskValue = function (s) {
+    if (typeof s !== 'string') return s;
+    if (!s) return s;
+    return '•••••• (' + s.length + ' karakter, disembunyikan — toggle "tampilkan rahasia" buat lihat)';
+  };
+  DBG.maskDeep = function (v, keyName, depth) {
+    depth = depth || 0;
+    if (depth > 8) return v;
+    if (typeof v === 'string') {
+      if (keyName && DBG.SECRET_KEY_RE.test(keyName)) return DBG.maskValue(v);
+      return v;
+    }
+    if (Array.isArray(v)) { return v.map(function (x) { return DBG.maskDeep(x, keyName, depth + 1); }); }
+    if (v && typeof v === 'object') {
+      var out = {};
+      for (var k in v) out[k] = DBG.maskDeep(v[k], k, depth + 1);
+      return out;
+    }
+    return v;
+  };
+
+  DBG.pretty = function (payload) {
+    var data = DBG.reveal ? payload : DBG.maskDeep(payload, null, 0);
+    var s;
+    try { s = JSON.stringify(data, null, 2); }
+    catch (e) { s = String(data) + '  (gagal stringify: ' + e.message + ')'; }
+    if (s && s.length > 30000) s = s.slice(0, 30000) + '\n…(dipotong di 30.000 karakter)';
+    return s === undefined ? '(undefined)' : s;
+  };
+
+  DBG.esc = function (s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  };
+
+  /* ---------- util: decode JWT ---------- */
+  DBG.decodeJwt = function (token) {
+    try {
+      if (typeof token !== 'string') return null;
+      var parts = token.split('.');
+      if (parts.length !== 3) return null;
+      function dec(seg) {
+        seg = seg.replace(/-/g, '+').replace(/_/g, '/');
+        seg += '='.repeat((4 - (seg.length % 4)) % 4);
+        return JSON.parse(atob(seg));
+      }
+      var payload = dec(parts[1]);
+      var info = { header: dec(parts[0]), payload: payload };
+      if (payload && payload.exp) {
+        var ms = payload.exp * 1000;
+        info.expiredCheck = {
+          exp_utc: new Date(ms).toISOString(),
+          exp_lokal: new Date(ms).toLocaleString('id-ID'),
+          sudah_expired: ms < Date.now(),
+          sisa_menit: Math.round((ms - Date.now()) / 60000)
+        };
+      }
+      return info;
+    } catch (e) { return null; }
+  };
+
+  /* ---------- LOG ENTRY inti ---------- */
+  // kind: 'ok' | 'error' | 'info' | 'net' | 'event' | 'console'
+  DBG.push = function (kind, title, payload, extra) {
+    var e = {
+      id: ++DBG.entrySeq,
+      kind: kind,
+      title: title,
+      payload: payload,
+      time: DBG.stamp(),
+      ts: Date.now()
+    };
+    if (extra) for (var k in extra) e[k] = extra[k];
+    DBG.entries.push(e);
+    if (DBG.entries.length > DBG.cap) DBG.entries.splice(0, DBG.entries.length - DBG.cap);
+    // mirror ke console asli (bukan yang diproxy) — kecuali entry hasil tangkapan console sendiri
+    if (kind !== 'console' && console.__orig) {
+      var fn = (kind === 'error') ? console.__orig.error : console.__orig.log;
+      try { fn.call(console, '[DBG ' + kind.toUpperCase() + '] ' + title, payload); } catch (ee) {}
+    }
+    if (DBG.ready && DBG.renderEntry) DBG.renderEntry(e);
+    return e;
+  };
+  DBG.ok = function (t, p) { return DBG.push('ok', t, p); };
+  DBG.err = function (t, p) { return DBG.push('error', t, p); };
+  DBG.info = function (t, p) { return DBG.push('info', t, p); };
+  DBG.event = function (t, p) { return DBG.push('event', t, p); };
+
+  /* ---------- 1. proxy console.* ---------- */
+  console.__orig = {};
+  ['log', 'info', 'warn', 'error', 'debug'].forEach(function (m) {
+    console.__orig[m] = console[m] ? console[m].bind(console) : function () {};
+    console[m] = function () {
+      var args = Array.prototype.slice.call(arguments);
+      try { console.__orig[m].apply(console, args); } catch (e) {}
+      try {
+        DBG.push('console', 'console.' + m, args.length === 1 ? DBG.safeClone(args[0]) : args.map(function (a) { return DBG.safeClone(a); }), { level: m });
+      } catch (e2) {}
+    };
+  });
+
+  /* ---------- 2. penangkap error global + gagal load resource ---------- */
+  window.addEventListener('error', function (ev) {
+    var tgt = ev.target;
+    if (tgt && tgt !== window && (tgt.tagName === 'SCRIPT' || tgt.tagName === 'LINK' || tgt.tagName === 'IMG')) {
+      var url = tgt.src || tgt.href || '(tanpa url)';
+      (DBG.fileErrors[url] = DBG.fileErrors[url] || []).push({ type: 'load-failed' });
+      DBG.err('RESOURCE GAGAL DI-LOAD: <' + tgt.tagName.toLowerCase() + '>', {
+        url: url,
+        kemungkinan: [
+          'File tidak ada di path itu (404) / nama file beda',
+          'Huruf besar–kecil beda (di hosting Linux, login.js ≠ Login.js!)',
+          'Kalau CDN: koneksi internet / diblokir adblock / dibuka via file://'
+        ]
+      });
+      return;
+    }
+    var isSyntax = /SyntaxError|Unexpected token|Unexpected identifier|Unexpected end of input/i.test(ev.message || '');
+    if (ev.filename) (DBG.fileErrors[ev.filename] = DBG.fileErrors[ev.filename] || []).push({ type: 'js-error', message: ev.message, line: ev.lineno });
+    DBG.err(isSyntax ? 'SYNTAX ERROR di file JS' : 'JS ERROR (runtime)', {
+      message: ev.message,
+      file: ev.filename || '(inline / tidak diketahui)',
+      baris: ev.lineno,
+      kolom: ev.colno,
+      catatan: isSyntax
+        ? 'SYNTAX ERROR = SELURUH file itu batal dieksekusi. Semua function di dalamnya tidak akan pernah ada, walau file-nya ke-load. Ini beda dengan runtime error biasa.'
+        : undefined,
+      error: ev.error ? DBG.safeClone(ev.error) : undefined
+    });
+  }, true);
+
+  window.addEventListener('unhandledrejection', function (ev) {
+    DBG.err('UNHANDLED PROMISE REJECTION (error async yang tidak di-catch)', DBG.safeClone(ev.reason));
+  });
+
+  /* ---------- 3. pembungkus window.fetch ---------- */
+  DBG.headersToObj = function (h) {
+    var out = {};
+    try {
+      if (!h) return out;
+      if (typeof Headers !== 'undefined' && h instanceof Headers) { h.forEach(function (v, k) { out[k] = v; }); return out; }
+      if (Array.isArray(h)) { h.forEach(function (pair) { out[pair[0]] = pair[1]; }); return out; }
+      for (var k in h) out[k] = h[k];
+    } catch (e) { out['(error baca headers)'] = e.message; }
+    return out;
+  };
+  DBG.parseBody = function (b) {
+    if (b === undefined || b === null) return null;
+    if (typeof b === 'string') { try { return JSON.parse(b); } catch (e) { return b.length > 5000 ? b.slice(0, 5000) + '…' : b; } }
+    if (typeof URLSearchParams !== 'undefined' && b instanceof URLSearchParams) return b.toString();
+    if (typeof FormData !== 'undefined' && b instanceof FormData) return '[FormData]';
+    if (typeof Blob !== 'undefined' && b instanceof Blob) return '[Blob ' + b.size + ' bytes]';
+    return '[' + (b.constructor ? b.constructor.name : typeof b) + ']';
+  };
+  DBG.tagUrl = function (url) {
+    if (/\/auth\/v1\//.test(url)) return 'AUTH';
+    if (/\/rest\/v1\//.test(url)) return 'REST';
+    if (/\/storage\/v1\//.test(url)) return 'STORAGE';
+    if (/\/functions\/v1\//.test(url)) return 'FUNC';
+    return 'LAIN';
+  };
+
+  var origFetch = window.fetch ? window.fetch.bind(window) : null;
+  DBG.rawFetch = origFetch;
+  if (origFetch) {
+    window.fetch = function (input, init) {
+      var id = ++DBG.seq;
+      var started = performance.now();
+      var url = '', method = 'GET', reqHeaders = {}, reqBody = null;
+      try {
+        if (typeof input === 'string') url = input;
+        else if (input && typeof input.url === 'string') url = input.url;
+        else url = String(input);
+        if (init && init.method) method = init.method;
+        else if (input && input.method) method = input.method;
+        method = String(method).toUpperCase();
+        if (input && typeof input.headers === 'object') reqHeaders = DBG.headersToObj(input.headers);
+        if (init && init.headers) { var h2 = DBG.headersToObj(init.headers); for (var k in h2) reqHeaders[k] = h2[k]; }
+        reqBody = DBG.parseBody(init ? init.body : undefined);
+      } catch (e) {}
+
+      var netE = {
+        id: id, kind: 'net', pending: true,
+        tag: DBG.tagUrl(url),
+        method: method, url: url,
+        reqHeaders: reqHeaders, reqBody: reqBody,
+        time: DBG.stamp(), ts: Date.now()
+      };
+      DBG.net.push(netE);
+      DBG.netById[id] = netE;
+      if (DBG.net.length > DBG.cap) { var drop = DBG.net.splice(0, DBG.net.length - DBG.cap); drop.forEach(function (d) { delete DBG.netById[d.id]; }); }
+      if (DBG.ready && DBG.renderNet) DBG.renderNet(netE);
+
+      return origFetch(input, init).then(function (res) {
+        netE.durMs = Math.round(performance.now() - started);
+        netE.pending = false;
+        netE.status = res.status;
+        netE.statusText = res.statusText;
+        netE.ok = res.ok;
+        netE.resHeaders = {};
+        try { res.headers.forEach(function (v, k) { netE.resHeaders[k] = v; }); } catch (e) {}
+        var clone;
+        try { clone = res.clone(); } catch (e) { clone = null; }
+        var finish = function () {
+          if (DBG.ready && DBG.renderNet) DBG.renderNet(netE);
+          DBG.push('net',
+            method + ' ' + (url.length > 90 ? url.slice(0, 90) + '…' : url) + ' → ' + res.status + ' (' + netE.durMs + 'ms)',
+            { lengkapnya: 'lihat tab Network (request #' + id + ')', status: res.status, durasi_ms: netE.durMs },
+            { netId: id, ok: res.ok });
+        };
+        if (clone) {
+          clone.text().then(function (text) {
+            netE.resSize = text.length;
+            if (text.length > 60000) text = text.slice(0, 60000) + '…(dipotong)';
+            try { netE.resBody = JSON.parse(text); } catch (e) { netE.resBody = text; }
+            finish();
+          }).catch(function (e) { netE.resBody = '(gagal baca body: ' + e.message + ')'; finish(); });
+        } else finish();
+        return res;
+      }).catch(function (err) {
+        netE.durMs = Math.round(performance.now() - started);
+        netE.pending = false;
+        netE.networkError = { name: err.name, message: err.message };
+        if (DBG.ready && DBG.renderNet) DBG.renderNet(netE);
+        DBG.err('NETWORK ERROR: ' + method + ' ' + url + ' (' + netE.durMs + 'ms)', {
+          error: { name: err.name, message: err.message },
+          artinya: 'Request TIDAK PERNAH sampai / tidak dijawab server. Ini BUKAN penolakan dari Supabase (kalau Supabase nolak, pasti ada status HTTP 4xx). Cek: URL project benar? internet jalan? CORS? adblock/antivirus? dibuka via file://?',
+          request_ke: url
+        });
+        throw err;
+      });
+    };
+  }
+
+  /* ---------- 4. pembungkus XMLHttpRequest (jaga-jaga kode lama) ---------- */
+  if (window.XMLHttpRequest) {
+    var origOpen = XMLHttpRequest.prototype.open;
+    var origSend = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.open = function (m, u) {
+      this.__dbg = { method: m, url: u };
+      return origOpen.apply(this, arguments);
+    };
+    XMLHttpRequest.prototype.send = function (body) {
+      var self = this, info = this.__dbg || { method: '?', url: '?' };
+      var started = performance.now();
+      this.addEventListener('loadend', function () {
+        var dur = Math.round(performance.now() - started);
+        var kind = (self.status >= 200 && self.status < 400) ? 'ok' : 'error';
+        DBG.push(kind, 'XHR ' + info.method + ' ' + info.url + ' → ' + (self.status || 'GAGAL') + ' (' + dur + 'ms)', {
+          status: self.status, durasi_ms: dur,
+          request_body: DBG.parseBody(body),
+          response: (function () { try { return JSON.parse(self.responseText); } catch (e) { return String(self.responseText || '').slice(0, 3000); } })()
+        });
+      });
+      return origSend.apply(this, arguments);
+    };
+  }
+
+  DBG.info('debug harness aktif (script pertama jalan)', {
+    halaman: 'debug-dashboard.html',
+    protocol: location.protocol,
+    url: location.href,
+    userAgent: navigator.userAgent,
+    online: navigator.onLine,
+    catatan: 'console.log/error, window.fetch, XHR, dan semua JS error mulai detik ini kecatat di panel.'
+  });
+})();
+</script>
+
+<style>
+  * { box-sizing: border-box; }
+  :root {
+    --bg: #0f1117; --panel: #171a23; --panel2: #0a0c11; --line: #262b38;
+    --text: #e5e9f2; --muted: #9aa3b8; --faint: #646d82;
+    --blue: #4f7cff; --ok: #4cd98a; --err: #f0708a; --info: #9db4ff; --warn: #e8b45a;
+    --mono: 'JetBrains Mono', Consolas, 'Courier New', monospace;
+  }
+  body {
+    font-family: -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+    background: var(--bg); color: var(--text); margin: 0; padding: 0;
+    min-height: 100vh;
+  }
+  header.dbg-top {
+    position: sticky; top: 0; z-index: 50;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+    padding: 10px 18px; background: rgba(15,17,23,0.96); border-bottom: 1px solid var(--line);
+  }
+  header .ttl { font-size: 15px; font-weight: 800; }
+  header .ttl small { color: var(--faint); font-weight: 400; margin-left: 8px; font-size: 11.5px; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .chip {
+    font-family: var(--mono); font-size: 10.5px; padding: 3px 8px; border-radius: 20px;
+    border: 1px solid var(--line); color: var(--muted); background: var(--panel);
+  }
+  .chip.good { color: var(--ok); border-color: #1d4030; }
+  .chip.bad  { color: var(--err); border-color: #4a2833; }
+  .chip.warn { color: var(--warn); border-color: #4a3a1c; }
+  .top-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 11.5px; color: var(--muted); }
+  .top-controls label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+  .top-controls select {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 4px 6px; font-size: 11.5px; font-family: inherit;
+  }
+
+  main { display: grid; grid-template-columns: 400px 1fr; gap: 16px; padding: 16px 18px; align-items: start; }
+  @media (max-width: 980px) { main { grid-template-columns: 1fr; } }
+
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+  .card h2 { font-size: 13px; margin: 0 0 10px; display: flex; justify-content: space-between; align-items: center; }
+  .card h2 .sub { font-size: 10.5px; color: var(--faint); font-weight: 400; }
+  .hint { font-size: 11px; color: var(--faint); line-height: 1.5; margin: 6px 0; }
+  .hint b { color: var(--muted); }
+
+  .field { margin-bottom: 10px; }
+  .field label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  .field input, .field select, .field textarea {
+    width: 100%; background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+    padding: 9px 10px; border-radius: 6px; font-size: 13px; font-family: inherit;
+  }
+  .field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--blue); }
+  .field .with-eye { display: flex; gap: 6px; }
+  .field .with-eye input { flex: 1; }
+
+  button { font-family: inherit; cursor: pointer; border: none; border-radius: 6px; padding: 9px 13px; font-size: 12.5px; font-weight: 600; }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn-primary { background: var(--blue); color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: #3f68e0; }
+  .btn-ghost { background: #1f2430; color: var(--text); border: 1px solid #343b4d; }
+  .btn-ghost:hover:not(:disabled) { background: #262b38; }
+  .btn-danger { background: #2e1a20; color: var(--err); border: 1px solid #4a2833; }
+  .btn-danger:hover:not(:disabled) { background: #4a2833; }
+  .btn-sm { padding: 6px 10px; font-size: 11.5px; }
+  .btn-block { width: 100%; }
+  .btn-row { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 8px; }
+  .btn-row > * { flex: 1; min-width: 110px; }
+
+  .status-pre {
+    font-family: var(--mono); font-size: 11px; color: var(--muted); line-height: 1.65;
+    background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin-top: 10px;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .status-pre b { color: var(--text); }
+  .status-pre .good { color: var(--ok); } .status-pre .bad { color: var(--err); } .status-pre .warnc { color: var(--warn); }
+
+  .warnbox {
+    background: #2c2212; border: 1px solid #4a3a1c; color: var(--warn);
+    padding: 10px 12px; border-radius: 8px; font-size: 12px; line-height: 1.55; margin-bottom: 12px;
+  }
+  .warnbox code { background: rgba(0,0,0,0.3); padding: 1px 5px; border-radius: 4px; }
+
+  /* form tabs (replika production) */
+  .auth-tabs { display: flex; gap: 4px; background: var(--panel2); padding: 4px; border-radius: 8px; margin-bottom: 14px; }
+  .auth-tab {
+    flex: 1; text-align: center; font-size: 11.5px; font-weight: 600; color: var(--muted);
+    padding: 7px 4px; border-radius: 6px; cursor: pointer; user-select: none;
+  }
+  .auth-tab.active { background: var(--blue); color: #fff; }
+  .form-msg {
+    display: none; font-size: 12px; padding: 9px 11px; border-radius: 6px; margin-bottom: 10px;
+    border: 1px solid var(--line); background: var(--panel2); color: var(--muted); word-break: break-word;
+  }
+  .form-msg.show { display: block; }
+
+  .pw-check { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 6px; }
+  .pw-check span {
+    font-size: 10px; font-family: var(--mono); padding: 2px 7px; border-radius: 10px;
+    background: var(--panel2); border: 1px solid var(--line); color: var(--faint);
+  }
+  .pw-check span.pass { color: var(--ok); border-color: #1d4030; }
+
+  .linklike { color: var(--info); font-size: 11.5px; cursor: pointer; text-decoration: underline; }
+
+  /* ===== kolom kanan: panel-panel ===== */
+  .right-col { min-width: 0; }
+  .panel-tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 10px; }
+  .panel-tab {
+    font-size: 11.5px; font-weight: 600; color: var(--muted); background: var(--panel);
+    border: 1px solid var(--line); padding: 7px 12px; border-radius: 8px; cursor: pointer; user-select: none;
+  }
+  .panel-tab .cnt { font-family: var(--mono); font-size: 10px; color: var(--faint); margin-left: 5px; }
+  .panel-tab.active { color: #fff; background: #223; border-color: var(--blue); }
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  .toolbar { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+  .toolbar input[type=text] {
+    background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+    border-radius: 6px; padding: 6px 9px; font-size: 11.5px; font-family: var(--mono); flex: 1; min-width: 140px;
+  }
+  .flt { font-size: 10.5px; font-family: var(--mono); padding: 4px 9px; border-radius: 14px;
+    border: 1px solid var(--line); background: var(--panel); color: var(--faint); cursor: pointer; user-select: none; }
+  .flt.on { color: var(--text); border-color: var(--blue); background: #1c2440; }
+
+  .loglist {
+    background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 12px;
+    font-family: var(--mono); font-size: 11.5px; line-height: 1.55;
+    height: calc(100vh - 210px); min-height: 300px; overflow-y: auto;
+  }
+  .entry { margin-bottom: 13px; padding-bottom: 13px; border-bottom: 1px solid #161a24; }
+  .entry:last-child { border-bottom: none; }
+  .entry .tag {
+    display: inline-block; font-size: 9.5px; font-weight: 700; letter-spacing: 0.05em;
+    padding: 2px 7px; border-radius: 4px; margin-right: 7px; vertical-align: middle;
+  }
+  .tag-ok { background: #12291c; color: var(--ok); }
+  .tag-error { background: #2e1a20; color: var(--err); }
+  .tag-info { background: #1c2440; color: var(--info); }
+  .tag-net { background: #202433; color: #b8c4e8; }
+  .tag-event { background: #241c40; color: #c39dff; }
+  .tag-console { background: #1e2229; color: #8fa0b8; }
+  .entry .ttl2 { color: var(--text); font-weight: 600; }
+  .entry .ts { color: var(--faint); font-size: 10px; margin-left: 7px; }
+  .entry pre {
+    margin: 7px 0 0; color: #cfe3ff; white-space: pre-wrap; word-break: break-word;
+    max-height: 300px; overflow: hidden; position: relative; cursor: pointer;
+  }
+  .entry pre.open { max-height: none; }
+  .entry pre.overflowing:not(.open)::after {
+    content: '… klik buat buka semua'; display: block; color: var(--faint);
+    background: linear-gradient(transparent, var(--panel2)); position: absolute; bottom: 0; left: 0; right: 0;
+    padding-top: 24px; text-align: center; font-size: 10px;
+  }
+
+  details.net {
+    background: var(--panel2); border: 1px solid var(--line); border-radius: 8px;
+    margin-bottom: 8px; font-family: var(--mono); font-size: 11.5px; overflow: hidden;
+  }
+  details.net summary { padding: 9px 11px; cursor: pointer; list-style: none; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  details.net summary::-webkit-details-marker { display: none; }
+  details.net .m { font-weight: 700; font-size: 10.5px; }
+  details.net .m.get { color: var(--info); } details.net .m.post { color: var(--warn); }
+  details.net .m.put, details.net .m.patch { color: #c39dff; } details.net .m.delete { color: var(--err); }
+  details.net .st { font-weight: 700; }
+  details.net .st.s2 { color: var(--ok); } details.net .st.s4, details.net .st.s5 { color: var(--err); }
+  details.net .st.pend { color: var(--warn); animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  details.net .u { color: var(--muted); word-break: break-all; flex: 1; min-width: 200px; }
+  details.net .du { color: var(--faint); font-size: 10px; }
+  details.net .body { padding: 0 11px 11px; border-top: 1px dashed var(--line); }
+  details.net .body h4 { font-size: 10px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.06em; margin: 11px 0 4px; }
+  details.net .body pre { margin: 0; color: #cfe3ff; white-space: pre-wrap; word-break: break-word; font-size: 11px; max-height: 320px; overflow: auto; }
+  .netlist { height: calc(100vh - 210px); min-height: 300px; overflow-y: auto; }
+
+  table.tbl { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 11px; }
+  table.tbl th, table.tbl td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); color: var(--muted); vertical-align: top; word-break: break-all; }
+  table.tbl th { color: var(--faint); font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+  table.tbl td.good { color: var(--ok); } table.tbl td.bad { color: var(--err); } table.tbl td.warnc { color: var(--warn); }
+
+  .help { font-size: 12.5px; line-height: 1.65; color: var(--muted); }
+  .help h3 { color: var(--text); font-size: 13px; margin: 18px 0 6px; }
+  .help code { background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; font-size: 11px; }
+  .help pre { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 10px; font-size: 11px; overflow-x: auto; }
+  .help ul { padding-left: 18px; } .help li { margin-bottom: 4px; }
+  .scroller { height: calc(100vh - 210px); min-height: 300px; overflow-y: auto; padding-right: 6px; }
+</style>
+</head>
+<body>
+
+<header class="dbg-top">
+  <div class="ttl">🔧 DEBUG DASHBOARD <small>replika gate session + query data + RLS — Gembel AI PIK</small></div>
+  <div class="chips" id="head-chips"></div>
+  <div class="top-controls">
+    <label title="Kalau nyala: password, token, dan API key ditampilkan utuh di log. Matikan sebelum screenshot/share log!">
+      <input type="checkbox" id="dbg-reveal" onchange="DBG.setReveal(this.checked)"> tampilkan rahasia
+    </label>
+    <label title="Harness = handler bawaan halaman ini (selalu jalan). Produksi = manggil window.handleLogin dkk. dari auth.js lo (harus di-load dulu lewat tab Script).">
+      handler:
+      <select id="dbg-handler-src">
+        <option value="harness">Harness (bawaan)</option>
+        <option value="production">Produksi (auth.js lo)</option>
+      </select>
+    </label>
+  </div>
+</header>
+
+<main>
+<div class="left-col">
+
+  <div id="proto-warn" class="warnbox" style="display:none;"></div>
+
+  <!-- ===== KONFIGURASI SUPABASE ===== -->
+  <div class="card">
+    <h2>1 · Koneksi Supabase <span class="sub">tersimpan di localStorage browser</span></h2>
+    <div class="field">
+      <label>Project URL <span style="color:var(--faint)">(Dashboard → Settings → API → Project URL)</span></label>
+      <input type="text" id="cfg-url" placeholder="https://xxxx.supabase.co" spellcheck="false">
+    </div>
+    <div class="field">
+      <label>Anon public key <span style="color:var(--faint)">(JANGAN service_role!)</span></label>
+      <div class="with-eye">
+        <input type="password" id="cfg-key" placeholder="eyJhbGciOi… / sb_publishable_…" spellcheck="false">
+        <button class="btn-ghost btn-sm" type="button" onclick="DBG.toggleKeyEye()" title="lihat/sembunyikan">👁</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>Redirect URL buat email (reset password / konfirmasi) — opsional</label>
+      <input type="text" id="cfg-redirect" placeholder="http://localhost:5500/debug-dashboard.html" spellcheck="false">
+    </div>
+    <div class="btn-row">
+      <button class="btn-primary" onclick="DBG.saveConfigAndConnect()">🔌 Simpan & buat client</button>
+      <button class="btn-ghost" onclick="DBG.forgetConfig()">Hapus config</button>
+    </div>
+    <div class="field" style="margin-top:10px;">
+      <label>Client yang dipakai tombol-tombol di bawah</label>
+      <div class="with-eye">
+        <select id="client-pick" onchange="DBG.setActiveClient(this.value)">
+          <option value="__none__">(belum ada client)</option>
+        </select>
+        <button class="btn-ghost btn-sm" type="button" onclick="DBG.scanClients(true)" title="scan ulang window.* nyari client Supabase (misal punya supabaseClient.js produksi)">↻ scan</button>
+      </div>
+    </div>
+    <div class="status-pre" id="client-status">memuat status…</div>
+  </div>
+
+  <!-- @@PAGE-CARDS@@ -->
+
+  <!-- ===== SESSION (replika gate dashboard production) ===== -->
+  <div class="card">
+    <h2>2 · Session check <span class="sub">dashboard production nge-gate di sini</span></h2>
+    <div class="hint">dashboard.html production lo pas dibuka biasanya: cek session → kalau kosong, lempar balik ke halaman login. Di sini pengecekan yang SAMA dijalanin otomatis pas load, tapi <b>tanpa redirect</b> — biar kelihatan kenapa lolos / kenapa mental.</div>
+    <div class="status-pre" id="sess-view">belum dicek…</div>
+    <div class="btn-row">
+      <button class="btn-ghost btn-sm act" onclick="DBG.act('sessionCheck')">↻ Cek session + user</button>
+      <button class="btn-ghost btn-sm act" onclick="DBG.act('refreshSession')">Refresh token</button>
+    </div>
+    <div class="btn-row">
+      <button class="btn-danger btn-sm act" onclick="DBG.act('logout')">Logout / signOut</button>
+    </div>
+    <details style="margin-top:10px;">
+      <summary style="cursor:pointer;font-size:11.5px;color:var(--info);">login cepat di sini (tanpa pindah halaman)</summary>
+      <div style="margin-top:8px;">
+        <div class="field"><label>Email</label><input type="email" id="login-email" placeholder="nama@email.com" autocomplete="email"></div>
+        <div class="field"><label>Password</label><input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password"></div>
+        <button class="btn-primary btn-block act" id="login-submit" onclick="DBG.act('login')">Masuk → (signInWithPassword)</button>
+      </div>
+    </details>
+  </div>
+
+  <!-- ===== DATA: PROFIL & REQUESTS ===== -->
+  <div class="card">
+    <h2>3 · Data user (profil & apps) <span class="sub">di sinilah RLS biasanya bikin pusing</span></h2>
+    <div class="hint">Login sukses tapi dashboard kosong/aneh? Biasanya itu bukan auth lagi, tapi <b>query data + RLS policy</b>. Tes satu-satu di sini — hasil MENTAH dari PostgREST masuk ke Log & Network.</div>
+    <div class="field" style="display:flex;gap:6px;">
+      <input type="text" id="q-profile-table" value="user_profiles" spellcheck="false" style="flex:1;" title="nama tabel profil (sesuai schema.sql lo)">
+      <select id="q-profile-col" style="width:110px;" title="kolom yang nyimpen id user">
+        <option value="user_id">user_id</option>
+        <option value="id">id</option>
+      </select>
+      <button class="btn-primary btn-sm act" onclick="DBG.act('fetchProfile')">ambil profil</button>
+    </div>
+    <div class="field" style="display:flex;gap:6px;">
+      <input type="text" id="q-req-table" value="app_request" spellcheck="false" style="flex:1;" title="nama tabel request/order app (sesuai schema.sql lo)">
+      <select id="q-req-col" style="width:110px;" title="kolom yang nyimpen id user">
+        <option value="user_id">user_id</option>
+        <option value="id">id</option>
+      </select>
+      <button class="btn-primary btn-sm act" onclick="DBG.act('fetchRequests')">ambil requests</button>
+    </div>
+    <div class="hint">Dropdown = kolom pemilik row (di-<code>eq</code> ke <code>user.id</code> yang lagi login). Ganti nama tabel kalau di project lo beda.</div>
+  </div>
+
+  <!-- ===== QUERY BEBAS ===== -->
+  <div class="card">
+    <h2>4 · Query bebas <span class="sub">tes tabel apa aja</span></h2>
+    <div class="field" style="display:flex;gap:6px;">
+      <select id="qr-op" style="width:110px;" onchange="document.getElementById('qr-payload-wrap').style.display = this.value==='select' ? 'none' : 'block'">
+        <option value="select">select</option>
+        <option value="insert">insert</option>
+        <option value="update">update</option>
+      </select>
+      <input type="text" id="qr-table" placeholder="nama tabel" spellcheck="false" style="flex:1;">
+    </div>
+    <div class="field" style="display:flex;gap:6px;">
+      <input type="text" id="qr-select" value="*" spellcheck="false" style="flex:1;" title="kolom yang di-select">
+      <input type="text" id="qr-limit" value="5" style="width:60px;" title="limit (select)">
+    </div>
+    <div class="field" style="display:flex;gap:6px;">
+      <input type="text" id="qr-fcol" placeholder="filter kolom (opsional)" spellcheck="false" style="flex:1;">
+      <input type="text" id="qr-fval" placeholder="= nilai ($USER_ID = id user login)" spellcheck="false" style="flex:1;">
+    </div>
+    <div class="field" id="qr-payload-wrap" style="display:none;">
+      <label>payload JSON (insert/update) — ⚠️ NULIS BENERAN ke database lo</label>
+      <textarea id="qr-payload" rows="3" placeholder='{"full_name":"Test"}'></textarea>
+    </div>
+    <button class="btn-primary btn-block act" onclick="DBG.act('runQuery')">▶ jalankan query</button>
+  </div>
+
+  <!-- @@/PAGE-CARDS@@ -->
+
+  <!-- stub elemen production biar auth.js lo nggak crash kalau di-load di halaman ini -->
+  <div style="display:none" aria-hidden="true">
+    <div id="view-landing"></div><div id="view-auth"></div>
+    <div id="tab-login"></div><div id="tab-signup"></div>
+  </div>
+</div>
+
+<!-- ===================== KOLOM KANAN ===================== -->
+<div class="right-col">
+  <div class="panel-tabs">
+    <div class="panel-tab active" id="ptab-log" onclick="DBG.showPanel('log')">📋 Log <span class="cnt" id="cnt-log">0</span></div>
+    <div class="panel-tab" id="ptab-net" onclick="DBG.showPanel('net')">🌐 Network <span class="cnt" id="cnt-net">0</span></div>
+    <div class="panel-tab" id="ptab-script" onclick="DBG.showPanel('script')">📜 Script & Function</div>
+    <div class="panel-tab" id="ptab-storage" onclick="DBG.showPanel('storage')">💾 Storage</div>
+    <div class="panel-tab" id="ptab-help" onclick="DBG.showPanel('help')">🗺️ Peta & Bantuan</div>
+  </div>
+
+  <!-- ---------- PANEL LOG ---------- -->
+  <div class="panel active" id="panel-log">
+    <div class="toolbar">
+      <span class="flt on" data-k="ok" onclick="DBG.toggleFlt(this)">OK</span>
+      <span class="flt on" data-k="error" onclick="DBG.toggleFlt(this)">ERROR</span>
+      <span class="flt on" data-k="info" onclick="DBG.toggleFlt(this)">INFO</span>
+      <span class="flt on" data-k="net" onclick="DBG.toggleFlt(this)">NET</span>
+      <span class="flt on" data-k="event" onclick="DBG.toggleFlt(this)">EVENT</span>
+      <span class="flt on" data-k="console" onclick="DBG.toggleFlt(this)">CONSOLE</span>
+      <input type="text" id="log-search" placeholder="filter teks…" oninput="DBG.rebuildLog()">
+      <button class="btn-ghost btn-sm" onclick="DBG.copyLog()">⧉ salin semua</button>
+      <button class="btn-ghost btn-sm" onclick="DBG.downloadLog()">⬇ JSON</button>
+      <button class="btn-ghost btn-sm" onclick="DBG.clearLog()">bersihkan</button>
+    </div>
+    <div class="loglist" id="log-list"></div>
+  </div>
+
+  <!-- ---------- PANEL NETWORK ---------- -->
+  <div class="panel" id="panel-net">
+    <div class="toolbar">
+      <span class="hint" style="margin:0;">Semua request <code>fetch</code> dari halaman ini — termasuk yang ditembak SDK Supabase. Terbaru di atas. Klik buat lihat headers + body lengkap.</span>
+      <button class="btn-ghost btn-sm" onclick="DBG.clearNet()">bersihkan</button>
+    </div>
+    <div class="netlist" id="net-list"></div>
+  </div>
+
+  <!-- ---------- PANEL SCRIPT ---------- -->
+  <div class="panel" id="panel-script">
+    <div class="scroller">
+      <div class="card">
+        <h2>Load & lacak file JS lo <span class="sub">jawaban buat "sebenernya JS-nya kepanggil dari mana?"</span></h2>
+        <div class="hint">Masukin path file JS (relatif dari folder halaman ini). Harness bakal: ① cek dulu file itu ADA atau nggak (status HTTP), ② load beneran, ③ nunjukin <b>function/global apa aja yang muncul</b> gara-gara file itu. Kalau file-nya syntax error, bakal kelihatan juga.</div>
+        <div class="field" style="display:flex;gap:6px;">
+          <input type="text" id="trace-path" placeholder="auth.js" spellcheck="false" style="flex:1;">
+          <button class="btn-primary btn-sm" id="trace-btn" onclick="DBG.traceScript(document.getElementById('trace-path').value)">Load & lacak</button>
+        </div>
+        <div class="btn-row" id="trace-quick"></div>
+        <div id="script-list" style="margin-top:12px;"></div>
+      </div>
+
+      <div class="card">
+        <h2>Cek file project <span class="sub">file mana ada di mana (root vs assets/)</span></h2>
+        <div class="hint">Ngecek satu-satu file yang direferensiin HTML lo — biar ketahuan yang 404 (ini biang kerok CSS/JS "nggak jalan"). Jalanin ulang setelah lo mindahin/rename file.</div>
+        <button class="btn-ghost btn-sm" onclick="DBG.checkFiles()">▶ jalankan pengecekan</button>
+        <div id="filecheck-out" style="margin-top:10px;"></div>
+      </div>
+
+      <div class="card">
+        <h2>Peta function <span class="sub">function global yang dipanggil onclick di HTML lo</span></h2>
+        <div class="hint">HTML production lo manggil function-function ini lewat <code>onclick</code>. Kalau statusnya <b>tidak ada</b>, klik tombolnya diem aja / error — biasanya karena file JS yang mendefinisikan nggak ke-load (path salah / 404 / syntax error).</div>
+        <button class="btn-ghost btn-sm" onclick="DBG.refreshFnMap()">↻ refresh</button>
+        <div style="display:flex;gap:6px;margin-top:8px;">
+          <input type="text" id="fn-custom" placeholder="cek nama function lain…" spellcheck="false"
+                 style="flex:1;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:6px 9px;font-size:11.5px;font-family:var(--mono);">
+          <button class="btn-ghost btn-sm" onclick="DBG.checkCustomFn()">cek</button>
+        </div>
+        <div id="fnmap-out" style="margin-top:10px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ---------- PANEL STORAGE ---------- -->
+  <div class="panel" id="panel-storage">
+    <div class="toolbar">
+      <span class="hint" style="margin:0;">Session Supabase disimpan di <code>localStorage</code> dengan key <code>sb-&lt;ref&gt;-auth-token</code>. Di sini bisa lihat isinya + decode token-nya.</span>
+      <label style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:4px;">
+        <input type="checkbox" id="storage-all" onchange="DBG.renderStorage()"> semua key
+      </label>
+      <button class="btn-ghost btn-sm" onclick="DBG.renderStorage()">↻ refresh</button>
+    </div>
+    <div class="scroller" id="storage-list"></div>
+  </div>
+
+  <!-- ---------- PANEL HELP ---------- -->
+  <div class="panel" id="panel-help">
+    <div class="scroller help">
+      <h3>🐛 Bug NYATA yang ketemu di repo lo (gembel.store) — udah dibenerin</h3>
+      <ul>
+        <li><b>💣 assets/dashboard.js ISINYA HTML, bukan JavaScript</b> — hasil copy-paste keliru: satu halaman HTML utuh kesimpen dengan nama .js. Browser mengeksekusinya sebagai JS → <code>SyntaxError: Unexpected token '&lt;'</code> → <b>seluruh file batal jalan</b> → <code>switchTab</code>, <code>submitRequest</code>, <code>saveProfile</code>, <code>loadRequests</code> tidak pernah ada → dashboard mati total & diam. Fix: JS asli diekstrak dari dalam HTML itu, jadi <code>assets/dashboard.js</code> yang beneran JS.</li>
+        <li><b>assets/dashboard.css TIDAK PERNAH ADA</b> — <code>dashboard.html</code> me-request file itu → 404. Semua style dashboard sebenarnya sudah ada di <code>app-theme.css</code>, jadi referensinya dihapus saja.</li>
+        <li><b>TEST/Login.html: nama file beda huruf besar-kecil</b> — dia minta <code>loginsupabase.js</code> &amp; <code>login.js</code>, padahal file aslinya <code>Loginsupabase.js</code> &amp; <code>Login.js</code>. Di Windows lokal jalan (case-insensitive), begitu dideploy ke hosting Linux → 404 diam-diam. Fix: referensinya disamakan persis. (File <code>Loginsupabase - Copy.js</code> yang lo upload berisi <code>const SUPABASE_URL =</code> kosong = syntax error — untungnya itu cuma copy; versi aslinya sudah terisi.)</li>
+        <li><b>Catatan penting (bukan bug, tapi jebakan):</b> <code>assets/supabaseClient.js</code> lo melakukan <code>window.supabase = createClient(...)</code> — MENIMPA namespace SDK dengan client. Konsisten dipakai di semua halaman lo sekarang, tapi script apa pun yang di-load setelahnya dan berharap <code>supabase.createClient</code> bakal bingung. Halaman debug ini sudah mengamankan SDK-nya duluan di <code>window.supabaseSdk</code>.</li>
+      </ul>
+
+      <h3>🗺️ Peta: HTML mana manggil JS apa (struktur asli repo lo)</h3>
+      <pre>index.html       → CDN supabase → assets/supabaseClient.js → assets/auth.js → index.js   (SEMUA ADA ✓)
+                   index.js : handleLogin, handleSignup, handleVerifyOtp, handleResendOtp,
+                              handleForgotPassword, handleResetPassword, switchAuthTab, showView,
+                              routeAfterLogin, friendlyAuthError
+                   auth.js  : getSessionUser, getProfile(user_profiles), requireAuth, logout,
+                              openPaymentModal, isElite, validatePasswordStrength, toggleTheme
+                   supabaseClient.js : window.supabase = createClient(URL, key)  ← client (menimpa SDK)
+
+dashboard.html   → CDN → assets/supabaseClient.js → assets/auth.js → assets/dashboard.js
+                   dashboard.js : switchTab, loadRequests(app_request), submitRequest,
+                                  fillProfile, saveProfile(user_profiles), renderInstalledApps
+                   (file inilah yang tadinya berisi HTML → dashboard mati)
+
+TEST/Login.html  → CDN → Loginsupabase.js (bikin window.sb) → Login.js (tombol test lama lo)</pre>
+      <p>Cara kerjanya: <code>onclick="handleLogin()"</code> di HTML nyari <b>function global</b> bernama itu.
+      Function itu harus dibuat oleh salah satu file JS yang ke-load. File 404 / syntax error → function nggak ada →
+      klik nggak ngapa-ngapain. Urutan <code>&lt;script&gt;</code> juga ngaruh: kalau dua file mendefinisikan function
+      dengan nama sama (misal <code>handleLogin</code> ada di <code>auth.js</code> DAN <code>login.js</code>), <b>yang di-load
+      paling akhir yang menang</b> — diam-diam.</p>
+
+      <h3>🚀 Cara jalanin (WAJIB via local server, jangan double-click)</h3>
+      <pre># di folder project lo:
+python -m http.server 5500
+# buka:  http://localhost:5500/debug-dashboard.html
+
+# atau VS Code: install extension "Live Server"
+# klik kanan debug-login.html → Open with Live Server</pre>
+
+      <h3>📖 Arti error Supabase yang sering muncul</h3>
+      <table class="tbl">
+        <tr><th>error.code / pesan</th><th>artinya</th></tr>
+        <tr><td>invalid_credentials</td><td>Email/password salah — ATAU user-nya memang belum ada. Supabase sengaja nggak bedain demi keamanan.</td></tr>
+        <tr><td>email_not_confirmed</td><td>Akun ada tapi email belum diverifikasi → selesaikan OTP dulu (tab Kode OTP).</td></tr>
+        <tr><td>user_already_exists / email_exists</td><td>Email udah terdaftar. Catatan: signUp kadang "sukses" tapi <code>identities</code> kosong = juga tanda email udah terdaftar.</td></tr>
+        <tr><td>weak_password / validation_failed</td><td>Password nggak lolos policy project (panjang/huruf besar/angka/simbol).</td></tr>
+        <tr><td>over_email_send_rate_limit</td><td>Kebanyakan minta email (free tier ±2-4/jam!). Tunggu, atau set custom SMTP.</td></tr>
+        <tr><td>otp_expired / Token has expired or is invalid</td><td>Kode kadaluarsa, udah kepake, ATAU <b>type verifyOtp-nya salah</b> (signup vs recovery vs email).</td></tr>
+        <tr><td>refresh_token_not_found / invalid</td><td>Session lokal basi (token udah dirotasi di tempat lain). Logout → login ulang. Cek tab Storage.</td></tr>
+        <tr><td>Failed to fetch (exception, bukan error Supabase)</td><td>Request nggak nyampe: URL project salah, internet, CORS, adblock, atau file://.</td></tr>
+        <tr><td>429</td><td>Rate limit. Lihat body response buat detailnya.</td></tr>
+      </table>
+
+            <h3>🔐 RLS (Row Level Security) — penyebab #1 "login sukses tapi data kosong"</h3>
+      <ul>
+        <li>RLS itu <b>filter diam-diam</b>: SELECT yang nggak diizinin policy hasilnya <b>array kosong</b>, BUKAN error. Dashboard jadi kelihatan "kosong" padahal query "sukses".</li>
+        <li><code>42501</code> = operasi ditolak policy (sering kena pas INSERT/UPDATE).</li>
+        <li><code>PGRST116</code> = pakai <code>.single()</code> tapi 0 baris → profil belum dibuat (trigger signup jalan?) atau kefilter RLS.</li>
+        <li>Contoh policy minimal buat tabel profil (SQL editor Supabase):</li>
+      </ul>
+      <pre>-- Schema lo (Clauder/schema.sql) SUDAH punya policy-nya:
+--   user_profiles_select_own_or_admin  (select: auth.uid() = user_id / admin)
+--   user_profiles_update_own_or_admin
+--   app_request_select_own_or_admin / app_request_insert_own
+-- Kalau data kosong padahal login sukses, cek policy itu beneran
+-- ke-apply di project Supabase lo:
+select tablename, policyname from pg_policies
+ where schemaname = 'public';
+-- Kalau kosong → schema.sql belum pernah dijalanin penuh di project ini.</pre>
+      <ul>
+        <li>Habis login, request data harus bawa JWT role <code>authenticated</code> — cek di tab Network bagian "Token JWT terdeteksi". Kalau masih <code>anon</code>: session nggak kebawa (client beda instance / beda storage key).</li>
+      </ul>
+
+      <h3>🔬 Urutan debug yang disaranin</h3>
+      <ul>
+        <li>1. Isi config → lihat status client: URL & key kebaca? ref URL == ref di key?</li>
+        <li>2. Tab Script → "Cek file project" → pastiin file mana yang 404.</li>
+        <li>3. Coba login → baca entry ERROR paling atas di Log; <code>error.code</code> & <code>status</code> adalah kuncinya.</li>
+        <li>4. Buka tab Network → lihat request-nya beneran kekirim ke mana & server jawab apa (mentah).</li>
+        <li>5. Ternyata masalahnya di auth (belum bisa login)? → balik ke <a href="debug-login.html" style="color:var(--info)">debug-login.html</a>.</li>
+        <li>6. Mau ngetes kode produksi lo? → tab Script → load <code>auth.js</code> → ganti dropdown handler (pojok kanan atas) ke "Produksi" → klik tombol form. Sekarang yang jalan function LO, dengan semua request tetap kecatat.</li>
+      </ul>
+      <p style="color:var(--faint)">Log bisa disalin/diunduh (toolbar tab Log) — kirim aja hasilnya kalau mau dibantu baca. Password & token otomatis disamarkan kecuali toggle "tampilkan rahasia" dinyalain.</p>
+    </div>
+  </div>
+</div>
+</main>
+
+<!-- CDN Supabase — kalau gagal load bakal kecatat oleh harness -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+  // Simpan namespace SDK SEBELUM ketimpa apa pun (gotcha lama lo:
+  // window.supabase dari CDN itu namespace {createClient}, BUKAN client!)
+  window.supabaseSdk = window.supabase;
+  if (window.supabaseSdk && window.supabaseSdk.createClient) {
+    DBG.ok('SDK Supabase (CDN) ke-load', { punya_createClient: true });
+  } else {
+    DBG.err('SDK Supabase (CDN) TIDAK ke-load', {
+      'window.supabase': typeof window.supabase,
+      kemungkinan: ['tidak ada internet', 'diblokir adblock/antivirus', 'dibuka via file:// dan browser memblokir', 'cdn.jsdelivr.net tidak bisa diakses'],
+      solusi: 'buka DevTools tab Network, cari request ke cdn.jsdelivr.net — statusnya apa?'
+    });
+  }
+</script>
+
+<script>
+/* ================================================================
+   BAGIAN 2: UI + aksi. Jalan setelah DOM & CDN.
+================================================================ */
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+
+  /* @@PAGE-CONF@@ */
+  DBG.pageConf = {
+    name: 'dashboard',
+    prodFnNames: ['switchTab', 'logout', 'submitRequest', 'saveProfile', 'loadRequests', 'fillProfile', 'renderInstalledApps', 'openPaymentModal', 'requireAuth', 'getProfile', 'getSessionUser', 'isElite', 'toggleTheme'],
+    actToProd: { logout: 'logout' },
+    traceQuick: ['supabaseClient.js', 'auth.js', 'dashboard.js', 'assets/supabaseClient.js', 'assets/auth.js', 'assets/dashboard.js']
+  };
+  /* @@/PAGE-CONF@@ */
+
+  DBG.checkFilesList = ['app-theme.css', 'dashboard.css', 'supabaseClient.js', 'auth.js', 'index.js', 'dashboard.js', 'loginsupabase.js', 'login.js'];
+
+  /* ---------------- render log ---------------- */
+  DBG.flt = { ok: true, error: true, info: true, net: true, event: true, console: true };
+
+  DBG.matchesFilter = function (e) {
+    if (!DBG.flt[e.kind]) return false;
+    var q = ($('log-search').value || '').toLowerCase();
+    if (!q) return true;
+    try {
+      return (e.title + ' ' + JSON.stringify(e.payload)).toLowerCase().indexOf(q) !== -1;
+    } catch (er) { return true; }
+  };
+
+  DBG.entryNode = function (e) {
+    var div = document.createElement('div');
+    div.className = 'entry';
+    div.dataset.kind = e.kind;
+    var tagTxt = e.kind === 'console' ? ('CONSOLE.' + (e.level || 'log').toUpperCase()) : e.kind.toUpperCase();
+    var pretty = DBG.pretty(e.payload);
+    div.innerHTML =
+      '<span class="tag tag-' + e.kind + '">' + tagTxt + '</span>' +
+      '<span class="ttl2">' + DBG.esc(e.title) + '</span>' +
+      '<span class="ts">' + e.time + '</span>' +
+      (pretty && pretty !== '{}' && pretty !== 'null' ? '<pre>' + DBG.esc(pretty) + '</pre>' : '');
+    var pre = div.querySelector('pre');
+    if (pre) {
+      pre.addEventListener('click', function () { pre.classList.toggle('open'); });
+      requestAnimationFrame(function () { if (pre.scrollHeight > 300) pre.classList.add('overflowing'); });
+    }
+    return div;
+  };
+
+  DBG.renderEntry = function (e) {
+    $('cnt-log').textContent = DBG.entries.length;
+    if (!DBG.matchesFilter(e)) return;
+    var list = $('log-list');
+    list.insertBefore(DBG.entryNode(e), list.firstChild);
+    while (list.children.length > DBG.cap) list.removeChild(list.lastChild);
+  };
+
+  DBG.rebuildLog = function () {
+    var list = $('log-list');
+    list.innerHTML = '';
+    for (var i = 0; i < DBG.entries.length; i++) {
+      var e = DBG.entries[i];
+      if (DBG.matchesFilter(e)) list.insertBefore(DBG.entryNode(e), list.firstChild);
+    }
+    $('cnt-log').textContent = DBG.entries.length;
+  };
+
+  DBG.toggleFlt = function (el) {
+    var k = el.dataset.k;
+    DBG.flt[k] = !DBG.flt[k];
+    el.classList.toggle('on', DBG.flt[k]);
+    DBG.rebuildLog();
+  };
+
+  DBG.clearLog = function () { DBG.entries = []; DBG.rebuildLog(); };
+
+  DBG.logAsText = function () {
+    var lines = ['=== DEBUG LOG — ' + location.href + ' — diexport ' + new Date().toISOString() + ' ==='];
+    for (var i = 0; i < DBG.entries.length; i++) {
+      var e = DBG.entries[i];
+      lines.push('[' + e.time + '] [' + e.kind.toUpperCase() + '] ' + e.title);
+      var p = DBG.pretty(e.payload);
+      if (p && p !== 'null') lines.push(p);
+      lines.push('');
+    }
+    return lines.join('\n');
+  };
+  DBG.copyLog = function () {
+    var txt = DBG.logAsText();
+    function done(okk) { DBG.info(okk ? 'log tersalin ke clipboard (' + txt.length + ' karakter)' : 'gagal salin — pakai tombol ⬇ JSON aja', {}); }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(function () { done(true); }, function () { done(false); });
+    else done(false);
+  };
+  DBG.downloadLog = function () {
+    var data = { exportedAt: new Date().toISOString(), page: DBG.pageConf.name, url: location.href, reveal: DBG.reveal, entries: DBG.reveal ? DBG.entries : DBG.maskDeep(DBG.entries, null, 0), network: DBG.reveal ? DBG.net : DBG.maskDeep(DBG.net, null, 0) };
+    var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'debug-log-' + DBG.pageConf.name + '-' + Date.now() + '.json';
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
+  };
+
+  /* ---------------- render network ---------------- */
+  DBG.netNode = function (e) {
+    var d = document.createElement('details');
+    d.className = 'net';
+    d.dataset.netId = e.id;
+    var stCls = e.pending ? 'pend' : (e.networkError ? 's5' : ('s' + String(e.status)[0]));
+    var stTxt = e.pending ? '⏳ pending' : (e.networkError ? '✗ NETWORK ERROR' : e.status + ' ' + (e.statusText || ''));
+    var shortUrl = e.url.replace(/^https?:\/\/[^\/]+/, '') || e.url;
+    var html =
+      '<summary>' +
+      '<span class="m ' + e.method.toLowerCase() + '">' + e.method + '</span>' +
+      '<span class="chip">' + e.tag + '</span>' +
+      '<span class="u">' + DBG.esc(shortUrl) + '</span>' +
+      '<span class="st ' + stCls + '">' + DBG.esc(stTxt) + '</span>' +
+      (e.durMs != null ? '<span class="du">' + e.durMs + 'ms</span>' : '') +
+      '</summary><div class="body">';
+    html += '<h4>URL lengkap</h4><pre>' + DBG.esc(e.url) + '</pre>';
+    html += '<h4>Request headers</h4><pre>' + DBG.esc(DBG.pretty(e.reqHeaders)) + '</pre>';
+    if (e.reqBody !== null && e.reqBody !== undefined) html += '<h4>Request body</h4><pre>' + DBG.esc(DBG.pretty(e.reqBody)) + '</pre>';
+    if (e.networkError) html += '<h4 style="color:var(--err)">Network error (request tidak terjawab)</h4><pre>' + DBG.esc(DBG.pretty(e.networkError)) + '</pre>';
+    if (!e.pending && !e.networkError) {
+      html += '<h4>Response headers</h4><pre>' + DBG.esc(DBG.pretty(e.resHeaders)) + '</pre>';
+      html += '<h4>Response body' + (e.resSize != null ? ' (' + e.resSize + ' bytes)' : '') + '</h4><pre>' + DBG.esc(DBG.pretty(e.resBody)) + '</pre>';
+      var jwts = DBG.collectJwts(e);
+      if (jwts.length) {
+        html += '<h4>🔎 Token JWT terdeteksi (di-decode)</h4><pre>' + DBG.esc(DBG.pretty(jwts)) + '</pre>';
+      }
+    }
+    html += '</div>';
+    d.innerHTML = html;
+    return d;
+  };
+
+  DBG.collectJwts = function (e) {
+    var out = [];
+    function tryTok(label, tok) {
+      var d = DBG.decodeJwt(tok);
+      if (d) out.push({ dari: label, role: d.payload.role, ref: d.payload.ref, sub: d.payload.sub, email: d.payload.email, exp: d.expiredCheck });
+    }
+    try {
+      if (e.reqHeaders) {
+        var auth = e.reqHeaders.Authorization || e.reqHeaders.authorization;
+        if (auth && /^Bearer /.test(auth)) tryTok('request Authorization', auth.slice(7));
+        if (e.reqHeaders.apikey) tryTok('request apikey', e.reqHeaders.apikey);
+      }
+      if (e.resBody && typeof e.resBody === 'object') {
+        if (e.resBody.access_token) tryTok('response access_token', e.resBody.access_token);
+        if (e.resBody.session && e.resBody.session.access_token) tryTok('response session.access_token', e.resBody.session.access_token);
+      }
+    } catch (er) {}
+    return out;
+  };
+
+  DBG.renderNet = function (e) {
+    $('cnt-net').textContent = DBG.net.length;
+    var list = $('net-list');
+    var existing = list.querySelector('[data-net-id="' + e.id + '"]');
+    var node = DBG.netNode(e);
+    if (existing) { node.open = existing.open; list.replaceChild(node, existing); }
+    else list.insertBefore(node, list.firstChild);
+    while (list.children.length > DBG.cap) list.removeChild(list.lastChild);
+  };
+  DBG.rebuildNet = function () {
+    var list = $('net-list'); list.innerHTML = '';
+    for (var i = 0; i < DBG.net.length; i++) list.insertBefore(DBG.netNode(DBG.net[i]), list.firstChild);
+    $('cnt-net').textContent = DBG.net.length;
+  };
+  DBG.clearNet = function () { DBG.net = []; DBG.netById = {}; DBG.rebuildNet(); };
+
+  DBG.setReveal = function (on) {
+    DBG.reveal = !!on;
+    DBG.rebuildLog(); DBG.rebuildNet(); DBG.renderStorage();
+    DBG.info(on ? '⚠️ rahasia DITAMPILKAN di log (jangan screenshot/share dulu!)' : 'rahasia disamarkan lagi', {});
+  };
+
+  /* ---------------- panel switching ---------------- */
+  DBG.showPanel = function (name) {
+    ['log', 'net', 'script', 'storage', 'help'].forEach(function (n) {
+      var p = $('panel-' + n), t = $('ptab-' + n);
+      if (p) p.classList.toggle('active', n === name);
+      if (t) t.classList.toggle('active', n === name);
+    });
+    if (name === 'storage') DBG.renderStorage();
+  };
+
+  DBG.showForm = function (name) {
+    ['login', 'signup', 'otp', 'reset'].forEach(function (n) {
+      var f = $(n + '-form'); if (f) f.style.display = (n === name) ? 'block' : 'none';
+      var t = $('dtab-' + n); if (t) t.classList.toggle('active', n === name);
+    });
+  };
+
+  /* ---------------- config & client ---------------- */
+  DBG.CFG_URL_KEY = 'DBG_SUPABASE_URL';
+  DBG.CFG_KEY_KEY = 'DBG_SUPABASE_ANON_KEY';
+
+  DBG.toggleKeyEye = function () {
+    var i = $('cfg-key'); i.type = (i.type === 'password') ? 'text' : 'password';
+  };
+
+  DBG.keyInfo = function (key) {
+    if (!key) return { format: '(kosong)' };
+    if (/^sb_publishable_/.test(key)) return { format: 'publishable key (format baru, bukan JWT — nggak bisa di-decode, itu normal)' };
+    if (/^sb_secret_/.test(key)) return { format: '🚨 SECRET KEY! JANGAN dipakai di browser! Ganti pakai anon/publishable key!' };
+    var d = DBG.decodeJwt(key);
+    if (!d) return { format: 'bukan JWT valid — yakin ini anon key? (harus mulai "eyJ" atau "sb_publishable_")' };
+    var out = { format: 'JWT legacy', role: d.payload.role, ref: d.payload.ref, exp: d.expiredCheck };
+    if (d.payload.role === 'service_role') out.PERINGATAN = '🚨 Ini SERVICE_ROLE key — nggak boleh ada di browser! Pakai anon key!';
+    return out;
+  };
+
+  DBG.urlRef = function (url) {
+    try { return new URL(url).hostname.split('.')[0]; } catch (e) { return null; }
+  };
+
+  DBG.saveConfigAndConnect = function () {
+    var url = $('cfg-url').value.trim().replace(/\/+$/, '');
+    var key = $('cfg-key').value.trim();
+    if (!url || !key) { DBG.err('config belum lengkap', { url_terisi: !!url, key_terisi: !!key }); return; }
+    try { localStorage.setItem(DBG.CFG_URL_KEY, url); localStorage.setItem(DBG.CFG_KEY_KEY, key); } catch (e) {}
+    DBG.createOwnClient(url, key);
+  };
+
+  DBG.forgetConfig = function () {
+    try { localStorage.removeItem(DBG.CFG_URL_KEY); localStorage.removeItem(DBG.CFG_KEY_KEY); } catch (e) {}
+    $('cfg-url').value = ''; $('cfg-key').value = '';
+    DBG.ownClient = null;
+    DBG.scanClients(false);
+    DBG.info('config dihapus dari localStorage', {});
+    DBG.renderClientStatus();
+  };
+
+  DBG.createOwnClient = function (url, key) {
+    if (!window.supabaseSdk || !window.supabaseSdk.createClient) {
+      DBG.err('nggak bisa bikin client — SDK CDN tidak ke-load', { solusi: 'lihat entry error SDK di atas / cek internet' });
+      return;
+    }
+    var ki = DBG.keyInfo(key);
+    var uref = DBG.urlRef(url);
+    if (ki.ref && uref && ki.ref !== uref) {
+      DBG.err('⚠️ URL dan ANON KEY BEDA PROJECT! Ini bikin semua auth gagal.', {
+        ref_dari_url: uref, ref_dari_key: ki.ref,
+        solusi: 'ambil URL + anon key dari project yang SAMA di dashboard Supabase'
+      });
+    }
+    try {
+      DBG.ownClient = window.supabaseSdk.createClient(url, key);
+      window.sbDebug = DBG.ownClient; // buat dicolek dari DevTools
+      DBG.ok('client harness dibuat (window.sbDebug)', { url: url, key_info: ki, storage_key_session: 'sb-' + (uref || '?') + '-auth-token' });
+      DBG.scanClients(false);
+      DBG.setActiveClient('__harness__');
+    } catch (e) {
+      DBG.err('createClient GAGAL', DBG.safeClone(e));
+    }
+  };
+
+  /* cari client Supabase lain yang dibikin script produksi lo (var global) */
+  DBG.foundClients = {};
+  DBG.scanClients = function (verbose) {
+    DBG.foundClients = {};
+    var names = Object.getOwnPropertyNames(window);
+    for (var i = 0; i < names.length; i++) {
+      var k = names[i];
+      if (k === 'sbDebug') continue;
+      var v;
+      try { v = window[k]; } catch (e) { continue; }
+      try {
+        if (v && typeof v === 'object' && v.auth && typeof v.auth.signInWithPassword === 'function' && typeof v.from === 'function') {
+          DBG.foundClients[k] = v;
+        }
+      } catch (e2) {}
+    }
+    var pick = $('client-pick');
+    var cur = DBG.activeClientKey;
+    pick.innerHTML = '';
+    function opt(val, label) { var o = document.createElement('option'); o.value = val; o.textContent = label; pick.appendChild(o); }
+    if (DBG.ownClient) opt('__harness__', 'client harness (dari config di atas)');
+    Object.keys(DBG.foundClients).forEach(function (k) { opt('win:' + k, 'window.' + k + ' (client dari script lain — mis. produksi)'); });
+    if (!pick.children.length) opt('__none__', '(belum ada client — isi config dulu)');
+    var vals = Array.prototype.map.call(pick.children, function (o) { return o.value; });
+    pick.value = vals.indexOf(cur) !== -1 ? cur : vals[0];
+    DBG.activeClientKey = pick.value;
+    if (verbose) DBG.info('scan client selesai', { client_harness: !!DBG.ownClient, client_dari_window: Object.keys(DBG.foundClients), catatan: 'kalau supabaseClient.js produksi lo bikin client dengan const (bukan var/window.xxx), dia nggak kelihatan di scan ini — tapi tetap bisa dites lewat handler Produksi.' });
+    DBG.renderClientStatus();
+    DBG.watchAuth();
+  };
+
+  DBG.client = function () {
+    if (DBG.activeClientKey === '__harness__') return DBG.ownClient;
+    if (DBG.activeClientKey && DBG.activeClientKey.indexOf('win:') === 0) return DBG.foundClients[DBG.activeClientKey.slice(4)] || null;
+    return null;
+  };
+
+  DBG.setActiveClient = function (key) {
+    DBG.activeClientKey = key;
+    DBG.renderClientStatus();
+    DBG.watchAuth();
+  };
+
+  DBG.renderClientStatus = function () {
+    var el = $('client-status');
+    var c = DBG.client();
+    var url = null;
+    try { url = localStorage.getItem(DBG.CFG_URL_KEY); } catch (e) {}
+    var key = null;
+    try { key = localStorage.getItem(DBG.CFG_KEY_KEY); } catch (e) {}
+    var lines = [];
+    lines.push('<b>Protocol :</b> ' + location.protocol + (location.protocol === 'file:' ? ' <span class="bad">✗ (pakai local server!)</span>' : ' <span class="good">✓</span>'));
+    lines.push('<b>SDK CDN  :</b> ' + (window.supabaseSdk && window.supabaseSdk.createClient ? '<span class="good">ke-load ✓</span>' : '<span class="bad">TIDAK ✗</span>'));
+    if (c) {
+      var label = DBG.activeClientKey === '__harness__' ? 'harness' : DBG.activeClientKey.replace('win:', 'window.');
+      lines.push('<b>Client   :</b> <span class="good">aktif ✓</span> (' + DBG.esc(label) + ')');
+      if (DBG.activeClientKey === '__harness__' && url) {
+        lines.push('<b>URL      :</b> ' + DBG.esc(url));
+        if (key) {
+          var ki = DBG.keyInfo(key);
+          lines.push('<b>Anon key :</b> ' + DBG.esc(key.slice(0, 10)) + '… (' + key.length + ' kar, ' + DBG.esc(ki.format || '') + (ki.role ? ', role=' + DBG.esc(ki.role) : '') + ')');
+          if (ki.exp && ki.exp.sudah_expired) lines.push('<span class="bad">⚠ anon key EXPIRED!</span>');
+          if (ki.PERINGATAN) lines.push('<span class="bad">' + DBG.esc(ki.PERINGATAN) + '</span>');
+          var uref = DBG.urlRef(url);
+          if (ki.ref && uref) lines.push('<b>Ref cek  :</b> url=' + DBG.esc(uref) + ' vs key=' + DBG.esc(ki.ref) + (uref === ki.ref ? ' <span class="good">cocok ✓</span>' : ' <span class="bad">BEDA PROJECT ✗</span>'));
+        }
+      }
+    } else {
+      lines.push('<b>Client   :</b> <span class="bad">belum ada ✗</span> — isi URL + anon key di atas lalu klik "Simpan & buat client"');
+    }
+    el.innerHTML = lines.join('<br>');
+    DBG.renderHeadChips();
+  };
+
+  DBG.renderHeadChips = function () {
+    var chips = [];
+    chips.push('<span class="chip ' + (location.protocol === 'file:' ? 'bad' : 'good') + '">' + location.protocol + '//</span>');
+    chips.push('<span class="chip ' + (window.supabaseSdk && window.supabaseSdk.createClient ? 'good' : 'bad') + '">SDK</span>');
+    chips.push('<span class="chip ' + (DBG.client() ? 'good' : 'bad') + '">client</span>');
+    chips.push('<span class="chip ' + (navigator.onLine ? 'good' : 'bad') + '">' + (navigator.onLine ? 'online' : 'OFFLINE') + '</span>');
+    $('head-chips').innerHTML = chips.join('');
+  };
+
+  /* ---------------- auth state watcher ---------------- */
+  DBG.watchAuth = function () {
+    if (DBG.authSub) { try { DBG.authSub.unsubscribe(); } catch (e) {} DBG.authSub = null; }
+    var c = DBG.client();
+    if (!c || !c.auth || !c.auth.onAuthStateChange) return;
+    try {
+      var r = c.auth.onAuthStateChange(function (event, session) {
+        DBG.event('onAuthStateChange → ' + event, {
+          event: event,
+          user: session && session.user ? { id: session.user.id, email: session.user.email, confirmed_at: session.user.email_confirmed_at } : null,
+          access_token: session ? session.access_token : null,
+          expires_at: session && session.expires_at ? new Date(session.expires_at * 1000).toLocaleString('id-ID') : null
+        });
+        if (event === 'PASSWORD_RECOVERY') DBG.info('🔑 event PASSWORD_RECOVERY — sekarang lo bisa set password baru di tab "Reset pass"', {});
+      });
+      DBG.authSub = r && r.data ? r.data.subscription : null;
+    } catch (e) { DBG.err('gagal pasang onAuthStateChange', DBG.safeClone(e)); }
+  };
+
+  /* ---------------- password policy checker ---------------- */
+  DBG.pwRules = [
+    { k: '≥8 karakter', f: function (p) { return p.length >= 8; } },
+    { k: 'huruf besar', f: function (p) { return /[A-Z]/.test(p); } },
+    { k: 'huruf kecil', f: function (p) { return /[a-z]/.test(p); } },
+    { k: 'angka', f: function (p) { return /[0-9]/.test(p); } },
+    { k: 'simbol', f: function (p) { return /[^A-Za-z0-9]/.test(p); } }
+  ];
+  DBG.renderPwCheck = function (inputId, outId) {
+    var p = $(inputId).value || '';
+    $(outId).innerHTML = DBG.pwRules.map(function (r) {
+      return '<span class="' + (r.f(p) ? 'pass' : '') + '">' + (r.f(p) ? '✓ ' : '· ') + r.k + '</span>';
+    }).join('');
+  };
+
+  /* ---------------- helper aksi ---------------- */
+  DBG.setBusy = function (busy) {
+    var btns = document.querySelectorAll('button.act');
+    for (var i = 0; i < btns.length; i++) btns[i].disabled = busy;
+  };
+
+  DBG.needClient = function () {
+    var c = DBG.client();
+    if (c && c.auth) return c;
+    var why;
+    if (location.protocol === 'file:') why = 'Halaman dibuka via file:// — jalankan lewat local server (python -m http.server 5500) lalu buka http://localhost:5500/…';
+    else if (!window.supabaseSdk || !window.supabaseSdk.createClient) why = 'SDK CDN tidak ke-load — cek internet/adblock (lihat entry error di log paling awal).';
+    else why = 'Client belum dibuat — isi Project URL + anon key di kartu "1 · Koneksi Supabase", klik "Simpan & buat client".';
+    DBG.err('aksi dibatalkan: belum ada client Supabase', { alasan: why });
+    return null;
+  };
+
+  DBG.runAction = function (title, fn) {
+    DBG.setBusy(true);
+    var started = performance.now();
+    var pendingWarn = setTimeout(function () {
+      DBG.info('⏳ "' + title + '" masih nunggu >15 detik…', { kemungkinan: 'request menggantung: URL salah port/domain, jaringan lambat, atau server tidak menjawab. Cek tab Network.' });
+    }, 15000);
+    Promise.resolve().then(fn).then(function () {
+      clearTimeout(pendingWarn); DBG.setBusy(false);
+    }, function (err) {
+      clearTimeout(pendingWarn); DBG.setBusy(false);
+      DBG.err('EXCEPTION saat "' + title + '" (' + Math.round(performance.now() - started) + 'ms)', {
+        error: DBG.safeClone(err),
+        artinya: 'Ini exception (request/kode gagal total), BUKAN balasan error dari Supabase. Kalau "Failed to fetch": network/CORS/URL salah.'
+      });
+    });
+  };
+
+  DBG.logResult = function (label, ms, result) {
+    var isErr = !!(result && result.error);
+    DBG.push(isErr ? 'error' : 'ok', 'balikan ' + label + ' (' + ms + 'ms)', DBG.safeClone(result));
+    if (isErr) {
+      DBG.info('👉 kunci diagnosa ' + label, {
+        'error.code': result.error.code !== undefined ? result.error.code : '(tidak ada — cek message)',
+        'error.status': result.error.status !== undefined ? result.error.status : '(tidak ada)',
+        'error.name': result.error.name,
+        'error.message': result.error.message,
+        tips: 'cocokkan error.code dengan tabel di tab "Peta & Bantuan"'
+      });
+    }
+    return !isErr;
+  };
+
+  /* ---------------- AKSI-AKSI (harness) ---------------- */
+  DBG.harness = {};
+
+  DBG.harness.login = function () {
+    var c = DBG.needClient(); if (!c) return;
+    var email = $('login-email').value.trim();
+    var password = $('login-password').value;
+    DBG.lastEmail = email || DBG.lastEmail;
+    DBG.info('→ signInWithPassword', { email: email, password_length: password.length });
+    DBG.runAction('login', function () {
+      var t0 = performance.now();
+      return c.auth.signInWithPassword({ email: email, password: password }).then(function (r) {
+        var ok = DBG.logResult('signInWithPassword', Math.round(performance.now() - t0), r);
+        if (ok && r.data && r.data.session) {
+          var ref = DBG.urlRef(localStorage.getItem(DBG.CFG_URL_KEY) || '') || '?';
+          var key = 'sb-' + ref + '-auth-token';
+          var saved = false;
+          try { saved = !!localStorage.getItem(key); } catch (e) {}
+          DBG.info('session tersimpan di localStorage?', { storage_key: key, tersimpan: saved, catatan: saved ? 'aman — dashboard harusnya bisa baca session ini (kalau pakai project & storage key yang sama)' : 'TIDAK ketemu — kalau client produksi lo pakai storageKey custom, cek tab Storage' });
+        }
+      });
+    });
+  };
+
+  DBG.harness.signup = function () {
+    var c = DBG.needClient(); if (!c) return;
+    var name = $('signup-name').value.trim();
+    var email = $('signup-email').value.trim();
+    var password = $('signup-password').value;
+    DBG.lastEmail = email || DBG.lastEmail;
+    var redirect = $('cfg-redirect').value.trim();
+    var opts = { data: { full_name: name } };
+    if (redirect) opts.emailRedirectTo = redirect;
+    DBG.info('→ signUp', { email: email, password_length: password.length, options: { data: { full_name: name }, emailRedirectTo: redirect || '(tidak diset)' } });
+    DBG.runAction('signup', function () {
+      var t0 = performance.now();
+      return c.auth.signUp({ email: email, password: password, options: opts }).then(function (r) {
+        DBG.logResult('signUp', Math.round(performance.now() - t0), r);
+        if (!r.error && r.data && r.data.user) {
+          var ids = r.data.user.identities;
+          DBG.info('cek "email udah terdaftar sebelumnya?"', {
+            identities_length: Array.isArray(ids) ? ids.length : '(bukan array)',
+            kesimpulan: (Array.isArray(ids) && ids.length === 0)
+              ? '⚠️ identities KOSONG → email ini kemungkinan besar SUDAH terdaftar (Supabase sengaja nggak kasih error demi privasi). Coba login / reset password aja.'
+              : 'identities ada isinya → kemungkinan akun baru. Kalau confirm email nyala, cek inbox buat kode OTP (tab Kode OTP).'
+          });
+          if ($('otp-email')) $('otp-email').value = email;
+          $('otp-email-label').textContent = email || 'email lo';
+        }
+      });
+    });
+  };
+
+  DBG.harness.verifyOtp = function () {
+    var c = DBG.needClient(); if (!c) return;
+    var email = ($('otp-email') ? $('otp-email').value.trim() : '') || DBG.lastEmail;
+    var token = $('otp-code').value.trim();
+    var type = $('otp-type').value;
+    DBG.info('→ verifyOtp', { email: email, token_length: token.length, type: type });
+    DBG.runAction('verifyOtp', function () {
+      var t0 = performance.now();
+      return c.auth.verifyOtp({ email: email, token: token, type: type }).then(function (r) {
+        var ok = DBG.logResult('verifyOtp (type=' + type + ')', Math.round(performance.now() - t0), r);
+        if (!ok && r.error && /expired|invalid/i.test(r.error.message || '')) {
+          DBG.info('hint verifyOtp gagal', { cek: ['kode udah lewat umurnya (default 1 jam / sesuai setting)', 'kode udah pernah dipakai', 'TYPE salah — kode signup harus type=signup, kode reset password type=recovery', 'email beda dengan yang dikirimi kode'] });
+        }
+      });
+    });
+  };
+
+  DBG.harness.resend = function () {
+    var c = DBG.needClient(); if (!c) return;
+    var email = ($('otp-email') ? $('otp-email').value.trim() : '') || DBG.lastEmail || $('signup-email').value.trim();
+    var type = $('otp-type').value === 'email_change' ? 'email_change' : 'signup';
+    DBG.info('→ resend', { email: email, type: type, catatan: 'resend cuma buat signup/email_change. Buat kirim ulang email reset password → pakai "Lupa password?" lagi.' });
+    DBG.runAction('resend', function () {
+      var t0 = performance.now();
+      return c.auth.resend({ type: type, email: email }).then(function (r) {
+        var ok = DBG.logResult('resend', Math.round(performance.now() - t0), r);
+        if (!ok && r.error && /rate|security purposes|once every/i.test((r.error.code || '') + ' ' + (r.error.message || ''))) {
+          DBG.info('hint: kena rate limit email', { fakta: 'Supabase bawaan cuma ngizinin dikit banget email per jam (±2-4). Tunggu sejam, atau pasang custom SMTP di Auth settings.' });
+        }
+      });
+    });
+  };
+
+  DBG.harness.forgot = function () {
+    var c = DBG.needClient(); if (!c) return;
+    var email = $('login-email').value.trim() || DBG.lastEmail;
+    if (!email) { DBG.err('isi email dulu di form Masuk', {}); return; }
+    var redirect = $('cfg-redirect').value.trim();
+    DBG.info('→ resetPasswordForEmail', { email: email, redirectTo: redirect || '(default dari dashboard Supabase)' });
+    DBG.runAction('forgot', function () {
+      var t0 = performance.now();
+      return c.auth.resetPasswordForEmail(email, redirect ? { redirectTo: redirect } : undefined).then(function (r) {
+        DBG.logResult('resetPasswordForEmail', Math.round(performance.now() - t0), r);
+        DBG.info('langkah berikutnya', { alur: '1) cek email (termasuk spam) → 2) kalau emailnya berisi LINK: klik, lo bakal balik ke redirect URL dengan token di URL — halaman ini otomatis deteksi & munculin event PASSWORD_RECOVERY → 3) tab "Reset pass" buat set password baru. Kalau emailnya berisi KODE: masukin di tab Kode OTP dengan type=recovery.', penting: 'redirect URL harus terdaftar di Supabase → Auth → URL Configuration → Redirect URLs, kalau nggak, token nggak dianggep.' });
+      });
+    });
+  };
+
+  DBG.harness.resetPassword = function () {
+    var c = DBG.needClient(); if (!c) return;
+    var p1 = $('reset-password').value, p2 = $('reset-password2').value;
+    if (p1 !== p2) { DBG.err('password baru nggak sama dua-duanya', { panjang_1: p1.length, panjang_2: p2.length }); return; }
+    DBG.info('→ updateUser({password})', { password_length: p1.length });
+    DBG.runAction('resetPassword', function () {
+      var t0 = performance.now();
+      return c.auth.updateUser({ password: p1 }).then(function (r) {
+        var ok = DBG.logResult('updateUser(password)', Math.round(performance.now() - t0), r);
+        if (!ok && r.error && /session/i.test(r.error.message || '')) {
+          DBG.info('hint: "Auth session missing"', { artinya: 'updateUser butuh session aktif. Alurnya: klik link/kode recovery dari email DULU (atau login), baru bisa ganti password.' });
+        }
+      });
+    });
+  };
+
+  DBG.harness.getSession = function () {
+    var c = DBG.needClient(); if (!c) return;
+    DBG.info('→ getSession (baca dari storage lokal) + getUser (validasi ke server)', {});
+    DBG.runAction('getSession', function () {
+      var t0 = performance.now();
+      return c.auth.getSession().then(function (r) {
+        DBG.logResult('getSession', Math.round(performance.now() - t0), r);
+        var tok = r.data && r.data.session && r.data.session.access_token;
+        if (tok) {
+          var d = DBG.decodeJwt(tok);
+          if (d) DBG.info('access_token di-decode', { role: d.payload.role, sub: d.payload.sub, email: d.payload.email, exp: d.expiredCheck });
+        } else {
+          DBG.info('tidak ada session di storage', { artinya: 'belum login / udah logout / storage dibersihin. Kalau baru aja login sukses tapi ini null → cek tab Storage, mungkin beda storage key.' });
+        }
+        var t1 = performance.now();
+        return c.auth.getUser().then(function (r2) {
+          DBG.logResult('getUser (tervalidasi server)', Math.round(performance.now() - t1), r2);
+          var localUser = r.data && r.data.session && r.data.session.user;
+          var serverUser = r2.data && r2.data.user;
+          if (!!localUser !== !!serverUser) {
+            DBG.info('⚠️ getSession vs getUser BEDA hasil', { session_lokal: !!localUser, user_di_server: !!serverUser, artinya: 'token lokal ada tapi ditolak server (basi/dicabut) — atau sebaliknya. Logout → login ulang biasanya beresin.' });
+          }
+        });
+      });
+    });
+  };
+
+  DBG.harness.getUser = function () {
+    var c = DBG.needClient(); if (!c) return;
+    DBG.info('→ getUser', {});
+    DBG.runAction('getUser', function () {
+      var t0 = performance.now();
+      return c.auth.getUser().then(function (r) { DBG.logResult('getUser', Math.round(performance.now() - t0), r); });
+    });
+  };
+
+  DBG.harness.refreshSession = function () {
+    var c = DBG.needClient(); if (!c) return;
+    DBG.info('→ refreshSession (paksa tukar refresh_token)', {});
+    DBG.runAction('refreshSession', function () {
+      var t0 = performance.now();
+      return c.auth.refreshSession().then(function (r) { DBG.logResult('refreshSession', Math.round(performance.now() - t0), r); });
+    });
+  };
+
+  DBG.harness.exchangeCode = function () {
+    var c = DBG.needClient(); if (!c) return;
+    var qs = new URLSearchParams(location.search);
+    var code = qs.get('code');
+    if (!code) { DBG.err('tidak ada ?code= di URL', { url: location.href, kapan_dipakai: 'habis klik link email (PKCE flow), URL bakal ada ?code=xxxx — halaman redirect harus nuker code itu jadi session.' }); return; }
+    DBG.info('→ exchangeCodeForSession', { code: code.slice(0, 8) + '…' });
+    DBG.runAction('exchangeCode', function () {
+      var t0 = performance.now();
+      return c.auth.exchangeCodeForSession(code).then(function (r) { DBG.logResult('exchangeCodeForSession', Math.round(performance.now() - t0), r); });
+    });
+  };
+
+  DBG.harness.logout = function () {
+    var c = DBG.needClient(); if (!c) return;
+    DBG.info('→ signOut', {});
+    DBG.runAction('logout', function () {
+      var t0 = performance.now();
+      return c.auth.signOut().then(function (r) { DBG.logResult('signOut', Math.round(performance.now() - t0), r); });
+    });
+  };
+
+  /* @@PAGE-ACTIONS-EXTRA@@ */
+
+  DBG.currentUserId = null;
+
+  DBG.renderSessView = function (html) { var el = $('sess-view'); if (el) el.innerHTML = html; };
+
+  DBG.harness.sessionCheck = function () {
+    var c = DBG.needClient(); if (!c) { DBG.renderSessView('<span class="bad">✗ belum ada client — isi config di kartu 1</span>'); return; }
+    DBG.info('→ cek session (persis gate dashboard production, tapi tanpa redirect)', {});
+    DBG.runAction('sessionCheck', function () {
+      var t0 = performance.now();
+      return c.auth.getSession().then(function (r) {
+        DBG.logResult('getSession', Math.round(performance.now() - t0), r);
+        var sess = r.data ? r.data.session : null;
+        var t1 = performance.now();
+        return c.auth.getUser().then(function (r2) {
+          DBG.logResult('getUser (validasi server)', Math.round(performance.now() - t1), r2);
+          var user = (r2.data && r2.data.user) || null;
+          DBG.currentUserId = user ? user.id : (sess && sess.user ? sess.user.id : null);
+          if (!sess && !user) {
+            DBG.renderSessView('<span class="bad">✗ TIDAK ADA SESSION</span><br>dashboard production bakal <b>redirect balik ke halaman login</b> di kondisi ini.<br>→ login dulu (form "login cepat" di bawah, atau lewat debug-login.html).');
+            DBG.info('kesimpulan gate', { session: false, dampak_di_production: 'dashboard.html lo mental ke login. Kalau lo ngerasa "udah login tapi tetep mental": cek tab Storage — token kesimpen? project ref-nya sama dengan config?' });
+          } else if (sess && !user) {
+            DBG.renderSessView('<span class="warnc">⚠ session lokal ADA tapi DITOLAK server</span><br>token basi/dicabut → logout, login ulang.');
+          } else {
+            var email = (user && user.email) || '(tanpa email)';
+            var d = sess && sess.access_token ? DBG.decodeJwt(sess.access_token) : null;
+            var exp = sess && sess.expires_at ? Math.round((sess.expires_at * 1000 - Date.now()) / 60000) : null;
+            var meta = (user && user.user_metadata) || {};
+            var inisial = String(meta.full_name || email).split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map(function (w) { return w[0]; }).join('').toUpperCase();
+            DBG.renderSessView(
+              '<span class="good">✓ SESSION VALID</span><br>' +
+              '<b>[' + DBG.esc(inisial) + ']</b> ' + DBG.esc(email) + '<br>' +
+              '<b>user.id  :</b> ' + DBG.esc(user.id) + '<br>' +
+              '<b>nama meta:</b> ' + DBG.esc(meta.full_name || '(tidak ada di user_metadata)') + '<br>' +
+              '<b>role JWT :</b> ' + DBG.esc(d ? String(d.payload.role) : '?') +
+              (exp !== null ? '<br><b>token exp:</b> ' + exp + ' menit lagi' + (exp < 0 ? ' <span class="bad">(EXPIRED!)</span>' : '') : '')
+            );
+            DBG.info('user.id disimpan buat query data', { user_id: DBG.currentUserId, dipakai_oleh: 'tombol "ambil profil" / "ambil requests" / $USER_ID di query bebas' });
+          }
+        });
+      });
+    });
+  };
+
+  DBG.rlsHints = function (r, ctx) {
+    var hints = [];
+    if (r.error) {
+      var msg = (r.error.message || '') + ' ' + (r.error.details || '') + ' ' + (r.error.hint || '');
+      if (r.error.code === '42501' || /permission denied/i.test(msg)) hints.push('42501 = ditolak RLS/GRANT. Tabel "' + ctx.table + '" butuh POLICY yang ngizinin operasi ini buat role authenticated. Contoh SQL ada di tab Peta & Bantuan.');
+      if (r.error.code === 'PGRST116') hints.push('PGRST116 = .single() tapi hasilnya 0 baris (atau >1). Kalau harusnya ada 1 profil: barisnya belum pernah dibuat (trigger handle_new_user jalan?) atau kefilter RLS.');
+      if (/does not exist/i.test(msg)) hints.push('relasi/kolom tidak ada — nama tabel/kolom salah ketik? tabelnya di schema lain (bukan public)? cek juga huruf besar-kecil nama tabel.');
+      if (r.error.code === 'PGRST301' || r.status === 401 || /JWT/i.test(msg)) hints.push('JWT bermasalah (expired/invalid) — cek kartu 2, refresh token, atau login ulang.');
+      if (!hints.length) hints.push('lihat body mentah di tab Network; cocokkan code-nya dengan docs PostgREST/Supabase.');
+    } else {
+      if (Array.isArray(r.data) && r.data.length === 0) hints.push('query SUKSES tapi hasilnya KOSONG. Kalau lo yakin datanya ada → hampir pasti RLS: policy SELECT nggak ngizinin row kebaca user ini (RLS nge-filter DIAM-DIAM, bukan error). Cek policy: using (auth.uid() = ' + (ctx.col || 'kolom_user') + ')?');
+    }
+    if (hints.length) DBG.info('💡 diagnosa ' + ctx.label, { hints: hints });
+  };
+
+  DBG.fetchByUser = function (label, table, col) {
+    var c = DBG.needClient(); if (!c) return;
+    if (!DBG.currentUserId) {
+      DBG.err(label + ' dibatalkan: belum tahu user.id', { solusi: 'klik "Cek session + user" dulu (atau login). user.id dipakai buat filter ' + col + ' = user.id' });
+      return;
+    }
+    DBG.info('→ ' + label + ': from("' + table + '").select("*").eq("' + col + '", user.id)', { table: table, filter: col + ' = ' + DBG.currentUserId });
+    DBG.runAction(label, function () {
+      var t0 = performance.now();
+      return c.from(table).select('*').eq(col, DBG.currentUserId).then(function (r) {
+        DBG.logResult(label + ' [' + table + ']', Math.round(performance.now() - t0), r);
+        DBG.rlsHints(r, { table: table, col: col, label: label });
+      });
+    });
+  };
+
+  DBG.harness.fetchProfile = function () { DBG.fetchByUser('ambil profil', $('q-profile-table').value.trim() || 'profiles', $('q-profile-col').value); };
+  DBG.harness.fetchRequests = function () { DBG.fetchByUser('ambil requests', $('q-req-table').value.trim() || 'requests', $('q-req-col').value); };
+
+  DBG.harness.runQuery = function () {
+    var c = DBG.needClient(); if (!c) return;
+    var op = $('qr-op').value;
+    var table = $('qr-table').value.trim();
+    if (!table) { DBG.err('isi nama tabel dulu', {}); return; }
+    var sel = $('qr-select').value.trim() || '*';
+    var limit = parseInt($('qr-limit').value, 10) || 5;
+    var fcol = $('qr-fcol').value.trim();
+    var fval = $('qr-fval').value.trim();
+    if (fval === '$USER_ID') {
+      if (!DBG.currentUserId) { DBG.err('$USER_ID belum ada — klik "Cek session + user" dulu', {}); return; }
+      fval = DBG.currentUserId;
+    }
+    var payload = null;
+    if (op !== 'select') {
+      try { payload = JSON.parse($('qr-payload').value || '{}'); }
+      catch (e) { DBG.err('payload bukan JSON valid: ' + e.message, { yang_lo_tulis: $('qr-payload').value }); return; }
+    }
+    if (op === 'update' && !fcol) { DBG.err('update TANPA filter dibatalkan (bahaya kena semua baris) — isi filter kolom + nilai dulu', {}); return; }
+    DBG.info('→ query bebas: ' + op + ' "' + table + '"', { select: sel, filter: fcol ? (fcol + ' = ' + fval) : '(tanpa filter)', limit: op === 'select' ? limit : undefined, payload: payload || undefined, PERINGATAN: op !== 'select' ? 'ini nulis BENERAN ke database!' : undefined });
+    DBG.runAction('runQuery', function () {
+      var t0 = performance.now();
+      var q;
+      if (op === 'select') { q = c.from(table).select(sel); if (fcol) q = q.eq(fcol, fval); q = q.limit(limit); }
+      else if (op === 'insert') { q = c.from(table).insert(payload).select(); }
+      else { q = c.from(table).update(payload).eq(fcol, fval).select(); }
+      return q.then(function (r) {
+        DBG.logResult('query ' + op + ' [' + table + ']', Math.round(performance.now() - t0), r);
+        DBG.rlsHints(r, { table: table, col: fcol, label: 'query bebas' });
+      });
+    });
+  };
+
+  /* @@/PAGE-ACTIONS-EXTRA@@ */
+
+  /* ---------------- dispatcher: harness vs produksi ---------------- */
+  DBG.evalTypeOf = function (name) {
+    if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) return 'nama-tidak-valid';
+    try { return (0, eval)('typeof ' + name); } catch (e) { return 'error: ' + e.message; }
+  };
+  DBG.evalGet = function (name) {
+    if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) return undefined;
+    try { return (0, eval)('typeof ' + name + ' === "undefined" ? undefined : ' + name); } catch (e) { return undefined; }
+  };
+
+  DBG.act = function (name) {
+    var src = $('dbg-handler-src') ? $('dbg-handler-src').value : 'harness';
+    if (src === 'production') {
+      var prodName = DBG.pageConf.actToProd[name];
+      if (prodName) {
+        var fn = DBG.evalGet(prodName);
+        if (typeof fn === 'function') {
+          DBG.info('🎬 manggil handler PRODUKSI: ' + prodName + '()', { catatan: 'semua fetch & error yang dia bikin tetap kecatat di log/network', sumber_kode: String(fn).slice(0, 400) + (String(fn).length > 400 ? '…' : '') });
+          try { var rv = fn(); if (rv && typeof rv.catch === 'function') rv.catch(function (e) { DBG.err('promise dari ' + prodName + '() reject', DBG.safeClone(e)); }); }
+          catch (e) { DBG.err('EXCEPTION saat manggil ' + prodName + '()', DBG.safeClone(e)); }
+          return;
+        }
+        DBG.err('handler produksi "' + prodName + '" TIDAK ADA (typeof: ' + DBG.evalTypeOf(prodName) + ')', {
+          solusi: 'load dulu file yang mendefinisikannya lewat tab "Script & Function" (biasanya auth.js). Setelah ke-load, cek Peta function — namanya harus muncul hijau.',
+          fallback: 'atau balikin dropdown handler (kanan atas) ke "Harness".'
+        });
+        return;
+      }
+      DBG.info('aksi "' + name + '" nggak punya padanan produksi — pakai harness', {});
+    }
+    if (DBG.harness[name]) DBG.harness[name]();
+    else DBG.err('aksi tidak dikenal: ' + name, {});
+  };
+
+  /* ---------------- script tracer ---------------- */
+  DBG.tracedScripts = [];
+  DBG.traceScript = function (path) {
+    path = (path || '').trim();
+    if (!path) { DBG.err('isi path file JS dulu (contoh: auth.js atau assets/auth.js)', {}); return; }
+    var url;
+    try { url = new URL(path, location.href).href; } catch (e) { DBG.err('path tidak valid: ' + path, {}); return; }
+
+    var rec = { path: path, url: url, at: DBG.stamp() };
+    DBG.info('🕵️ mulai lacak script: ' + path, { url: url });
+
+    var preP;
+    if (location.protocol === 'file:' || !DBG.rawFetch) {
+      rec.pre = { status: '(dilewati — file:// tidak bisa di-fetch)' };
+      preP = Promise.resolve();
+    } else {
+      preP = DBG.rawFetch(url, { cache: 'no-store' }).then(function (r) {
+        return r.text().then(function (t) {
+          rec.pre = { status_http: r.status, content_type: r.headers.get('content-type'), ukuran_bytes: t.length };
+          if (r.status === 404) rec.pre.kesimpulan = '❌ FILE TIDAK ADA di path ini (404). Cek nama file & folder (assets/ atau root?) & huruf besar-kecil.';
+          else if (r.status === 200 && /^\s*</.test(t.slice(0, 200))) rec.pre.kesimpulan = '⚠️ status 200 tapi ISINYA kelihatan seperti HTML, bukan JS — biasanya server balikin halaman index/404 cantik. File aslinya nggak ada di situ.';
+          else if (r.status === 200) rec.pre.kesimpulan = '✓ file ada & kebaca';
+        });
+      }).catch(function (e) { rec.pre = { fetch_gagal: e.message }; });
+    }
+
+    preP.then(function () {
+      var before = {};
+      Object.getOwnPropertyNames(window).forEach(function (k) { before[k] = true; });
+      var t0 = performance.now();
+      return new Promise(function (resolve) {
+        var s = document.createElement('script');
+        s.src = url + (url.indexOf('?') === -1 ? '?dbg=' + Date.now() : '');
+        s.onload = function () { rec.loaded = true; rec.loadMs = Math.round(performance.now() - t0); resolve(); };
+        s.onerror = function () { rec.loaded = false; rec.loadMs = Math.round(performance.now() - t0); resolve(); };
+        document.body.appendChild(s);
+      }).then(function () {
+        var added = [];
+        Object.getOwnPropertyNames(window).forEach(function (k) { if (!before[k]) added.push(k); });
+        rec.globalsBaru = added;
+        rec.functionsBaru = added.filter(function (k) { try { return typeof window[k] === 'function'; } catch (e) { return false; } });
+        rec.errorsFile = DBG.fileErrors[url] || DBG.fileErrors[url + '?dbg='] || null;
+        // cari error yang filename-nya cocok (query string bikin beda)
+        Object.keys(DBG.fileErrors).forEach(function (k) { if (k.indexOf(url) === 0) rec.errorsFile = DBG.fileErrors[k]; });
+
+        var verdict;
+        if (!rec.loaded) verdict = '❌ GAGAL DI-LOAD (404 / path salah / jaringan). Function di file ini NGGAK ADA.';
+        else if (rec.errorsFile && rec.errorsFile.length) verdict = '⚠️ file ke-load TAPI ERROR saat dieksekusi (lihat entry ERROR terkait) — kalau syntax error, SEMUA isinya batal.';
+        else if (rec.globalsBaru.length === 0) verdict = 'ke-load & jalan, tapi tidak menambah global var/function APA PUN ke window. Catatan: file yang pakai const/let di level atas nggak nempel ke window — cek nama function-nya langsung di "Peta function" di bawah.';
+        else verdict = '✓ ke-load & mendefinisikan: ' + rec.globalsBaru.join(', ');
+        rec.kesimpulan = verdict;
+
+        DBG.push(rec.loaded && !(rec.errorsFile && rec.errorsFile.length) ? 'ok' : 'error', 'hasil lacak script: ' + path, DBG.safeClone(rec));
+        DBG.tracedScripts.push(rec);
+        DBG.renderScriptList();
+        DBG.refreshFnMap();
+        DBG.scanClients(false);
+      });
+    });
+  };
+
+  DBG.renderScriptList = function () {
+    var out = $('script-list');
+    if (!DBG.tracedScripts.length) { out.innerHTML = ''; return; }
+    var html = '<table class="tbl"><tr><th>file</th><th>pre-check</th><th>load</th><th>global/function baru</th></tr>';
+    DBG.tracedScripts.forEach(function (r) {
+      var pre = r.pre ? (r.pre.status_http !== undefined ? ('HTTP ' + r.pre.status_http) : (r.pre.fetch_gagal ? 'fetch gagal' : String(r.pre.status || ''))) : '?';
+      var preCls = r.pre && r.pre.status_http === 200 ? 'good' : (r.pre && r.pre.status_http ? 'bad' : '');
+      html += '<tr><td>' + DBG.esc(r.path) + '</td>' +
+        '<td class="' + preCls + '">' + DBG.esc(pre) + '</td>' +
+        '<td class="' + (r.loaded ? 'good' : 'bad') + '">' + (r.loaded ? '✓ ' + r.loadMs + 'ms' : '✗ gagal') + '</td>' +
+        '<td>' + DBG.esc((r.globalsBaru || []).join(', ') || '—') + '</td></tr>';
+    });
+    html += '</table>';
+    out.innerHTML = html;
+  };
+
+  /* ---------------- file checker ---------------- */
+  DBG.checkFiles = function () {
+    var out = $('filecheck-out');
+    if (location.protocol === 'file:' || !DBG.rawFetch) {
+      out.innerHTML = '<div class="hint">⚠️ Nggak bisa cek file kalau halaman dibuka via <code>file://</code>. Jalankan lewat local server dulu (lihat tab Peta & Bantuan).</div>';
+      return;
+    }
+    out.innerHTML = '<div class="hint">mengecek…</div>';
+    var rows = [];
+    var jobs = [];
+    DBG.checkFilesList.forEach(function (f) {
+      ['', 'assets/'].forEach(function (prefix) {
+        var p = prefix + f;
+        jobs.push(DBG.rawFetch(p, { cache: 'no-store' }).then(function (r) {
+          return r.text().then(function (t) {
+            var looksHtml = r.status === 200 && /^\s*</.test(t.slice(0, 200)) && !/\.html?$/.test(p) && !/\.css$/.test(p);
+            rows.push({ p: p, status: r.status, size: t.length, note: looksHtml ? '⚠️ isinya HTML (server balikin halaman lain — file asli nggak ada)' : '' });
+          });
+        }).catch(function (e) { rows.push({ p: p, status: 'ERR', size: '', note: e.message }); }));
+      });
+    });
+    Promise.all(jobs).then(function () {
+      rows.sort(function (a, b) { return a.p < b.p ? -1 : 1; });
+      var html = '<table class="tbl"><tr><th>path</th><th>status</th><th>bytes</th><th>catatan</th></tr>';
+      var found = 0;
+      rows.forEach(function (r) {
+        var ok = r.status === 200 && !r.note;
+        if (ok) found++;
+        html += '<tr><td>' + DBG.esc(r.p) + '</td><td class="' + (ok ? 'good' : (r.status === 404 ? 'bad' : 'warnc')) + '">' + r.status + '</td><td>' + r.size + '</td><td>' + DBG.esc(r.note) + '</td></tr>';
+      });
+      html += '</table><div class="hint" style="margin-top:6px;">200 = ada · 404 = nggak ada di path itu. Ingat di hosting Linux nama file case-sensitive. HTML lo sekarang minta versi <code>assets/…</code> — kalau yang 200 justru yang tanpa <code>assets/</code>, pakai file index/dashboard yang udah gue benerin path-nya.</div>';
+      out.innerHTML = html;
+      DBG.info('cek file project selesai', { total_dicek: rows.length, ketemu_200: found });
+    });
+  };
+
+  /* ---------------- function map ---------------- */
+  DBG.refreshFnMap = function () {
+    var out = $('fnmap-out');
+    var html = '<table class="tbl"><tr><th>function (dipanggil onclick HTML lo)</th><th>status</th><th></th></tr>';
+    DBG.pageConf.prodFnNames.forEach(function (n) {
+      var t = DBG.evalTypeOf(n);
+      var ok = t === 'function';
+      html += '<tr><td>' + n + '()</td><td class="' + (ok ? 'good' : 'bad') + '">' + (ok ? '✓ ada' : '✗ tidak ada (' + DBG.esc(t) + ')') + '</td>' +
+        '<td>' + (ok ? '<span class="linklike" onclick="DBG.showFnSource(\'' + n + '\')">lihat kodenya</span>' : '') + '</td></tr>';
+    });
+    html += '</table>';
+    out.innerHTML = html;
+  };
+  DBG.showFnSource = function (n) {
+    var fn = DBG.evalGet(n);
+    if (typeof fn !== 'function') { DBG.err(n + ' bukan function', {}); return; }
+    DBG.info('source code ' + n + '()', { kode: String(fn) });
+    DBG.showPanel('log');
+  };
+  DBG.checkCustomFn = function () {
+    var n = $('fn-custom').value.trim();
+    if (!n) return;
+    DBG.info('cek "' + n + '"', { typeof: DBG.evalTypeOf(n), catatan: 'kalau "undefined": belum ada file ke-load yang mendefinisikannya (atau namanya beda).' });
+    DBG.showPanel('log');
+  };
+
+  /* ---------------- storage inspector ---------------- */
+  DBG.renderStorage = function () {
+    var out = $('storage-list');
+    if (!out) return;
+    var showAll = $('storage-all') && $('storage-all').checked;
+    var html = '';
+    ['localStorage', 'sessionStorage'].forEach(function (storeName) {
+      var store;
+      try { store = window[storeName]; } catch (e) { html += '<div class="hint">' + storeName + ' tidak bisa diakses: ' + DBG.esc(e.message) + '</div>'; return; }
+      var keys = [];
+      try { for (var i = 0; i < store.length; i++) keys.push(store.key(i)); } catch (e2) {}
+      var relevant = keys.filter(function (k) { return showAll || /^sb-|supabase|^DBG_/i.test(k); });
+      html += '<div class="card"><h2>' + storeName + ' <span class="sub">' + relevant.length + '/' + keys.length + ' key ditampilkan</span></h2>';
+      if (!relevant.length) html += '<div class="hint">tidak ada key ' + (showAll ? '' : 'terkait Supabase') + ' — belum pernah login sukses di origin ini' + (showAll ? '' : ' (centang "semua key" buat lihat semuanya)') + '.</div>';
+      relevant.forEach(function (k) {
+        var v = '';
+        try { v = store.getItem(k); } catch (e3) { v = '(unreadable)'; }
+        var parsed = null;
+        try { parsed = JSON.parse(v); } catch (e4) {}
+        var extra = '';
+        if (parsed && parsed.access_token) {
+          var d = DBG.decodeJwt(parsed.access_token);
+          if (d) extra = '<h4 style="font-size:10px;color:var(--faint);margin:8px 0 3px;">access_token di-decode:</h4><pre style="margin:0;">' + DBG.esc(DBG.pretty({ role: d.payload.role, email: d.payload.email, sub: d.payload.sub, exp: d.expiredCheck })) + '</pre>';
+        }
+        var shown = parsed !== null ? DBG.pretty(parsed) : (DBG.reveal ? v : (DBG.SECRET_KEY_RE.test(k) ? DBG.maskValue(v) : v));
+        if (shown && shown.length > 4000) shown = shown.slice(0, 4000) + '…';
+        html += '<div style="margin-bottom:10px;"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">' +
+          '<code style="font-size:11px;color:var(--info);word-break:break-all;">' + DBG.esc(k) + '</code>' +
+          '<button class="btn-danger btn-sm" onclick="DBG.delStorage(\'' + storeName + '\',\'' + DBG.esc(k).replace(/'/g, "\\'") + '\')">hapus</button></div>' +
+          '<pre style="font-size:10.5px;color:#cfe3ff;white-space:pre-wrap;word-break:break-word;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:8px;max-height:220px;overflow:auto;margin:6px 0 0;">' + DBG.esc(shown || '(kosong)') + '</pre>' + extra + '</div>';
+      });
+      html += '</div>';
+    });
+    out.innerHTML = html;
+  };
+  DBG.delStorage = function (storeName, key) {
+    try { window[storeName].removeItem(key); DBG.info('key dihapus dari ' + storeName + ': ' + key, {}); } catch (e) { DBG.err('gagal hapus key', DBG.safeClone(e)); }
+    DBG.renderStorage();
+  };
+
+  /* ---------------- init saat halaman siap ---------------- */
+  DBG.init = function () {
+    DBG.ready = true;
+    DBG.rebuildLog();
+    DBG.rebuildNet();
+
+    // quick trace buttons
+    var q = $('trace-quick');
+    DBG.pageConf.traceQuick.forEach(function (p) {
+      var b = document.createElement('button');
+      b.className = 'btn-ghost btn-sm';
+      b.textContent = p;
+      b.onclick = function () { DBG.traceScript(p); };
+      q.appendChild(b);
+    });
+
+    // protocol warning
+    if (location.protocol === 'file:') {
+      var w = $('proto-warn');
+      w.style.display = 'block';
+      w.innerHTML = '⚠️ <b>Halaman ini dibuka langsung dari file (file://)</b> — banyak fitur bakal error/keblokir browser. ' +
+        'Jalankan lewat local server: buka terminal/cmd di folder ini → <code>python -m http.server 5500</code> → buka ' +
+        '<code>http://localhost:5500/debug-dashboard.html</code>. Atau VS Code: klik kanan file → "Open with Live Server".';
+      DBG.err('halaman dibuka via file:// — pindah ke local server dulu', { sekarang: location.href, harusnya: 'http://localhost:5500/debug-dashboard.html (contoh)' });
+    }
+
+    // deteksi token/param redirect dari email di URL
+    (function () {
+      var qs = new URLSearchParams(location.search);
+      var hs = new URLSearchParams(location.hash.replace(/^#/, ''));
+      var interesting = {};
+      ['code', 'error', 'error_code', 'error_description', 'token_hash', 'type'].forEach(function (k) { if (qs.get(k)) interesting['?' + k] = qs.get(k); });
+      ['access_token', 'refresh_token', 'error', 'error_code', 'error_description', 'type'].forEach(function (k) { if (hs.get(k)) interesting['#' + k] = hs.get(k); });
+      if (Object.keys(interesting).length) {
+        DBG.info('🔗 terdeteksi parameter auth di URL (biasanya balikan dari link email)', DBG.safeClone(interesting));
+        if (interesting['?code']) DBG.info('ada ?code= → klik tombol "Tukar ?code= di URL" (setelah client dibuat) buat nuker jadi session', {});
+        if (interesting['#error_description'] || interesting['?error_description']) DBG.err('link email balik dengan ERROR', { error_description: interesting['#error_description'] || interesting['?error_description'], penyebab_umum: 'link kadaluarsa / udah dipakai / redirect URL nggak terdaftar di Auth → URL Configuration' });
+      }
+    })();
+
+    // restore config
+    var savedUrl = null, savedKey = null;
+    try { savedUrl = localStorage.getItem(DBG.CFG_URL_KEY); savedKey = localStorage.getItem(DBG.CFG_KEY_KEY); } catch (e) {}
+    if (savedUrl) $('cfg-url').value = savedUrl;
+    if (savedKey) $('cfg-key').value = savedKey;
+    if (!$('cfg-redirect').value && location.protocol !== 'file:') $('cfg-redirect').value = location.origin + location.pathname;
+    if (savedUrl && savedKey) {
+      DBG.info('config ketemu di localStorage → bikin client otomatis', { url: savedUrl });
+      DBG.createOwnClient(savedUrl, savedKey);
+    } else {
+      DBG.info('belum ada config tersimpan', { cara: 'isi Project URL + anon key (Supabase Dashboard → Project Settings → API) di kartu kiri atas, klik "Simpan & buat client"' });
+      DBG.scanClients(false);
+    }
+
+    // password checkers
+    if ($('signup-password')) $('signup-password').addEventListener('input', function () { DBG.renderPwCheck('signup-password', 'pw-check-signup'); });
+    if ($('reset-password')) $('reset-password').addEventListener('input', function () { DBG.renderPwCheck('reset-password', 'pw-check-reset'); });
+
+    // online/offline
+    window.addEventListener('online', function () { DBG.event('browser ONLINE lagi', {}); DBG.renderHeadChips(); });
+    window.addEventListener('offline', function () { DBG.event('browser OFFLINE — semua request bakal gagal', {}); DBG.renderHeadChips(); });
+
+    DBG.refreshFnMap();
+    DBG.renderStorage();
+    DBG.renderClientStatus();
+
+    /* @@PAGE-INIT-EXTRA@@ */
+    // auto-cek file project + auto session check (meniru dashboard production)
+    if (location.protocol !== 'file:') setTimeout(function () { DBG.checkFiles(); }, 400);
+    setTimeout(function () {
+      if (DBG.client()) DBG.harness.sessionCheck();
+      else DBG.info('session check otomatis dilewati — belum ada client (isi config di kartu 1 dulu)', {});
+    }, 700);
+  /* @@/PAGE-INIT-EXTRA@@ */
+
+    DBG.ok('debug harness siap dipakai', {
+      halaman: DBG.pageConf.name,
+      urutan_saran: '1) config → 2) lihat status client → 3) coba aksi → 4) baca Log & Network. Bantuan lengkap di tab 🗺️.'
+    });
+  };
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', DBG.init);
+  else DBG.init();
+})();
+</script>
+</body>
+</html>
