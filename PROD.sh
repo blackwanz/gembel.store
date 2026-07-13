@@ -7,3 +7,4 @@ set -e
 git add .
 git commit -m "Push Prod V01.00.00"
 git push origin prod
+sudo docker compose up -d --build
