@@ -7,23 +7,21 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<!-- CSS khusus dashboard — app-theme.css nggak dipakai lagi di halaman ini -->
-<link rel="stylesheet" href="assets/dashboard.css">
+<link rel="stylesheet" href="assets/app-theme.css">
 </head>
 <body>
-
-<header class="dash-top">
-  <div class="dash-left">
-    <div class="logo dash-logo display"><span class="g">GEMBEL</span> <span class="e">AI PIK</span></div>
-    <nav class="dash-tabs">
+<div class="dash-top">
+  <div style="display:flex;align-items:center;gap:28px;">
+    <div class="logo display" style="font-size:16px;"><span class="g">GEMBEL</span> <span class="e">AI PIK</span></div>
+    <div class="dash-tabs">
       <div class="dash-tab active" data-tab="apps" onclick="switchTab('apps')">My Apps</div>
       <div class="dash-tab" data-tab="profil" onclick="switchTab('profil')">Profil</div>
-    </nav>
+    </div>
   </div>
-  <div class="dash-right">
+  <div style="display:flex;align-items:center;gap:14px;">
     <div class="user-chip">
       <div class="avatar" id="chip-avatar">··</div>
-      <div class="user-meta">
+      <div>
         <div class="name" id="chip-name">…</div>
         <div class="role" id="chip-role">MEMBER</div>
       </div>
@@ -32,25 +30,21 @@
     <button class="theme-toggle" onclick="toggleTheme()" title="Ganti tema">🌙</button>
     <button class="btn btn-ghost btn-sm" onclick="logout()">Keluar</button>
   </div>
-</header>
-
-<main class="dash-body">
-
+</div>
+<div class="dash-body">
   <!-- ===== TAB: MY APPS ===== -->
-  <section id="tab-apps" class="tab-panel">
+  <div id="tab-apps" class="tab-panel">
     <div class="dash-head">
       <div>
         <h1>App lo</h1>
         <p>Semua yang udah lo pesan, hidup di sini.</p>
       </div>
     </div>
-
     <div class="stat-row">
       <div class="stat"><div class="label">Total Request</div><div class="value" id="stat-total">0</div></div>
       <div class="stat"><div class="label">Lagi Diproses</div><div class="value" id="stat-proses">0</div></div>
       <div class="stat"><div class="label">Selesai</div><div class="value" id="stat-selesai">0</div></div>
     </div>
-
     <div class="apps-grid" id="apps-grid">
       <div class="new-card prompt-hero">
         <div class="prompt-hero-head">
@@ -62,38 +56,30 @@
         <textarea id="new-prompt" placeholder="Contoh: aplikasi buat hitung target tabungan bulanan, ada grafik progress-nya..."></textarea>
         <button class="btn btn-primary btn-block" id="submit-request-btn" onclick="submitRequest()">✨ Generate App →</button>
       </div>
-
-      <!-- dashboard.js nge-inject kartu app ke slot ini.
-           Di CSS slot ini display:contents, jadi tiap kartu
-           langsung jadi grid item (nggak numpuk ke bawah). -->
       <div id="installed-apps-slot"></div>
-
       <div id="requests-loading" class="skeleton"></div>
     </div>
-  </section>
-
+  </div>
   <!-- ===== TAB: PROFIL ===== -->
-  <section id="tab-profil" class="tab-panel" style="display:none;">
+  <div id="tab-profil" class="tab-panel" style="display:none;">
     <div class="dash-head">
       <div>
         <h1>Profil</h1>
         <p>Info akun lo.</p>
       </div>
     </div>
-
-    <div class="panel panel-narrow">
+    <div class="panel" style="max-width:440px;">
       <div class="panel-head"><h2>Detail akun</h2></div>
       <table class="data-table">
-        <tr><td class="td-label">Email</td><td id="profil-email">—</td></tr>
-        <tr><td class="td-label">Role</td><td id="profil-role">—</td></tr>
-        <tr><td class="td-label">Plan</td><td id="profil-plan">—</td></tr>
-        <tr><td class="td-label">Member sejak</td><td id="profil-since">—</td></tr>
+        <tr><td style="color:var(--text-faint);width:120px;">Email</td><td id="profil-email">—</td></tr>
+        <tr><td style="color:var(--text-faint);">Role</td><td id="profil-role">—</td></tr>
+        <tr><td style="color:var(--text-faint);">Plan</td><td id="profil-plan">—</td></tr>
+        <tr><td style="color:var(--text-faint);">Member sejak</td><td id="profil-since">—</td></tr>
       </table>
     </div>
-
-    <div class="panel panel-narrow">
+    <div class="panel" style="max-width:440px;margin-top:18px;">
       <div class="panel-head"><h2>Update profil</h2></div>
-      <div class="panel-body">
+      <div style="padding:4px 2px;">
         <div class="field">
           <label>Nama lengkap</label>
           <input type="text" id="edit-name" placeholder="Nama lengkap lo" maxlength="80">
@@ -116,15 +102,13 @@
         </div>
         <div class="field">
           <label>Bio</label>
-          <textarea id="edit-bio" placeholder="Cerita singkat tentang lo…" maxlength="300"></textarea>
+          <textarea id="edit-bio" placeholder="Cerita singkat tentang lo…" maxlength="300" style="min-height:70px;"></textarea>
         </div>
         <button class="btn btn-primary btn-block" id="save-profile-btn" onclick="saveProfile()">Simpan profil</button>
       </div>
     </div>
-  </section>
-
-</main>
-
+  </div>
+</div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="assets/supabaseClient.js"></script>
 <script src="assets/auth.js"></script>

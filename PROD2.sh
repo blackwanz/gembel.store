@@ -5,4 +5,4 @@ set -e
 
 # 1. Pastikan di branch uat dan push perubahan terbaru
 git pull origin prod
- sudo docker compose up -d --build --force-recreatew
+ sudo docker compose up -d --build --force-recreate
