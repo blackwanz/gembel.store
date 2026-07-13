@@ -1,25 +1,20 @@
 let CURRENT_USER = null;
 let CURRENT_PROFILE = null;
-
 // cache biar klik bolak-balik tab gak nembak query ke Supabase tiap kali
 let CATALOG_LOADED = false;
-
 function switchTab(name) {
   document.querySelectorAll('.dash-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
   document.getElementById('tab-apps').style.display = name === 'apps' ? 'block' : 'none';
   document.getElementById('tab-katalog').style.display = name === 'katalog' ? 'block' : 'none';
   document.getElementById('tab-profil').style.display = name === 'profil' ? 'block' : 'none';
-
   if (name === 'katalog' && !CATALOG_LOADED) {
     CATALOG_LOADED = true;
     loadCatalog();
   }
 }
-
 function statusLabel(s) {
   return { antre: 'ANTRE', diproses: 'DIPROSES', selesai: 'SELESAI' }[s] || s.toUpperCase();
 }
-
 // NOTE: skema `app_request` yang ada sekarang cuma punya start_date/end_date
 // (date, bukan timestamptz) — belum ada kolom expires_at, admin_note, app_url,
 // apk_url. Kode di bawah pakai end_date sebagai expiry, dan field yang belum
@@ -29,7 +24,6 @@ function renderTicket(req) {
   const num = '#' + req.id.slice(0, 6).toUpperCase();
   const title = req.title && req.title.trim() ? req.title : 'App baru lo';
   const elite = isElite(CURRENT_PROFILE);
-
   // end_date itu DATE (bukan timestamptz), jadi expired dihitung per akhir hari itu
   const expiryTimestamp = req.end_date ? new Date(req.end_date + 'T23:59:59') : null;
   const expired = !elite && expiryTimestamp && expiryTimestamp < new Date();
@@ -38,7 +32,6 @@ function renderTicket(req) {
   const adminNote = req.admin_note || null;
   const canOpen = req.status === 'selesai' && appUrl && !expired;
   const canDownload = req.status === 'selesai' && apkUrl && !expired;
-
   let expiryHtml = '';
   if (!elite && req.status === 'selesai' && expiryTimestamp) {
     if (expired) {
@@ -47,7 +40,6 @@ function renderTicket(req) {
       expiryHtml = `<span class="ticket-expiry" data-expires="${expiryTimestamp.toISOString()}">⏰ sisa akses: menghitung…</span>`;
     }
   }
-
   return `
     <div class="ticket st-${req.status}" data-id="${req.id}">
       <div class="ticket-head">
@@ -68,7 +60,6 @@ function renderTicket(req) {
       </div>
     </div>`;
 }
-
 // hitung mundur sisa akses free tier tiap detik
 setInterval(() => {
   let anyExpired = false;
@@ -80,25 +71,20 @@ setInterval(() => {
   });
   if (anyExpired) loadRequests();
 }, 1000);
-
 function updateStats(requests) {
   document.getElementById('stat-total').textContent = requests.length;
   document.getElementById('stat-proses').textContent = requests.filter(r => r.status === 'diproses').length;
   document.getElementById('stat-selesai').textContent = requests.filter(r => r.status === 'selesai').length;
 }
-
 async function loadRequests() {
   const { data, error } = await supabase
     .from('app_request')
     .select('*')
     .eq('user_id', CURRENT_USER.id)
     .order('created_at', { ascending: false });
-
   const loadingEl = document.getElementById('requests-loading');
   if (loadingEl) loadingEl.remove();
-
   document.querySelectorAll('.ticket').forEach(el => el.remove());
-
   if (error) {
     console.error(error);
     return;
@@ -107,27 +93,22 @@ async function loadRequests() {
   const grid = document.getElementById('apps-grid');
   data.forEach(req => grid.insertAdjacentHTML('beforeend', renderTicket(req)));
 }
-
 async function submitRequest() {
   const titleEl = document.getElementById('new-title');
   const promptEl = document.getElementById('new-prompt');
   const text = promptEl.value.trim();
   if (!text) { promptEl.focus(); return; }
-
   const btn = document.getElementById('submit-request-btn');
   btn.disabled = true;
   btn.textContent = 'Ngirim…';
-
   const { error } = await supabase.from('app_request').insert({
     user_id: CURRENT_USER.id,
     title: titleEl.value.trim() || null,
     prompt: text,
     status: 'antre',
   });
-
   btn.disabled = false;
   btn.textContent = 'Kirim prompt →';
-
   if (error) {
     alert('Gagal kirim: ' + error.message);
     return;
@@ -136,61 +117,29 @@ async function submitRequest() {
   promptEl.value = '';
   await loadRequests();
 }
-
-// ===== Plan level gating =====
-// free = level 1, elite = level 2. Naikin angka ini kalau nanti nambah tier baru
-// (mis. "pro" = level 2, elite jadi level 3) — gak perlu ubah logic gating di bawah,
-// cukup update PLAN_LEVELS dan (nanti) kolom plan_level di user_profiles.
-const PLAN_LEVELS = { free: 1, elite: 2 };
-
-// CURRENT_PROFILE.plan_level idealnya datang langsung dari DB (kolom plan_level
-// di user_profiles). Selama kolom itu belum ditambahin, kita fallback ke mapping
-// dari CURRENT_PROFILE.plan (text) supaya gating tetap jalan tanpa nunggu migration.
-function getUserPlanLevel(profile) {
-  if (profile?.role === 'admin') return Infinity; // admin selalu bisa akses semua app
-  if (typeof profile?.plan_level === 'number') return profile.plan_level;
-  return PLAN_LEVELS[profile?.plan] ?? PLAN_LEVELS.free;
-}
-
-// apps.required_level yang NULL/undefined dianggap free (level 1) — app baru
-// default kebuka buat semua orang kecuali admin sengaja kunci ke level lebih tinggi.
-function getAppRequiredLevel(app) {
-  return typeof app?.required_level === 'number' ? app.required_level : PLAN_LEVELS.free;
-}
-
-function renderCatalogCard(app, userLevel) {
-  const requiredLevel = getAppRequiredLevel(app);
-  const unlocked = userLevel >= requiredLevel;
-  const requiredLabel = requiredLevel >= PLAN_LEVELS.elite ? 'Elite ⭐' : 'Free';
-
+// ===== Katalog: semua app ditampilkan terbuka, tanpa gating plan =====
+function renderCatalogCard(app) {
   return `
-    <div class="ticket ${unlocked ? '' : 'locked'}" data-id="${app.apps_id}">
+    <div class="ticket" data-id="${app.apps_id}">
       <div class="ticket-head">
-        <span class="badge">${requiredLabel}</span>
-        ${unlocked ? '' : '<span class="badge st-locked">🔒 TERKUNCI</span>'}
       </div>
       <h3>${escapeHtml(app.title || app.apps_desc?.slice(0, 60) || 'App')}</h3>
       <p class="prompt">${escapeHtml(app.apps_desc || '')}</p>
       <div class="ticket-foot">
         <span class="ticket-time">${app.created_at ? fmtRelativeTime(app.created_at) : ''}</span>
         <div class="ticket-actions">
-          ${unlocked
-            ? `<button class="btn btn-primary btn-sm" onclick="openCatalogApp('${app.apps_id}')">Buka</button>`
-            : `<a href="#" class="btn btn-ghost btn-sm" onclick="openPaymentModal(CURRENT_PROFILE, () => location.reload()); return false;">Upgrade buat buka</a>`}
+          <button class="btn btn-primary btn-sm" onclick="openCatalogApp('${app.apps_id}')">Buka</button>
         </div>
       </div>
     </div>`;
 }
-
 async function loadCatalog() {
   const { data, error } = await supabase
     .from('apps')
     .select('*')
     .order('created_at', { ascending: false });
-
   const loadingEl = document.getElementById('catalog-loading');
   if (loadingEl) loadingEl.remove();
-
   const grid = document.getElementById('catalog-grid');
   if (error) {
     console.error(error);
@@ -201,17 +150,13 @@ async function loadCatalog() {
     grid.insertAdjacentHTML('beforeend', `<p class="prompt">Belum ada app di katalog.</p>`);
     return;
   }
-
-  const userLevel = getUserPlanLevel(CURRENT_PROFILE);
-  data.forEach(app => grid.insertAdjacentHTML('beforeend', renderCatalogCard(app, userLevel)));
+  data.forEach(app => grid.insertAdjacentHTML('beforeend', renderCatalogCard(app)));
 }
-
 function openCatalogApp(appsId) {
   // TODO: ganti sesuai cara app hasil katalog dibuka (mis. app.app_url kalau
   // kolom itu ditambahin ke tabel `apps`, atau redirect ke halaman detail app).
   console.log('open app', appsId);
 }
-
 function fillProfile() {
   const name = CURRENT_PROFILE?.full_name || CURRENT_USER.email;
   document.getElementById('chip-avatar').textContent = initials(name);
@@ -223,9 +168,7 @@ function fillProfile() {
   const upBtn = document.getElementById('upgrade-btn');
   if (upBtn) upBtn.style.display = (elite || CURRENT_PROFILE?.role === 'admin') ? 'none' : 'inline-flex';
   document.getElementById('chip-avatar').classList.toggle('admin', CURRENT_PROFILE?.role === 'admin');
-
   document.getElementById('profil-email').textContent = CURRENT_USER.email;
-
   // isi form update profil
   document.getElementById('edit-name').value = CURRENT_PROFILE?.full_name || '';
   document.getElementById('edit-phone').value = CURRENT_PROFILE?.phone || '';
@@ -243,7 +186,6 @@ function fillProfile() {
     ? new Date(CURRENT_PROFILE.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
     : '—';
 }
-
 async function saveProfile() {
   const btn = document.getElementById('save-profile-btn');
   btn.disabled = true; btn.textContent = 'Menyimpan…';
@@ -262,7 +204,6 @@ async function saveProfile() {
   btn.textContent = 'Tersimpan ✓';
   setTimeout(() => { btn.textContent = 'Simpan profil'; }, 1800);
 }
-
 (async () => {
   const ctx = await requireAuth('index.html');
   if (!ctx) return;
@@ -270,7 +211,6 @@ async function saveProfile() {
   CURRENT_PROFILE = ctx.profile;
   fillProfile();
   await loadRequests();
-
   // live-update ticket status the moment an admin changes it
   supabase
     .channel('own-requests-' + CURRENT_USER.id)
@@ -279,7 +219,6 @@ async function saveProfile() {
       () => loadRequests()
     )
     .subscribe();
-
   // kalau admin konfirmasi pembayaran pas lo lagi buka dashboard -> plan keupdate live
   supabase
     .channel('own-profile-' + CURRENT_USER.id)
