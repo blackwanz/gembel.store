@@ -14,9 +14,9 @@ async function getSessionUser() {
 
 async function getProfile(userId) {
   const { data, error } = await supabase
-    .from("profiles")
+    .from("user_profiles")
     .select("*")
-    .eq("id", userId)
+    .eq("user_id", userId)
     .single();
   if (error) {
     console.error("getProfile error", error);
@@ -161,7 +161,7 @@ function isElite(profile) {
 function rupiah(n) { return "Rp " + Number(n).toLocaleString("id-ID"); }
 
 function openPaymentModal(profile, onDone) {
-  if (!profile || !profile.id) { alert("Profil belum kebaca. Refresh halaman dulu ya."); return; }
+  if (!profile || !profile.user_id) { alert("Profil belum kebaca. Refresh halaman dulu ya."); return; }
   if (document.getElementById("pay-modal")) return;
   const price = window.GEMBEL_PRICE || 19999;
   const normal = window.GEMBEL_PRICE_NORMAL || 1000000;
@@ -209,7 +209,7 @@ function openPaymentModal(profile, onDone) {
   document.getElementById("pay-go").onclick = async () => {
     const btn = document.getElementById("pay-go");
     btn.disabled = true; btn.textContent = "Memproses…";
-    const { error } = await supabase.from("payment_requests").insert({ user_id: profile.id, amount: price });
+    const { error } = await supabase.from("payment_request").insert({ user_id: profile.user_id, amount: price });
     if (error) { alert("Gagal bikin tagihan: " + error.message); btn.disabled = false; btn.textContent = "Bayar " + rupiah(price) + " →"; return; }
     if (window.GEMBEL_PAYMENT_URL) window.open(window.GEMBEL_PAYMENT_URL, "_blank", "noopener");
 
@@ -233,9 +233,9 @@ function openPaymentModal(profile, onDone) {
 
     // realtime: begitu admin konfirmasi → sukses
     supabase
-      .channel("pay-" + profile.id)
+      .channel("pay-" + profile.user_id)
       .on("postgres_changes",
-        { event: "UPDATE", schema: "public", table: "payment_requests", filter: `user_id=eq.${profile.id}` },
+        { event: "UPDATE", schema: "public", table: "payment_request", filter: `user_id=eq.${profile.user_id}` },
         (payload) => {
           if (payload.new && payload.new.status === "confirmed") {
             clearInterval(tick);

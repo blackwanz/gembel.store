@@ -62,23 +62,7 @@
         <button class="btn btn-primary btn-block" id="submit-request-btn" onclick="submitRequest()">✨ Generate App →</button>
       </div>
 
-      <div class="tool-card">
-        <div class="tool-icon">📅</div>
-        <div>
-          <h3>Kalender Produktivitas</h3>
-          <p>App bawaan lo — goals harian, tracking angka, dan progress bulanan. Selalu aktif, gratis buat semua member.</p>
-        </div>
-        <button class="btn btn-primary btn-block" onclick="window.location.href='calendar.html'">Buka Kalender →</button>
-      </div>
-
-      <div class="tool-card">
-        <div class="tool-icon">⚡</div>
-        <div>
-          <h3>Neon Flow — Time Tracker</h3>
-          <p>Progress tracker gaya cyberpunk — lacak sesi kerja lo per warna (fokus/istirahat/lainnya) sampai target waktu harian. Data tersimpan di akun lo.</p>
-        </div>
-        <button class="btn btn-primary btn-block" onclick="window.location.href='progbar.html'">Buka Neon Flow →</button>
-      </div>
+      <div id="installed-apps-slot"></div>
 
       <div id="requests-loading" class="skeleton"></div>
     </div>
@@ -142,6 +126,37 @@
 <script>
 let CURRENT_USER = null;
 let CURRENT_PROFILE = null;
+
+// ===== INSTALLED_APPS =====
+// Hardcoded for now — the real `apps` table (apps_id, apps_desc, start_date,
+// end_date) has no column to store a path/title/icon, so there's nothing to
+// drive this from yet. When that changes (e.g. an app_url/title/icon column
+// gets added, or this starts reading user_profiles.plan to gate access),
+// this array is the one place to swap for a Supabase query — everything
+// below (renderInstalledApps) already reads from this array, not from HTML,
+// so the render logic won't need to change.
+const INSTALLED_APPS = [
+  { icon: '📅', title: 'Kalender Produktivitas', desc: 'Goals harian, tracking angka, dan progress bulanan. Selalu aktif, gratis buat semua member.', url: 'apps/calendar/calendar.html' },
+  { icon: '⚡', title: 'Neon Flow — Time Tracker', desc: 'Progress tracker gaya cyberpunk — lacak sesi kerja lo per warna (fokus/istirahat/lainnya) sampai target waktu harian. Data tersimpan di akun lo.', url: 'apps/progbar/progbar.html' },
+  { icon: '🧘', title: 'Meditate Space', desc: 'Sesi meditasi terpandu buat reset fokus lo di tengah hari.', url: 'apps/meditate/meditate.html' },
+  { icon: '💼', title: 'Portfolio Live', desc: 'Lacak holdings crypto & stock lo dengan harga real-time. Data tersimpan di akun lo.', url: 'apps/portfolio/portfolio.html' },
+  { icon: '🛡️', title: 'Trade Master', desc: 'Terminal trading risk-locked yang nyambung ke MT5.', url: 'apps/trademaster/trademaster.html' },
+  { icon: '⏱️', title: 'Habit Tracker', desc: 'Catat aktivitas harian lo — mulai/stop sesi, lihat riwayatnya kapan aja.', url: 'apps/habbit/habbit.html' },
+];
+
+function renderInstalledApps() {
+  const slot = document.getElementById('installed-apps-slot');
+  if (!slot) return;
+  slot.innerHTML = INSTALLED_APPS.map(app => `
+    <div class="tool-card">
+      <div class="tool-icon">${app.icon}</div>
+      <div>
+        <h3>${escapeHtml(app.title)}</h3>
+        <p>${escapeHtml(app.desc)}</p>
+      </div>
+      <button class="btn btn-primary btn-block" onclick="window.location.href='${app.url}'">Buka ${escapeHtml(app.title)} →</button>
+    </div>`).join('');
+}
 
 function switchTab(name) {
   document.querySelectorAll('.dash-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
@@ -211,7 +226,7 @@ function updateStats(requests) {
 
 async function loadRequests() {
   const { data, error } = await supabase
-    .from('app_requests')
+    .from('app_request')
     .select('*')
     .eq('user_id', CURRENT_USER.id)
     .order('created_at', { ascending: false });
@@ -240,7 +255,7 @@ async function submitRequest() {
   btn.disabled = true;
   btn.textContent = 'Ngirim…';
 
-  const { error } = await supabase.from('app_requests').insert({
+  const { error } = await supabase.from('app_request').insert({
     user_id: CURRENT_USER.id,
     title: titleEl.value.trim() || null,
     prompt: text,
@@ -294,13 +309,13 @@ async function saveProfile() {
   const btn = document.getElementById('save-profile-btn');
   btn.disabled = true; btn.textContent = 'Menyimpan…';
   const wallet = document.getElementById('edit-wallet').value;
-  const { error } = await supabase.from('profiles').update({
+  const { error } = await supabase.from('user_profiles').update({
     full_name: document.getElementById('edit-name').value.trim() || null,
     phone: document.getElementById('edit-phone').value.trim() || null,
     wallet_type: wallet,
     wallet_number: wallet === 'nothing' ? null : (document.getElementById('edit-wallet-number').value.trim() || null),
     bio: document.getElementById('edit-bio').value.trim() || null,
-  }).eq('id', CURRENT_USER.id);
+  }).eq('user_id', CURRENT_USER.id);
   btn.disabled = false; btn.textContent = 'Simpan profil';
   if (error) { alert('Gagal simpan: ' + error.message); return; }
   CURRENT_PROFILE = await getProfile(CURRENT_USER.id);
@@ -315,13 +330,14 @@ async function saveProfile() {
   CURRENT_USER = ctx.user;
   CURRENT_PROFILE = ctx.profile;
   fillProfile();
+  renderInstalledApps();
   await loadRequests();
 
   // live-update ticket status the moment an admin changes it
   supabase
     .channel('own-requests-' + CURRENT_USER.id)
     .on('postgres_changes',
-      { event: '*', schema: 'public', table: 'app_requests', filter: `user_id=eq.${CURRENT_USER.id}` },
+      { event: '*', schema: 'public', table: 'app_request', filter: `user_id=eq.${CURRENT_USER.id}` },
       () => loadRequests()
     )
     .subscribe();
@@ -330,7 +346,7 @@ async function saveProfile() {
   supabase
     .channel('own-profile-' + CURRENT_USER.id)
     .on('postgres_changes',
-      { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${CURRENT_USER.id}` },
+      { event: 'UPDATE', schema: 'public', table: 'user_profiles', filter: `user_id=eq.${CURRENT_USER.id}` },
       async () => { CURRENT_PROFILE = await getProfile(CURRENT_USER.id); fillProfile(); loadRequests(); }
     )
     .subscribe();

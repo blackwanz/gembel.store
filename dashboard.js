@@ -1,45 +1,190 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — Gembel AI PIK</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/app-theme.css">
+</head>
+<body>
+
+<div class="dash-top">
+  <div style="display:flex;align-items:center;gap:28px;">
+    <div class="logo display" style="font-size:16px;"><span class="g">GEMBEL</span> <span class="e">AI PIK</span></div>
+    <div class="dash-tabs">
+      <div class="dash-tab active" data-tab="apps" onclick="switchTab('apps')">My Apps</div>
+      <div class="dash-tab" data-tab="profil" onclick="switchTab('profil')">Profil</div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:14px;">
+    <div class="user-chip">
+      <div class="avatar" id="chip-avatar">··</div>
+      <div>
+        <div class="name" id="chip-name">…</div>
+        <div class="role" id="chip-role">MEMBER</div>
+      </div>
+    </div>
+    <button class="btn btn-primary btn-sm" id="upgrade-btn" style="display:none;" onclick="openPaymentModal(CURRENT_PROFILE, () => location.reload())">⭐ Upgrade Elite</button>
+    <button class="theme-toggle" onclick="toggleTheme()" title="Ganti tema">🌙</button>
+    <button class="btn btn-ghost btn-sm" onclick="logout()">Keluar</button>
+  </div>
+</div>
+
+<div class="dash-body">
+
+  <!-- ===== TAB: MY APPS ===== -->
+  <div id="tab-apps" class="tab-panel">
+    <div class="dash-head">
+      <div>
+        <h1>App lo</h1>
+        <p>Semua yang udah lo pesan, hidup di sini.</p>
+      </div>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat"><div class="label">Total Request</div><div class="value" id="stat-total">0</div></div>
+      <div class="stat"><div class="label">Lagi Diproses</div><div class="value" id="stat-proses">0</div></div>
+      <div class="stat"><div class="label">Selesai</div><div class="value" id="stat-selesai">0</div></div>
+    </div>
+
+    <div class="apps-grid" id="apps-grid">
+      <div class="new-card prompt-hero">
+        <div class="prompt-hero-head">
+          <span class="prompt-hero-badge">✨ GEMBEL AI</span>
+          <h3>Mau app apa hari ini?</h3>
+        </div>
+        <p>Jelasin app yang lo butuhin, sedetail mungkin — gue racik jadi aplikasi jalan.</p>
+        <input type="text" id="new-title" placeholder="Judul singkat (opsional)">
+        <textarea id="new-prompt" placeholder="Contoh: aplikasi buat hitung target tabungan bulanan, ada grafik progress-nya..."></textarea>
+        <button class="btn btn-primary btn-block" id="submit-request-btn" onclick="submitRequest()">✨ Generate App →</button>
+      </div>
+
+      <div id="installed-apps-slot"></div>
+
+      <div id="requests-loading" class="skeleton"></div>
+    </div>
+  </div>
+
+  <!-- ===== TAB: PROFIL ===== -->
+  <div id="tab-profil" class="tab-panel" style="display:none;">
+    <div class="dash-head">
+      <div>
+        <h1>Profil</h1>
+        <p>Info akun lo.</p>
+      </div>
+    </div>
+    <div class="panel" style="max-width:440px;">
+      <div class="panel-head"><h2>Detail akun</h2></div>
+      <table class="data-table">
+        <tr><td style="color:var(--text-faint);width:120px;">Email</td><td id="profil-email">—</td></tr>
+        <tr><td style="color:var(--text-faint);">Role</td><td id="profil-role">—</td></tr>
+        <tr><td style="color:var(--text-faint);">Plan</td><td id="profil-plan">—</td></tr>
+        <tr><td style="color:var(--text-faint);">Member sejak</td><td id="profil-since">—</td></tr>
+      </table>
+    </div>
+
+    <div class="panel" style="max-width:440px;margin-top:18px;">
+      <div class="panel-head"><h2>Update profil</h2></div>
+      <div style="padding:4px 2px;">
+        <div class="field">
+          <label>Nama lengkap</label>
+          <input type="text" id="edit-name" placeholder="Nama lengkap lo" maxlength="80">
+        </div>
+        <div class="field">
+          <label>No. HP</label>
+          <input type="tel" id="edit-phone" placeholder="08xxxxxxxxxx" maxlength="20">
+        </div>
+        <div class="field">
+          <label>Online wallet</label>
+          <select id="edit-wallet" onchange="document.getElementById('wallet-number-field').style.display = this.value === 'nothing' ? 'none' : 'block'">
+            <option value="nothing">Nggak ada</option>
+            <option value="gopay">GoPay</option>
+            <option value="btc">Bitcoin (BTC)</option>
+          </select>
+        </div>
+        <div class="field" id="wallet-number-field" style="display:none;">
+          <label>Nomor / alamat wallet</label>
+          <input type="text" id="edit-wallet-number" placeholder="No. GoPay atau alamat BTC" maxlength="120">
+        </div>
+        <div class="field">
+          <label>Bio</label>
+          <textarea id="edit-bio" placeholder="Cerita singkat tentang lo…" maxlength="300" style="min-height:70px;"></textarea>
+        </div>
+        <button class="btn btn-primary btn-block" id="save-profile-btn" onclick="saveProfile()">Simpan profil</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="assets/supabaseClient.js"></script>
+<script src="assets/auth.js"></script>
+<script>
 let CURRENT_USER = null;
 let CURRENT_PROFILE = null;
-// cache biar klik bolak-balik tab gak nembak query ke Supabase tiap kali
-let CATALOG_LOADED = false;
+
+// ===== INSTALLED_APPS =====
+// Hardcoded for now — the real `apps` table (apps_id, apps_desc, start_date,
+// end_date) has no column to store a path/title/icon, so there's nothing to
+// drive this from yet. When that changes (e.g. an app_url/title/icon column
+// gets added, or this starts reading user_profiles.plan to gate access),
+// this array is the one place to swap for a Supabase query — everything
+// below (renderInstalledApps) already reads from this array, not from HTML,
+// so the render logic won't need to change.
+const INSTALLED_APPS = [
+  { icon: '📅', title: 'Kalender Produktivitas', desc: 'Goals harian, tracking angka, dan progress bulanan. Selalu aktif, gratis buat semua member.', url: 'apps/calendar/calendar.html' },
+  { icon: '⚡', title: 'Neon Flow — Time Tracker', desc: 'Progress tracker gaya cyberpunk — lacak sesi kerja lo per warna (fokus/istirahat/lainnya) sampai target waktu harian. Data tersimpan di akun lo.', url: 'apps/progbar/progbar.html' },
+  { icon: '🧘', title: 'Meditate Space', desc: 'Sesi meditasi terpandu buat reset fokus lo di tengah hari.', url: 'apps/meditate/meditate.html' },
+  { icon: '💼', title: 'Portfolio Live', desc: 'Lacak holdings crypto & stock lo dengan harga real-time. Data tersimpan di akun lo.', url: 'apps/portfolio/portfolio.html' },
+  { icon: '🛡️', title: 'Trade Master', desc: 'Terminal trading risk-locked yang nyambung ke MT5.', url: 'apps/trademaster/trademaster.html' },
+  { icon: '⏱️', title: 'Habit Tracker', desc: 'Catat aktivitas harian lo — mulai/stop sesi, lihat riwayatnya kapan aja.', url: 'apps/habbit/habbit.html' },
+];
+
+function renderInstalledApps() {
+  const slot = document.getElementById('installed-apps-slot');
+  if (!slot) return;
+  slot.innerHTML = INSTALLED_APPS.map(app => `
+    <div class="tool-card">
+      <div class="tool-icon">${app.icon}</div>
+      <div>
+        <h3>${escapeHtml(app.title)}</h3>
+        <p>${escapeHtml(app.desc)}</p>
+      </div>
+      <button class="btn btn-primary btn-block" onclick="window.location.href='${app.url}'">Buka ${escapeHtml(app.title)} →</button>
+    </div>`).join('');
+}
+
 function switchTab(name) {
   document.querySelectorAll('.dash-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
   document.getElementById('tab-apps').style.display = name === 'apps' ? 'block' : 'none';
-  document.getElementById('tab-katalog').style.display = name === 'katalog' ? 'block' : 'none';
   document.getElementById('tab-profil').style.display = name === 'profil' ? 'block' : 'none';
-  if (name === 'katalog' && !CATALOG_LOADED) {
-    CATALOG_LOADED = true;
-    loadCatalog();
-  }
 }
+
 function statusLabel(s) {
   return { antre: 'ANTRE', diproses: 'DIPROSES', selesai: 'SELESAI' }[s] || s.toUpperCase();
 }
-// NOTE: skema `app_request` yang ada sekarang cuma punya start_date/end_date
-// (date, bukan timestamptz) — belum ada kolom expires_at, admin_note, app_url,
-// apk_url. Kode di bawah pakai end_date sebagai expiry, dan field yang belum
-// ada di skema di-guard dengan `req.xxx || null` biar gak crash sekarang, tapi
-// otomatis "nyala" begitu kolomnya ditambahin ke tabel nanti.
+
 function renderTicket(req) {
   const num = '#' + req.id.slice(0, 6).toUpperCase();
   const title = req.title && req.title.trim() ? req.title : 'App baru lo';
   const elite = isElite(CURRENT_PROFILE);
-  // end_date itu DATE (bukan timestamptz), jadi expired dihitung per akhir hari itu
-  const expiryTimestamp = req.end_date ? new Date(req.end_date + 'T23:59:59') : null;
-  const expired = !elite && expiryTimestamp && expiryTimestamp < new Date();
-  const appUrl = req.app_url || null;
-  const apkUrl = req.apk_url || null;
-  const adminNote = req.admin_note || null;
-  const canOpen = req.status === 'selesai' && appUrl && !expired;
-  const canDownload = req.status === 'selesai' && apkUrl && !expired;
+  const expired = !elite && req.expires_at && new Date(req.expires_at) < new Date();
+  const canOpen = req.status === 'selesai' && req.app_url && !expired;
+  const canDownload = req.status === 'selesai' && req.apk_url && !expired;
+
   let expiryHtml = '';
-  if (!elite && req.status === 'selesai' && expiryTimestamp) {
+  if (!elite && req.status === 'selesai' && req.expires_at) {
     if (expired) {
-      expiryHtml = `<span class="ticket-expiry expired">⏰ Akses free tier habis — <a href="#" onclick="openPaymentModal(CURRENT_PROFILE, loadRequests); return false;" style="color:inherit;text-decoration:underline;">upgrade Elite</a> buat buka lagi</span>`;
+      expiryHtml = `<span class="ticket-expiry expired">⏰ Akses 3 jam habis — <a href="#" onclick="openPaymentModal(CURRENT_PROFILE, loadRequests); return false;" style="color:inherit;text-decoration:underline;">upgrade Elite</a> buat buka lagi</span>`;
     } else {
-      expiryHtml = `<span class="ticket-expiry" data-expires="${expiryTimestamp.toISOString()}">⏰ sisa akses: menghitung…</span>`;
+      expiryHtml = `<span class="ticket-expiry" data-expires="${req.expires_at}">⏰ sisa akses: menghitung…</span>`;
     }
   }
+
   return `
     <div class="ticket st-${req.status}" data-id="${req.id}">
       <div class="ticket-head">
@@ -48,18 +193,19 @@ function renderTicket(req) {
       </div>
       <h3>${escapeHtml(title)}</h3>
       <p class="prompt">${escapeHtml(req.prompt)}</p>
-      ${adminNote ? `<p class="prompt" style="color:var(--primary-text);">Catatan: ${escapeHtml(adminNote)}</p>` : ''}
+      ${req.admin_note ? `<p class="prompt" style="color:var(--primary-text);">Catatan: ${escapeHtml(req.admin_note)}</p>` : ''}
       ${expiryHtml}
       <div class="ticket-foot">
         <span class="ticket-time">${fmtRelativeTime(req.created_at)}</span>
         <div class="ticket-actions">
-          ${canDownload ? `<a class="btn btn-ghost btn-sm" href="${apkUrl}" target="_blank" rel="noopener">Unduh APK</a>` : ''}
-          ${canOpen ? `<a class="btn btn-primary btn-sm" href="${appUrl}" target="_blank" rel="noopener">Buka</a>` : ''}
+          ${canDownload ? `<a class="btn btn-ghost btn-sm" href="${req.apk_url}" target="_blank" rel="noopener">Unduh APK</a>` : ''}
+          ${canOpen ? `<a class="btn btn-primary btn-sm" href="${req.app_url}" target="_blank" rel="noopener">Buka</a>` : ''}
           ${!canOpen && !canDownload && !expired ? `<button class="btn btn-ghost btn-sm" disabled>${req.status === 'antre' ? 'Dalam antrian' : req.status === 'diproses' ? 'Lagi dikerjain' : 'Belum ada link'}</button>` : ''}
         </div>
       </div>
     </div>`;
 }
+
 // hitung mundur sisa akses free tier tiap detik
 setInterval(() => {
   let anyExpired = false;
@@ -71,20 +217,25 @@ setInterval(() => {
   });
   if (anyExpired) loadRequests();
 }, 1000);
+
 function updateStats(requests) {
   document.getElementById('stat-total').textContent = requests.length;
   document.getElementById('stat-proses').textContent = requests.filter(r => r.status === 'diproses').length;
   document.getElementById('stat-selesai').textContent = requests.filter(r => r.status === 'selesai').length;
 }
+
 async function loadRequests() {
   const { data, error } = await supabase
     .from('app_request')
     .select('*')
     .eq('user_id', CURRENT_USER.id)
     .order('created_at', { ascending: false });
+
   const loadingEl = document.getElementById('requests-loading');
   if (loadingEl) loadingEl.remove();
+
   document.querySelectorAll('.ticket').forEach(el => el.remove());
+
   if (error) {
     console.error(error);
     return;
@@ -93,22 +244,27 @@ async function loadRequests() {
   const grid = document.getElementById('apps-grid');
   data.forEach(req => grid.insertAdjacentHTML('beforeend', renderTicket(req)));
 }
+
 async function submitRequest() {
   const titleEl = document.getElementById('new-title');
   const promptEl = document.getElementById('new-prompt');
   const text = promptEl.value.trim();
   if (!text) { promptEl.focus(); return; }
+
   const btn = document.getElementById('submit-request-btn');
   btn.disabled = true;
   btn.textContent = 'Ngirim…';
+
   const { error } = await supabase.from('app_request').insert({
     user_id: CURRENT_USER.id,
     title: titleEl.value.trim() || null,
     prompt: text,
     status: 'antre',
   });
+
   btn.disabled = false;
   btn.textContent = 'Kirim prompt →';
+
   if (error) {
     alert('Gagal kirim: ' + error.message);
     return;
@@ -117,46 +273,7 @@ async function submitRequest() {
   promptEl.value = '';
   await loadRequests();
 }
-// ===== Katalog: semua app ditampilkan terbuka, tanpa gating plan =====
-function renderCatalogCard(app) {
-  return `
-    <div class="ticket" data-id="${app.apps_id}">
-      <div class="ticket-head">
-      </div>
-      <h3>${escapeHtml(app.title || app.apps_desc?.slice(0, 60) || 'App')}</h3>
-      <p class="prompt">${escapeHtml(app.apps_desc || '')}</p>
-      <div class="ticket-foot">
-        <span class="ticket-time">${app.created_at ? fmtRelativeTime(app.created_at) : ''}</span>
-        <div class="ticket-actions">
-          <button class="btn btn-primary btn-sm" onclick="openCatalogApp('${app.apps_id}')">Buka</button>
-        </div>
-      </div>
-    </div>`;
-}
-async function loadCatalog() {
-  const { data, error } = await supabase
-    .from('apps')
-    .select('*')
-    .order('created_at', { ascending: false });
-  const loadingEl = document.getElementById('catalog-loading');
-  if (loadingEl) loadingEl.remove();
-  const grid = document.getElementById('catalog-grid');
-  if (error) {
-    console.error(error);
-    grid.insertAdjacentHTML('beforeend', `<p class="prompt">Gagal muat katalog: ${escapeHtml(error.message)}</p>`);
-    return;
-  }
-  if (!data || data.length === 0) {
-    grid.insertAdjacentHTML('beforeend', `<p class="prompt">Belum ada app di katalog.</p>`);
-    return;
-  }
-  data.forEach(app => grid.insertAdjacentHTML('beforeend', renderCatalogCard(app)));
-}
-function openCatalogApp(appsId) {
-  // TODO: ganti sesuai cara app hasil katalog dibuka (mis. app.app_url kalau
-  // kolom itu ditambahin ke tabel `apps`, atau redirect ke halaman detail app).
-  console.log('open app', appsId);
-}
+
 function fillProfile() {
   const name = CURRENT_PROFILE?.full_name || CURRENT_USER.email;
   document.getElementById('chip-avatar').textContent = initials(name);
@@ -168,7 +285,9 @@ function fillProfile() {
   const upBtn = document.getElementById('upgrade-btn');
   if (upBtn) upBtn.style.display = (elite || CURRENT_PROFILE?.role === 'admin') ? 'none' : 'inline-flex';
   document.getElementById('chip-avatar').classList.toggle('admin', CURRENT_PROFILE?.role === 'admin');
+
   document.getElementById('profil-email').textContent = CURRENT_USER.email;
+
   // isi form update profil
   document.getElementById('edit-name').value = CURRENT_PROFILE?.full_name || '';
   document.getElementById('edit-phone').value = CURRENT_PROFILE?.phone || '';
@@ -178,14 +297,14 @@ function fillProfile() {
   document.getElementById('edit-wallet-number').value = CURRENT_PROFILE?.wallet_number || '';
   document.getElementById('edit-bio').value = CURRENT_PROFILE?.bio || '';
   document.getElementById('profil-role').textContent = CURRENT_PROFILE?.role === 'admin' ? 'Admin' : 'Member';
-  // NOTE: kolom plan_until belum ada di skema user_profiles yang sekarang —
-  // kalau lo mau nampilin tanggal masa aktif Elite, tambahin kolom itu dulu
-  // (misal `plan_until date` atau `plan_expires_at timestamptz`).
-  document.getElementById('profil-plan').textContent = elite ? 'Elite ⭐' : 'Free';
+  document.getElementById('profil-plan').textContent = elite
+    ? 'Elite ⭐' + (CURRENT_PROFILE?.plan_until ? ' (aktif s/d ' + new Date(CURRENT_PROFILE.plan_until).toLocaleDateString('id-ID', {day:'numeric',month:'short',year:'numeric'}) + ')' : '')
+    : 'Free';
   document.getElementById('profil-since').textContent = CURRENT_PROFILE?.created_at
     ? new Date(CURRENT_PROFILE.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
     : '—';
 }
+
 async function saveProfile() {
   const btn = document.getElementById('save-profile-btn');
   btn.disabled = true; btn.textContent = 'Menyimpan…';
@@ -204,13 +323,16 @@ async function saveProfile() {
   btn.textContent = 'Tersimpan ✓';
   setTimeout(() => { btn.textContent = 'Simpan profil'; }, 1800);
 }
+
 (async () => {
   const ctx = await requireAuth('index.html');
   if (!ctx) return;
   CURRENT_USER = ctx.user;
   CURRENT_PROFILE = ctx.profile;
   fillProfile();
+  renderInstalledApps();
   await loadRequests();
+
   // live-update ticket status the moment an admin changes it
   supabase
     .channel('own-requests-' + CURRENT_USER.id)
@@ -219,6 +341,7 @@ async function saveProfile() {
       () => loadRequests()
     )
     .subscribe();
+
   // kalau admin konfirmasi pembayaran pas lo lagi buka dashboard -> plan keupdate live
   supabase
     .channel('own-profile-' + CURRENT_USER.id)
@@ -228,3 +351,6 @@ async function saveProfile() {
     )
     .subscribe();
 })();
+</script>
+</body>
+</html>
