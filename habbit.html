@@ -1,0 +1,3619 @@
+<!DOCTYPE html>
+<!--
+============================================================
+ HABBIT — Aktivitas & Pengeluaran (LOCAL STORAGE VERSION v2)
+============================================================
+ Pure HTML + CSS + inline JS, single file, no server. Data
+ disimpan permanen di localStorage browser ini
+ (key: "habbit_local_db_v1" & "habbit_local_targets_v1").
+
+ v2 nambahin:
+   - Export riwayat ke Excel (.xlsx) via SheetJS (CDN)
+   - Toggle Pemasukan/Pengeluaran: double-tap / double-click
+     pada pill tag finance buat ganti warna merah <-> hijau
+   - Halaman Statistik: total per periode + target bulanan
+     (overall & per kategori) dengan progress bar
+   - Halaman Laporan Jangka Panjang: savings rate per bulan,
+     tren 6 bulan terakhir, dan set target nabung bulan depan
+============================================================
+-->
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aktivitas &amp; Pengeluaran — Gembel AI PIK</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/dist/umd/supabase.min.js"></script>
+<script src="assets/supabaseClient.js"></script>
+<script src="assets/auth.js"></script>
+<style>
+:root{
+  --bg:#0a0e16;
+  --bg2:#0e131e;
+  --card:#131a28;
+  --card2:#182034;
+  --border:#232c40;
+  --border-soft:#1b2334;
+  --text:#eaeef7;
+  --text-dim:#93a0b8;
+  --text-faint:#5c6885;
+  --accent:#7c6cf6;
+  --accent-soft:#7c6cf62a;
+  --green:#33d693;
+  --green-soft:#33d69322;
+  --red:#f4615c;
+  --red-soft:#f4615c22;
+  --yellow:#f5b942;
+  --yellow-soft:#f5b94222;
+  --radius:16px;
+  --radius-sm:10px;
+  --shadow:0 10px 30px -12px rgba(0,0,0,.55);
+}
+body.theme-light{
+  --bg:#f4f6fb;
+  --bg2:#ffffff;
+  --card:#ffffff;
+  --card2:#eef1f8;
+  --border:#dde3ef;
+  --border-soft:#e7ebf4;
+  --text:#161b2b;
+  --text-dim:#5b6480;
+  --text-faint:#98a1b8;
+  --accent:#6c5ce7;
+  --accent-soft:#6c5ce71f;
+  --green:#149a5f;
+  --green-soft:#149a5f1a;
+  --red:#d3413b;
+  --red-soft:#d3413b1a;
+  --yellow:#b8790f;
+  --yellow-soft:#b8790f1a;
+  --shadow:0 10px 24px -14px rgba(20,25,45,.18);
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:
+    radial-gradient(1200px 600px at 15% -10%, #7c6cf61a, transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, #33d6931a, transparent 55%),
+    var(--bg);
+  color:var(--text);
+  font-family:'Inter',system-ui,sans-serif;
+  min-height:100vh;
+  padding-bottom:60px;
+  transition:background-color .2s, color .2s;
+}
+.mono{font-family:'JetBrains Mono',monospace;}
+
+/* ============= TOP BAR ============= */
+.top{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 24px;border-bottom:1px solid var(--border-soft);
+  position:sticky;top:0;z-index:20;
+  background:rgba(10,14,22,.85);backdrop-filter:blur(10px);
+}
+.brand{display:flex;align-items:center;gap:12px;}
+.brand-mark{
+  width:38px;height:38px;border-radius:11px;
+  background:linear-gradient(135deg,var(--accent),#4f46c9);
+  display:flex;align-items:center;justify-content:center;
+  font-family:'Sora',sans-serif;font-weight:800;font-size:14px;color:#fff;
+  box-shadow:0 6px 16px -4px #7c6cf680;
+}
+.brand-txt{font-family:'Sora',sans-serif;font-weight:700;font-size:15px;letter-spacing:.2px;}
+.brand-sub{font-size:11px;color:var(--text-faint);letter-spacing:.4px;margin-top:2px;}
+.top-right{display:flex;align-items:center;gap:14px;}
+.storage-badge{
+  display:none;
+  font-size:12px;color:var(--text-dim);align-items:center;gap:6px;
+  border:1px solid var(--border);padding:6px 10px;border-radius:999px;
+}
+@media(min-width:720px){.storage-badge{display:inline-flex;}}
+.storage-badge .dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);}
+.storage-badge.saving .dot{background:var(--yellow);box-shadow:0 0 8px var(--yellow);}
+.storage-badge.error .dot{background:var(--red);box-shadow:0 0 8px var(--red);}
+.habbit-nav-btn{
+  font-size:12px;color:var(--text-dim);display:inline-flex;align-items:center;gap:6px;
+  padding:6px 10px;border-radius:999px;border:1px solid var(--border);background:var(--card2);
+  cursor:pointer;text-decoration:none;font-family:inherit;transition:border-color .15s,color .15s;
+}
+.habbit-nav-btn:hover{border-color:var(--accent);color:var(--text);}
+.who{display:flex;align-items:center;gap:10px;padding:4px 8px;border-radius:12px;}
+.who:hover{background:var(--card);}
+.who-badge{
+  width:34px;height:34px;border-radius:50%;background:var(--card2);
+  border:1px solid var(--border);display:flex;align-items:center;justify-content:center;
+  font-size:12px;font-weight:700;color:var(--text-dim);
+}
+.who-name{font-size:13px;font-weight:600;}
+.who-sub{font-size:11px;color:var(--text-faint);}
+
+.theme-toggle{
+  width:34px;height:34px;border-radius:50%;background:var(--card2);
+  border:1px solid var(--border);display:flex;align-items:center;justify-content:center;
+  font-size:15px;cursor:pointer;transition:all .15s;
+}
+.theme-toggle:hover{border-color:var(--accent);transform:scale(1.06);}
+
+/* ============= NAV TABS (hover to reveal) =============
+   The trigger strip is a FIXED-SIZE invisible hitbox -- it never changes
+   height/size on hover, which is what makes hovering stable. (The old
+   version shrank the hint text to height:0 the instant you hovered it,
+   which could shove the trigger's own box out from under the cursor,
+   un-hovering it, restoring the hint, re-hovering it... an infinite
+   open/close flicker loop.) The tabs panel now appears as an absolutely
+   positioned overlay dropping BELOW the trigger, so revealing it never
+   resizes the thing being hovered. */
+.nav-hover-zone{max-width:1080px;margin:0 auto;padding:0 24px;position:relative;}
+.nav-hint{height:14px;cursor:pointer;}
+.nav-tabs{
+  display:flex;gap:6px;
+  position:absolute;top:100%;left:24px;right:24px;
+  max-height:0;opacity:0;overflow:hidden;pointer-events:none;
+  transition:max-height .22s ease, opacity .18s ease;
+  z-index:15;
+}
+.nav-hover-zone:hover .nav-tabs,
+.nav-hover-zone.nav-open .nav-tabs{
+  max-height:60px;opacity:1;pointer-events:auto;
+}
+.nav-tab{
+  flex:1;text-align:center;padding:11px 10px;border-radius:0 0 12px 12px;
+  background:var(--card);border:1px solid var(--border-soft);border-top:none;
+  color:var(--text-faint);font-family:'Inter',sans-serif;font-weight:600;font-size:13.5px;
+  cursor:pointer;transition:all .15s;box-shadow:var(--shadow);
+}
+.nav-tab:hover{color:var(--text-dim);}
+.nav-tab.active{color:var(--text);}
+@media(max-width:560px){.nav-tab{font-size:11.5px;padding:10px 4px;}}
+
+/* ============= LAYOUT ============= */
+.wrap{max-width:1080px;margin:0 auto;padding:22px 24px 10px;}
+.page-view{display:none;}
+.page-view.active{display:block;}
+.page-head h1{font-family:'Sora',sans-serif;font-size:26px;margin:0 0 6px;font-weight:800;}
+.page-head p{color:var(--text-dim);font-size:14px;margin:0 0 22px;line-height:1.5;max-width:560px;}
+.grid{display:grid;grid-template-columns:1fr;gap:20px;}
+@media(min-width:860px){.grid{grid-template-columns:1fr 1.15fr;align-items:start;}}
+
+.card{
+  background:linear-gradient(180deg,var(--card),var(--bg2));
+  border:1px solid var(--border-soft);border-radius:var(--radius);
+  padding:22px;box-shadow:var(--shadow);min-width:0;
+}
+.card h2{font-family:'Sora',sans-serif;font-size:16px;margin:0 0 14px;font-weight:700;}
+.hint{color:var(--text-faint);font-size:12.5px;margin:-8px 0 14px;}
+
+/* ============= FORM ============= */
+.field{margin-bottom:16px;}
+.field label{display:block;font-size:12.5px;color:var(--text-dim);margin-bottom:6px;font-weight:600;}
+input[type=text],input[type=date],input[type=month],input[type=number]{
+  width:100%;background:var(--bg2);border:1px solid var(--border);color:var(--text);
+  border-radius:var(--radius-sm);padding:11px 13px;font-size:14px;font-family:inherit;
+  outline:none;transition:border-color .15s;
+}
+input:focus{border-color:var(--accent);}
+.field.invalid input{border-color:var(--red);}
+.err-text{display:none;color:var(--red);font-size:11.5px;margin-top:6px;}
+.field.invalid .err-text{display:block;}
+
+/* Recent-activity quick-pick bubbles — a compact swipeable strip above the
+   activity input so you don't have to retype/rethink names you've already
+   used. Tapping one prefills the form (name + finance state + last nominal +
+   tag) instead of silently submitting, so you can still tweak it first. */
+.recent-bubbles-wrap{margin-bottom:14px;min-width:0;}
+.recent-bubbles-label{font-size:11px;color:var(--text-faint);margin-bottom:7px;font-weight:600;letter-spacing:.2px;}
+.recent-bubbles-scroll{
+  display:flex;gap:7px;overflow-x:auto;padding-bottom:4px;min-width:0;
+  scrollbar-width:none;-ms-overflow-style:none;
+}
+.recent-bubbles-scroll::-webkit-scrollbar{display:none;}
+.recent-bubble{
+  flex:0 0 auto;display:flex;align-items:center;gap:6px;
+  background:var(--card2);border:1px solid var(--border);color:var(--text-dim);
+  padding:7px 12px;border-radius:999px;font-size:12.5px;font-weight:600;
+  cursor:pointer;white-space:nowrap;transition:border-color .15s,background .15s,transform .1s;
+}
+.recent-bubble:hover{border-color:var(--accent);color:var(--text);}
+.recent-bubble:active{transform:scale(.96);}
+.recent-bubble .rb-amt{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:11.5px;}
+.recent-bubble.income{border-color:var(--green-soft);}
+.recent-bubble.income .rb-amt{color:var(--green);}
+.recent-bubble.expense{border-color:var(--red-soft);}
+.recent-bubble.expense .rb-amt{color:var(--red);}
+.recent-bubbles-empty{font-size:12px;color:var(--text-faint);padding:4px 0;}
+
+.ct-title{font-weight:600;font-size:13.5px;}
+.ct-sub{font-size:11.5px;color:var(--text-faint);margin-top:2px;}
+
+.finance-fields{display:none;flex-direction:column;}
+.finance-fields.show{display:flex;}
+.amount-wrap{display:flex;align-items:center;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;}
+.amount-wrap .prefix{padding:0 10px;color:var(--text-faint);font-family:'JetBrains Mono',monospace;font-size:13px;}
+.amount-wrap input{border:none;background:transparent;padding-left:0;}
+.field.invalid .amount-wrap{border-color:var(--red);}
+
+/* the "Ini urusan duit?" button/checkbox — click to check, double-click to flip income/expense */
+.finance-toggle-box{
+  display:flex;align-items:center;gap:12px;
+  padding:13px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);
+  background:var(--bg2);cursor:pointer;user-select:none;margin-bottom:16px;
+  transition:background .18s, border-color .18s;
+}
+.finance-toggle-box:hover{border-color:var(--accent);}
+.finance-toggle-box.checked.income{background:var(--green-soft);border-color:var(--green);}
+.finance-toggle-box.checked.expense{background:var(--red-soft);border-color:var(--red);}
+.ftb-icon{font-size:18px;line-height:1;flex-shrink:0;}
+.ftb-text{flex:1;min-width:0;}
+.ftb-title{font-weight:700;font-size:13.5px;}
+.finance-toggle-box.checked.income .ftb-title{color:var(--green);}
+.finance-toggle-box.checked.expense .ftb-title{color:var(--red);}
+.ftb-sub{font-size:11px;color:var(--text-faint);margin-top:2px;}
+.ftb-check{
+  width:20px;height:20px;border-radius:6px;border:1.5px solid var(--border);
+  flex-shrink:0;position:relative;transition:all .15s;background:var(--bg2);
+}
+.ftb-check.on{background:currentColor;}
+.finance-toggle-box.checked.income .ftb-check{border-color:var(--green);color:var(--green);}
+.finance-toggle-box.checked.expense .ftb-check{border-color:var(--red);color:var(--red);}
+.ftb-check.on::after{
+  content:'✓';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:800;color:#fff;
+}
+
+.btn{border:none;cursor:pointer;font-family:'Inter',sans-serif;font-weight:700;border-radius:var(--radius-sm);transition:all .15s;}
+.btn-block{width:100%;padding:13px;font-size:14px;}
+.btn-primary{background:linear-gradient(135deg,var(--accent),#5b4fd6);color:#fff;box-shadow:0 8px 20px -8px #7c6cf690;}
+.btn-primary:hover{filter:brightness(1.08);}
+.btn-finance{background:linear-gradient(135deg,var(--red),#c73c37);color:#fff;box-shadow:0 8px 20px -8px #f4615c80;}
+.btn[disabled]{opacity:.6;cursor:not-allowed;}
+
+/* ============= RUNNING ============= */
+.empty{color:var(--text-faint);font-size:13px;padding:14px 0;}
+.run-item{display:flex;gap:14px;padding:14px 0;border-bottom:1px solid var(--border-soft);align-items:flex-start;}
+.run-item:last-child{border-bottom:none;}
+.run-dot-wrap{padding-top:4px;}
+.pulse-dot{display:block;width:9px;height:9px;border-radius:50%;background:var(--green);box-shadow:0 0 0 0 var(--green-soft);animation:pulse 1.6s infinite;}
+@keyframes pulse{0%{box-shadow:0 0 0 0 #33d69355;}70%{box-shadow:0 0 0 8px #33d69300;}100%{box-shadow:0 0 0 0 #33d69300;}}
+.run-body{flex:1;}
+.run-activity{font-weight:600;font-size:14px;}
+.run-time{font-size:11.5px;color:var(--text-faint);margin-top:2px;}
+.run-elapsed{font-size:14px;font-weight:700;color:var(--accent);}
+.btn-stop{background:var(--card2);border:1px solid var(--border);color:var(--text);padding:6px 12px;font-size:11.5px;}
+.btn-stop:hover{border-color:var(--red);color:var(--red);}
+.hidden-btn{display:none;}
+.stop-form{display:none;gap:8px;margin-top:10px;flex-wrap:wrap;}
+.stop-form.show{display:flex;}
+.stop-form input{width:90px;padding:8px 10px;font-size:12.5px;}
+.btn-stop-confirm{background:var(--green);color:#062;border:none;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;}
+.btn-link-cancel{background:none;border:none;color:var(--text-faint);font-size:12px;cursor:pointer;}
+
+/* ============= HISTORY FILTERS ============= */
+.filter-row{display:flex;gap:8px;margin-bottom:12px;}
+.chip-filter{flex:1;text-align:center;padding:9px;border-radius:10px;border:1px solid var(--border);font-size:12.5px;color:var(--text-dim);cursor:pointer;}
+.chip-filter.active{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:700;}
+.period-picker-row{margin-bottom:12px;}
+.period-input{font-size:13px;}
+.type-switch{display:flex;gap:6px;margin-bottom:14px;background:var(--bg2);padding:4px;border-radius:11px;border:1px solid var(--border);}
+.type-btn{flex:1;background:none;border:none;color:var(--text-faint);padding:8px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
+.type-btn.active{background:var(--card2);color:var(--text);}
+
+.hist-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border-soft);}
+.hist-row:last-child{border-bottom:none;}
+.type-pill{font-size:9.5px;font-weight:800;letter-spacing:.4px;padding:5px 9px;border-radius:8px;white-space:nowrap;cursor:default;}
+.type-pill.drilling{background:var(--accent-soft);color:var(--accent);}
+.type-pill.finance{background:var(--red-soft);color:var(--red);cursor:pointer;user-select:none;}
+.type-pill.finance.income{background:var(--green-soft);color:var(--green);}
+.hist-main{flex:1;min-width:0;}
+.hist-title{font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.hist-sub{font-size:11px;color:var(--text-faint);margin-top:2px;}
+.hist-value{font-weight:700;font-size:13.5px;white-space:nowrap;}
+.hist-value.spend{color:var(--red);}
+.hist-value.income{color:var(--green);}
+.hist-value.dur{color:var(--text-dim);}
+.hist-qty{font-size:10.5px;color:var(--text-faint);}
+
+.data-tools{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px;padding-top:16px;border-top:1px solid var(--border-soft);}
+.btn-tool{background:var(--card2);border:1px solid var(--border);color:var(--text-dim);padding:9px 12px;border-radius:10px;font-size:12px;cursor:pointer;font-family:inherit;font-weight:600;}
+.btn-tool:hover{color:var(--text);border-color:var(--accent);}
+.btn-tool.excel{color:var(--green);border-color:var(--green-soft);}
+.btn-tool.excel:hover{border-color:var(--green);}
+.btn-tool.danger:hover{color:var(--red);border-color:var(--red);}
+
+.toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,20px);background:var(--card2);border:1px solid var(--border);color:var(--text);padding:12px 18px;border-radius:12px;font-size:13px;opacity:0;pointer-events:none;transition:all .25s;z-index:50;box-shadow:var(--shadow);}
+.toast.show{opacity:1;transform:translate(-50%,0);}
+.toast.err{border-color:var(--red);color:var(--red);}
+
+/* ============= SAVING RATE ACHIEVEMENT POPUP =============
+   Floats bottom-right, pops in like a little achievement toast when the
+   Laporan Jangka Panjang page is visited, sits for a few seconds, fades
+   out on its own.
+   Fixed to the VIEWPORT rather than absolute-positioned against the page's
+   own bottom edge -- the page's height varies a lot depending on how much
+   finance data exists (an empty/short longterm-list card makes the page
+   barely taller than the Target Nabung card next to it), and anchoring to
+   the page's bottom edge meant the popup could overlap the Simpan Target
+   button on short pages. Viewport-fixed avoids that regardless of content
+   height, same approach as the planner reminder stack below. */
+.saverate-popup{
+  position:fixed;right:20px;bottom:20px;transform:translateY(10px) scale(.94);
+  background:linear-gradient(155deg,var(--card),var(--card2));
+  border:1px solid var(--accent-soft);border-radius:var(--radius-sm);
+  padding:12px 16px;box-shadow:0 8px 28px -6px rgba(0,0,0,.4),0 0 0 1px var(--accent-soft);
+  opacity:0;pointer-events:none;transition:opacity .35s ease, transform .35s cubic-bezier(.22,1,.36,1);
+  z-index:55;min-width:168px;
+}
+.saverate-popup.show{opacity:1;transform:translateY(0) scale(1);}
+.saverate-popup-lbl{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:var(--text-faint);margin-bottom:4px;}
+.saverate-popup-val{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;line-height:1.1;}
+.saverate-popup-val.pos{color:var(--green);text-shadow:0 0 14px var(--green-soft);}
+.saverate-popup-val.neg{color:var(--red);text-shadow:0 0 14px var(--red-soft);}
+.saverate-popup-sub{font-size:10.5px;color:var(--text-faint);margin-top:3px;}
+@media(max-width:560px){.saverate-popup{right:16px;left:16px;bottom:auto;top:70px;transform:translateY(-10px) scale(.94);}
+  .saverate-popup.show{transform:translateY(0) scale(1);}}
+
+/* ============= EXPENSE CONSENT GATE ============= */
+.consent-overlay{
+  display:none;position:fixed;inset:0;background:rgba(5,7,12,.6);backdrop-filter:blur(4px);
+  align-items:center;justify-content:center;z-index:100;padding:20px;
+}
+.consent-overlay.show{display:flex;}
+.consent-box{
+  background:linear-gradient(180deg,var(--card),var(--bg2));border:1px solid var(--red-soft);
+  border-radius:var(--radius);padding:26px;width:380px;max-width:100%;box-shadow:var(--shadow);
+  animation:consentPop .28s cubic-bezier(.22,1,.36,1);
+}
+@keyframes consentPop{from{transform:translateY(16px) scale(.97);opacity:0;}}
+.consent-icon{font-size:26px;text-align:center;margin-bottom:10px;}
+.consent-statement{
+  font-family:'Sora',sans-serif;font-weight:700;font-size:15px;line-height:1.5;text-align:center;
+  color:var(--text);margin-bottom:14px;
+}
+.consent-summary{
+  background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);
+  padding:10px 12px;font-size:12.5px;color:var(--text-dim);text-align:center;margin-bottom:16px;
+}
+.consent-summary .cs-amt{font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--red);}
+#f-consent-word label{display:block;font-size:12px;color:var(--text-dim);margin-bottom:6px;font-weight:600;line-height:1.4;}
+#in-consent-word{
+  width:100%;background:var(--bg2);border:1px solid var(--border);color:var(--text);
+  border-radius:var(--radius-sm);padding:11px 13px;font-size:13.5px;font-family:inherit;
+  outline:none;transition:border-color .15s;resize:none;line-height:1.5;
+}
+#in-consent-word:focus{border-color:var(--accent);}
+.field.invalid #in-consent-word{border-color:var(--red);}
+.consent-actions{display:flex;gap:10px;margin-top:4px;}
+.consent-actions .btn{flex:1;padding:12px;font-size:13.5px;}
+.btn-consent-cancel{background:var(--card2);color:var(--text-dim);border:1px solid var(--border);}
+.btn-consent-cancel:hover{color:var(--text);border-color:var(--border-soft);}
+
+/* ============= STATS / TARGETS ============= */
+.stat-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px;}
+.stat-box{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;}
+.stat-box .lbl{font-size:11px;color:var(--text-faint);font-weight:600;text-transform:uppercase;letter-spacing:.3px;}
+.stat-box .val{font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:700;margin-top:6px;}
+.stat-box.income .val{color:var(--green);}
+.stat-box.expense .val{color:var(--red);}
+.stat-box.net .val{color:var(--accent);}
+
+.target-row{display:flex;gap:8px;align-items:center;margin-bottom:16px;}
+.target-row input{flex:1;}
+.btn-save{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:11px 16px;font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit;}
+.btn-save:hover{filter:brightness(1.1);}
+
+.progress-bar-wrap{background:var(--bg2);border-radius:999px;height:9px;overflow:hidden;border:1px solid var(--border);margin-top:8px;}
+.progress-bar{height:100%;border-radius:999px;transition:width .4s;}
+.progress-bar.ok{background:var(--green);}
+.progress-bar.warn{background:var(--yellow);}
+.progress-bar.over{background:var(--red);}
+
+/* ============= LIVE CATEGORY BUDGET BAR (next to nominal entry) =============
+   Mild neon glow, live-updates as the amount/category fields change. Green
+   while the projected category total stays inside its budget, red once it
+   would tip over. Past 100% it switches to a stacked look: the whole track
+   glows red (the overage), with a slim green segment inside it sized to
+   show how much of that red was the originally-budgeted portion. Hidden
+   entirely when there's no category target to measure against. */
+.budget-live{display:none;margin-top:2px;}
+.budget-live.show{display:block;}
+.budget-live-top{display:flex;justify-content:space-between;align-items:baseline;font-size:11px;color:var(--text-faint);margin-bottom:5px;}
+.budget-live-pct{font-weight:700;font-size:12px;}
+.budget-live-pct.ok{color:var(--green);}
+.budget-live-pct.over{color:var(--red);}
+.budget-live-track{position:relative;background:var(--bg2);border-radius:999px;height:10px;overflow:hidden;border:1px solid var(--border);}
+.budget-live-fill{position:absolute;left:0;top:0;bottom:0;width:0%;border-radius:999px;transition:width .35s ease,background .35s ease;background:var(--green);box-shadow:0 0 9px 1px var(--green-soft),inset 0 0 4px rgba(255,255,255,.15);}
+.budget-live-fill.over{background:var(--red);box-shadow:0 0 9px 1px var(--red-soft),inset 0 0 4px rgba(255,255,255,.15);}
+.budget-live-fill-over{position:absolute;left:0;top:0;bottom:0;width:0%;border-radius:999px;background:var(--green);box-shadow:0 0 6px 1px var(--green-soft);opacity:0;transition:width .35s ease,opacity .2s ease;}
+.budget-live-fill-over.show{opacity:1;}
+.budget-live-sub{font-size:10.5px;color:var(--text-faint);margin-top:4px;}
+
+.category-row{padding:13px 0;border-bottom:1px solid var(--border-soft);}
+.category-row:last-child{border-bottom:none;}
+.category-row-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;}
+.category-name{font-weight:600;font-size:13.5px;}
+.category-amt{font-family:'JetBrains Mono',monospace;font-size:12.5px;color:var(--text-dim);}
+.category-target-row{display:flex;gap:8px;align-items:center;margin-top:8px;}
+.category-target-row input{padding:8px 10px;font-size:12px;flex:1;}
+.category-target-row .btn-save{padding:8px 12px;font-size:11px;}
+.category-target-note{font-size:10.5px;color:var(--text-faint);margin-top:6px;}
+
+/* ============= PER-CATEGORY TARGET MODE TOGGLE (Rupiah vs % dari gaji) ============= */
+.cat-mode-toggle{display:flex;gap:0;margin-top:8px;background:var(--bg2);border:1px solid var(--border);border-radius:999px;padding:3px;width:fit-content;}
+.cat-mode-btn{background:transparent;border:none;color:var(--text-faint);font-family:inherit;font-size:10.5px;font-weight:700;padding:5px 12px;border-radius:999px;cursor:pointer;transition:background .2s,color .2s;white-space:nowrap;}
+.cat-mode-btn.active{background:var(--accent);color:#fff;}
+.cat-mode-btn:hover:not(.active){color:var(--text-dim);}
+.category-target-row.percent-mode{flex-direction:column;align-items:stretch;gap:6px;}
+.cat-percent-row{display:flex;align-items:center;gap:10px;}
+.cat-percent-row input[type="range"]{flex:1;accent-color:var(--accent);height:6px;cursor:pointer;}
+.cat-percent-val{font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:700;color:var(--accent);min-width:42px;text-align:right;}
+.cat-percent-derived{font-size:10.5px;color:var(--text-faint);}
+.cat-percent-nosalary{font-size:10.5px;color:var(--yellow);margin-top:4px;}
+
+/* ============= LONG TERM ============= */
+.longterm-header-row{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:2px;}
+.longterm-header-row h2{margin:0;}
+.longterm-period-picker{display:flex;gap:6px;align-items:center;}
+.longterm-period-picker select{background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);padding:7px 9px;font-size:11.5px;font-family:inherit;cursor:pointer;}
+.longterm-period-picker select:hover{border-color:var(--accent);}
+.longterm-reset-btn{padding:6px 10px;font-size:13px;line-height:1;}
+.month-row{padding:14px 0;border-bottom:1px solid var(--border-soft);}
+.month-row:last-child{border-bottom:none;}
+.month-row-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+.month-label{font-weight:700;font-size:13.5px;font-family:'Sora',sans-serif;}
+.rate-badge{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;padding:4px 10px;border-radius:8px;}
+.rate-badge.pos{background:var(--green-soft);color:var(--green);}
+.rate-badge.neg{background:var(--red-soft);color:var(--red);}
+.month-bars{display:flex;flex-direction:column;gap:6px;}
+.mbar-row{display:flex;align-items:center;gap:8px;}
+.mbar-lbl{width:64px;font-size:10.5px;color:var(--text-faint);flex-shrink:0;}
+.mbar-track{flex:1;background:var(--bg2);border-radius:999px;height:7px;overflow:hidden;border:1px solid var(--border);}
+.mbar-fill{height:100%;border-radius:999px;}
+.mbar-fill.in{background:var(--green);}
+.mbar-fill.out{background:var(--red);}
+.mbar-val{width:96px;text-align:right;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);flex-shrink:0;}
+
+.target-form-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:16px;margin-top:18px;}
+.target-form-card h3{font-family:'Sora',sans-serif;font-size:14px;margin:0 0 4px;}
+.target-form-card .hint{margin-bottom:14px;}
+.target-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;}
+@media(max-width:520px){.target-form-grid{grid-template-columns:1fr;}}
+
+.progress-summary{display:flex;justify-content:space-between;font-size:12px;color:var(--text-dim);margin-top:6px;}
+
+/* ============= BUDGET PLANNER =============
+   Ported from a separate budgetplanner.html into this app's own design
+   system (Sora/Inter/JetBrains Mono, --accent/--green/--red tokens) rather
+   than importing its original glassmorphic violet/teal theme wholesale --
+   same interaction model (month picker, item list), one consistent look. */
+.planner-period-selector{position:relative;margin-bottom:20px;}
+.planner-period-trigger{
+  width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;
+  background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+  padding:16px 18px;cursor:pointer;font-family:inherit;color:inherit;box-shadow:var(--shadow);
+  transition:border-color .15s;
+}
+.planner-period-selector.open .planner-period-trigger{border-color:var(--accent);}
+.planner-period-text{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;}
+.planner-period-title{font-family:'Sora',sans-serif;font-weight:800;font-size:20px;letter-spacing:-.01em;}
+.planner-period-meta{font-size:12px;color:var(--text-faint);}
+.planner-period-chevron{flex-shrink:0;color:var(--text-faint);transition:transform .2s;}
+.planner-period-selector.open .planner-period-chevron{transform:rotate(180deg);color:var(--accent);}
+.planner-period-flyout{
+  position:absolute;top:calc(100% + 8px);left:0;right:0;z-index:30;
+  background:var(--card2);border:1px solid var(--border);border-radius:var(--radius-sm);
+  box-shadow:var(--shadow);padding:6px;max-height:280px;overflow-y:auto;
+  opacity:0;transform:translateY(-6px);pointer-events:none;transition:opacity .18s,transform .18s;
+}
+.planner-period-selector.open .planner-period-flyout{opacity:1;transform:none;pointer-events:auto;}
+.planner-flyout-row{
+  display:flex;align-items:center;gap:8px;width:100%;padding:10px 12px;border-radius:8px;
+  background:transparent;border:none;color:var(--text);font-family:'Inter',sans-serif;font-size:13px;font-weight:600;
+  cursor:pointer;text-align:left;transition:background .15s;
+}
+.planner-flyout-row:hover{background:var(--bg2);}
+.planner-flyout-row.active{background:var(--accent-soft);color:var(--accent);}
+.planner-flyout-row .now-tag{margin-left:auto;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--yellow);}
+
+.planner-check-row{display:flex;align-items:center;gap:9px;cursor:pointer;font-weight:600;color:var(--text-dim);}
+.planner-check-row input[type=checkbox]{width:17px;height:17px;accent-color:var(--accent);cursor:pointer;flex-shrink:0;}
+.planner-recurring-fields{display:none;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;margin:-6px 0 16px;}
+.planner-recurring-fields.show{display:block;}
+
+.planner-item-list{list-style:none;display:flex;flex-direction:column;gap:8px;min-height:40px;}
+.planner-item-card{
+  display:flex;align-items:center;gap:10px;background:var(--bg2);border:1px solid var(--border-soft);
+  border-radius:var(--radius-sm);padding:11px 12px;
+}
+.planner-item-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
+.planner-item-name{font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.planner-item-amt{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--yellow);font-weight:600;}
+.planner-item-badge{
+  flex-shrink:0;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;
+  padding:3px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent);
+}
+.planner-item-actions{display:flex;align-items:center;gap:6px;flex-shrink:0;}
+.planner-btn-move{
+  width:26px;height:26px;border-radius:8px;border:1px solid var(--border);background:var(--card2);
+  color:var(--text-faint);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;
+}
+.planner-btn-move:hover{color:var(--accent);border-color:var(--accent);}
+.planner-btn-delete{
+  width:26px;height:26px;border-radius:8px;border:none;background:transparent;
+  color:var(--red);opacity:.75;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;
+}
+.planner-btn-delete:hover{opacity:1;background:var(--red-soft);}
+.planner-move-menu{
+  position:absolute;right:0;top:calc(100% + 6px);min-width:150px;max-height:200px;overflow-y:auto;z-index:25;
+  background:var(--card2);border:1px solid var(--border);border-radius:var(--radius-sm);box-shadow:var(--shadow);
+  padding:5px;opacity:0;transform:translateY(-6px);pointer-events:none;transition:all .15s;
+}
+.planner-move-wrap{position:relative;}
+.planner-move-wrap.open .planner-move-menu{opacity:1;transform:none;pointer-events:auto;}
+.planner-move-menu-item{display:block;width:100%;text-align:left;padding:8px 10px;border-radius:7px;background:transparent;border:none;color:var(--text);font-size:12.5px;font-family:inherit;cursor:pointer;}
+.planner-move-menu-item:hover{background:var(--bg2);}
+
+.planner-total-section{display:flex;justify-content:space-between;align-items:center;padding-top:14px;margin-top:6px;border-top:1px dashed var(--border-soft);}
+.planner-total-label{font-family:'Sora',sans-serif;font-weight:600;font-size:14px;color:var(--text-dim);}
+.planner-total-amount{font-family:'Sora',sans-serif;font-weight:800;font-size:19px;color:var(--yellow);}
+
+/* Self-dismissing "cloud" reminder for a due recurring item -- appears on
+   the home page, auto-fades after a while like the saving-rate popup, and
+   clicking it prefills the entry form (same non-auto-submit pattern as the
+   recent-activity bubbles) instead of instantly recording anything. */
+.planner-reminder-stack{position:fixed;right:20px;bottom:20px;display:flex;flex-direction:column-reverse;gap:10px;z-index:60;max-width:300px;}
+.planner-reminder-cloud{
+  display:flex;align-items:center;gap:10px;background:linear-gradient(155deg,var(--card),var(--card2));
+  border:1px solid var(--yellow-soft);border-radius:var(--radius-sm);padding:12px 14px;
+  box-shadow:0 10px 28px -6px rgba(0,0,0,.45),0 0 0 1px var(--yellow-soft);
+  cursor:pointer;opacity:0;transform:translateY(10px) scale(.95);
+  transition:opacity .3s ease,transform .3s cubic-bezier(.22,1,.36,1);
+}
+.planner-reminder-cloud.show{opacity:1;transform:none;}
+.planner-reminder-icon{font-size:20px;flex-shrink:0;}
+.planner-reminder-body{flex:1;min-width:0;}
+.planner-reminder-title{font-weight:700;font-size:12.5px;}
+.planner-reminder-sub{font-size:11px;color:var(--text-faint);margin-top:1px;}
+.planner-reminder-dismiss{flex-shrink:0;width:22px;height:22px;border-radius:7px;border:none;background:transparent;color:var(--text-faint);cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;}
+.planner-reminder-dismiss:hover{color:var(--text);background:var(--bg2);}
+@media(max-width:520px){.planner-reminder-stack{left:16px;right:16px;max-width:none;}}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="brand">
+    <div class="brand-mark">GP</div>
+    <div>
+      <div class="brand-txt">Aktivitas &amp; Pengeluaran</div>
+      <div class="brand-sub">GEMBEL AI PIK</div>
+    </div>
+  </div>
+  <div class="top-right">
+    <a class="habbit-nav-btn" href="dashboard.html">← Dashboard</a>
+    <span class="storage-badge" id="cal-sync-indicator"><span class="dot"></span><span id="cal-sync-text">Tersimpan</span></span>
+    <button class="theme-toggle" id="theme-toggle" title="Ganti mode terang/gelap">🌙</button>
+    <div class="who" id="who-click">
+      <div class="who-badge" id="who-badge">··</div>
+      <div>
+        <div class="who-name" id="who-name">…</div>
+        <div class="who-sub">Tersambung</div>
+      </div>
+    </div>
+    <button class="habbit-nav-btn" onclick="logout()" id="habbit-logout-btn" style="cursor:pointer;">Keluar</button>
+  </div>
+</div>
+
+<div class="nav-hover-zone" id="nav-hover-zone">
+  <div class="nav-hint" id="nav-hint"></div>
+  <div class="nav-tabs">
+    <button class="nav-tab active" data-page="home">🏠 Beranda</button>
+    <button class="nav-tab" data-page="stats">📊 Statistik &amp; Target</button>
+    <button class="nav-tab" data-page="longterm">📈 Laporan Jangka Panjang</button>
+    <button class="nav-tab" data-page="planner">🗓️ Budget Planner</button>
+  </div>
+</div>
+
+<!-- ================= PAGE 1: HOME ================= -->
+<div class="wrap page-view active" id="page-home">
+  <div class="page-head">
+    <h1>Lo lagi ngapain?</h1>
+    <p>Ketik aktivitasnya, gas — waktu mulai &amp; selesai kecatet otomatis. Kalau ini soal duit, tinggal centang, isi nominalnya, terus tap dua kali pilnya buat pilih Pemasukan / Pengeluaran.</p>
+  </div>
+
+  <div class="grid">
+    <!-- FORM -->
+    <div class="card">
+      <h2>Aktivitas</h2>
+
+      <div class="recent-bubbles-wrap" id="recent-bubbles-wrap">
+        <div class="recent-bubbles-label">Baru-baru ini · tap buat pakai lagi</div>
+        <div class="recent-bubbles-scroll" id="recent-bubbles-scroll"></div>
+      </div>
+
+      <div class="field" id="f-activity" style="margin-top:2px;">
+        <input type="text" id="in-activity" placeholder="Contoh: Main badminton" maxlength="200">
+        <div class="err-text">Ketik dulu aktivitasnya (minimal 3 karakter).</div>
+      </div>
+
+      <div class="finance-toggle-box" id="finance-toggle-box" role="button" tabindex="0">
+        <div class="ftb-icon" id="ftb-icon">⚪</div>
+        <div class="ftb-text">
+          <div class="ftb-title" id="ftb-title">Ini urusan duit?</div>
+          <div class="ftb-sub" id="ftb-sub">Klik buat centang kalau aktivitas ini ada duitnya.</div>
+        </div>
+        <div class="ftb-check" id="ftb-check"></div>
+      </div>
+
+      <div class="finance-fields" id="finance-fields">
+        <div class="field" id="f-amount">
+          <label>Nominal</label>
+          <div class="amount-wrap">
+            <span class="prefix">Rp</span>
+            <input type="text" inputmode="numeric" id="in-amount" placeholder="100000">
+          </div>
+          <div class="err-text">Isi nominalnya dalam angka, lebih dari 0.</div>
+        </div>
+        <div class="field" id="f-tag">
+          <label>Kategori (opsional)</label>
+          <input type="text" id="in-tag" placeholder="Contoh: Makan, Transport, Gaji" maxlength="60">
+        </div>
+        <div class="budget-live" id="budget-live">
+          <div class="budget-live-top">
+            <span id="budget-live-lbl">Budget kategori</span>
+            <span class="budget-live-pct mono" id="budget-live-pct">0%</span>
+          </div>
+          <div class="budget-live-track" id="budget-live-track">
+            <div class="budget-live-fill" id="budget-live-fill"></div>
+            <div class="budget-live-fill-over" id="budget-live-fill-over"></div>
+          </div>
+          <div class="budget-live-sub" id="budget-live-sub"></div>
+        </div>
+      </div>
+
+      <button class="btn btn-primary btn-block" id="submit-btn">🚀 Gas, Mulai!</button>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div>
+      <div class="card" style="margin-bottom:20px;">
+        <h2>Sedang berjalan</h2>
+        <p class="hint">Aktivitas kamu yang masih jalan sekarang.</p>
+        <div id="running-list">
+          <div class="empty">Belum ada aktivitas yang lagi jalan.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Riwayat kamu</h2>
+        <div class="filter-row" id="hist-filter">
+          <div class="chip-filter active" data-range="day">Harian</div>
+          <div class="chip-filter" data-range="month">Bulanan</div>
+          <div class="chip-filter" data-range="year">Tahunan</div>
+        </div>
+        <div class="period-picker-row">
+          <input type="date" id="period-day" class="period-input">
+          <input type="month" id="period-month" class="period-input" style="display:none;">
+          <input type="number" id="period-year" class="period-input" style="display:none;" min="2000" max="2100" placeholder="2025">
+        </div>
+        <div class="type-switch" id="hist-type-switch">
+          <button class="type-btn active" data-type="B">B · Semua</button>
+          <button class="type-btn" data-type="A">A · Aktivitas</button>
+          <button class="type-btn" data-type="F">F · Finance</button>
+        </div>
+        <div id="history-list">
+          <div class="empty">Belum ada riwayat di rentang ini.</div>
+        </div>
+
+        <div class="data-tools">
+          <button class="btn-tool excel" id="export-excel-btn">📊 Export ke Excel (.xlsx)</button>
+          <button class="btn-tool excel" id="export-universal-excel-btn">🗂️ Backup Lengkap ke Excel (.xlsx)</button>
+          <label class="btn-tool" for="import-universal-excel-input" style="display:inline-block;">📥 Restore dari Excel</label>
+          <input type="file" id="import-universal-excel-input" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none;">
+          <button class="btn-tool" id="export-btn">⬇️ Export backup (.json)</button>
+          <label class="btn-tool" for="import-input" style="display:inline-block;">⬆️ Import backup</label>
+          <input type="file" id="import-input" accept="application/json" style="display:none;">
+          <button class="btn-tool danger" id="reset-btn">🗑️ Hapus semua data</button>
+        </div>
+        <p class="hint" style="margin-top:8px;">"Backup Lengkap ke Excel" nyimpen SEMUA data (riwayat, target, gaji, budget planner, target nabung) dalam satu file .xlsx yang bisa dibuka & diedit manual, terus di-restore lagi lewat "Restore dari Excel" -- cocok buat dikasih ke orang finance / akuntan.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= PAGE 2: STATISTIK & TARGET ================= -->
+<div class="wrap page-view" id="page-stats">
+  <div class="page-head">
+    <h1>Statistik &amp; Target</h1>
+    <p>Pantau pemasukan-pengeluaran per bulan, terus set target biar pengeluaran ga jebol.</p>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Pilih Periode</h2>
+      <div class="field">
+        <label>Bulan</label>
+        <input type="month" id="stats-month">
+      </div>
+
+      <h2 style="margin-top:4px;">Tanggal Mulai Bulan Finansial</h2>
+      <p class="hint">Default tanggal 1 (bulan kalender biasa). Ganti kalau bulan "keuangan" kamu gak ngikutin kalender -- misalnya cutoff tanggal 25, jadi periode "Agustus" itu 25 Juli s/d 24 Agustus. Kalau tanggal cutoff-nya gak ada di suatu bulan (misal 31 buat Februari), otomatis dipakein tanggal terakhir bulan itu.</p>
+      <div class="target-row">
+        <input type="text" inputmode="numeric" id="input-month-cutoff" placeholder="1" maxlength="2" style="max-width:90px;">
+        <button class="btn-save" id="save-month-cutoff">Simpan</button>
+      </div>
+      <p class="category-target-note" id="month-cutoff-preview"></p>
+
+      <div class="stat-cards">
+        <div class="stat-box income"><div class="lbl">Pemasukan</div><div class="val mono" id="stats-income">Rp0</div></div>
+        <div class="stat-box expense"><div class="lbl">Pengeluaran</div><div class="val mono" id="stats-expense">Rp0</div></div>
+        <div class="stat-box net"><div class="lbl">Selisih</div><div class="val mono" id="stats-net">Rp0</div></div>
+      </div>
+
+      <h2 style="margin-top:4px;">Gaji Bulanan</h2>
+      <p class="hint">Opsional. Dipake buat itung target kategori yang di-set pake persen (%) dari gaji.</p>
+      <div class="target-row">
+        <div class="amount-wrap"><span class="prefix">Rp</span><input type="text" inputmode="numeric" id="input-salary" placeholder="5000000"></div>
+        <button class="btn-save" id="save-salary">Simpan</button>
+      </div>
+
+      <h2 style="margin-top:4px;">Target Pengeluaran Bulanan</h2>
+      <p class="hint">Berlaku buat tiap bulan (bukan cuma bulan ini). Batas total pengeluaran kamu.</p>
+      <div class="target-row">
+        <div class="amount-wrap"><span class="prefix">Rp</span><input type="text" inputmode="numeric" id="input-monthly-target" placeholder="3000000"></div>
+        <button class="btn-save" id="save-monthly-target">Simpan</button>
+      </div>
+      <div id="monthly-target-progress"></div>
+    </div>
+
+    <div class="card">
+      <h2>Pengeluaran per Kategori</h2>
+      <p class="hint">Set target per kategori (opsional) buat kontrol jajan per pos -- pilih mode Rupiah atau % dari gaji.</p>
+      <div id="category-list"><div class="empty">Belum ada data pengeluaran di bulan ini.</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= PAGE 3: LAPORAN JANGKA PANJANG ================= -->
+<div class="wrap page-view" id="page-longterm">
+  <div class="page-head">
+    <h1>Laporan Jangka Panjang</h1>
+    <p>Tren savings rate 6 bulan terakhir, plus set target nabung buat bulan depan.</p>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="longterm-header-row">
+        <h2 id="longterm-list-title">Tren 6 Bulan Terakhir</h2>
+        <div class="longterm-period-picker">
+          <select id="longterm-semester-select">
+            <option value="">Semester</option>
+            <option value="H1">H1 (Jan–Jun)</option>
+            <option value="H2">H2 (Jul–Des)</option>
+          </select>
+          <select id="longterm-year-select">
+            <option value="">Tahun</option>
+          </select>
+          <button type="button" class="btn-save longterm-reset-btn" id="longterm-reset-btn" title="Balik ke tampilan default (6 bulan terakhir)" style="display:none;">↺</button>
+        </div>
+      </div>
+      <div id="longterm-list"><div class="empty">Belum ada data.</div></div>
+    </div>
+
+    <div class="card">
+      <h2>Target Nabung</h2>
+      <p class="hint">Set target buat bulan tertentu (biasanya bulan depan), terus pantau progressnya di sini.</p>
+      <div class="target-form-card">
+        <h3>Set Target</h3>
+        <p class="hint">Pilih bulan target, terus isi mau nabung berapa.</p>
+        <div class="field" style="margin-bottom:10px;">
+          <label>Bulan target</label>
+          <input type="month" id="savings-target-month">
+        </div>
+        <div class="target-form-grid">
+          <div class="field" style="margin-bottom:0;">
+            <label>Target nominal nabung</label>
+            <div class="amount-wrap"><span class="prefix">Rp</span><input type="text" inputmode="numeric" id="savings-target-amount" placeholder="1000000"></div>
+          </div>
+          <div class="field" style="margin-bottom:0;">
+            <label>Target savings rate (%)</label>
+            <input type="text" inputmode="numeric" id="savings-target-rate" placeholder="20">
+          </div>
+        </div>
+        <button class="btn-save" id="save-savings-target" style="width:100%;">💾 Simpan Target</button>
+      </div>
+
+      <div class="target-form-card" id="savings-progress-card" style="display:none;">
+        <h3 id="savings-progress-title">Progress</h3>
+        <div class="progress-bar-wrap"><div class="progress-bar" id="savings-progress-bar"></div></div>
+        <div class="progress-summary">
+          <span id="savings-progress-current">Rp0</span>
+          <span id="savings-progress-target">dari Rp0</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="saverate-popup" id="saverate-popup">
+    <div class="saverate-popup-lbl">🏆 Saving Rate</div>
+    <div class="saverate-popup-val" id="saverate-popup-val">0%</div>
+    <div class="saverate-popup-sub" id="saverate-popup-sub">bulan ini</div>
+  </div>
+</div>
+
+<!-- ================= PAGE 4: BUDGET PLANNER ================= -->
+<div class="wrap page-view" id="page-planner">
+  <div class="page-head">
+    <h1>Budget Planner</h1>
+    <p>Rencanain pengeluaran per bulan sebelum kejadian. Tandain yang "recurring" (misal bayar kost tiap bulan) buat diingetin otomatis pas jatuh tempo -- tinggal klik reminder-nya, form kecatet langsung, gak perlu isi ulang.</p>
+  </div>
+
+  <div class="planner-period-selector" id="planner-period-selector">
+    <button type="button" class="planner-period-trigger" id="planner-period-trigger">
+      <span class="planner-period-text">
+        <span class="planner-period-title" id="planner-period-title">—</span>
+        <span class="planner-period-meta" id="planner-period-meta">—</span>
+      </span>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="planner-period-chevron"><polyline points="6 9 12 15 18 9"/></svg>
+    </button>
+    <div class="planner-period-flyout" id="planner-period-flyout"></div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Tambah Item</h2>
+      <form id="planner-add-form">
+        <div class="field">
+          <label>Nama item</label>
+          <input type="text" id="planner-item-name" placeholder="Misal: Bayar Kost" maxlength="120" required autocomplete="off">
+        </div>
+        <div class="field">
+          <label>Nominal</label>
+          <div class="amount-wrap"><span class="prefix">Rp</span><input type="text" inputmode="numeric" id="planner-item-amount" placeholder="1,500,000" required autocomplete="off"></div>
+        </div>
+        <div class="field" id="f-planner-recurring">
+          <label class="planner-check-row" for="planner-item-recurring">
+            <input type="checkbox" id="planner-item-recurring">
+            <span>Recurring (item ini berulang tiap bulan)</span>
+          </label>
+        </div>
+        <div class="planner-recurring-fields" id="planner-recurring-fields">
+          <div class="target-form-grid">
+            <div class="field" style="margin-bottom:0;">
+              <label>Jatuh tempo tanggal</label>
+              <input type="text" inputmode="numeric" id="planner-item-dueday" placeholder="1" maxlength="2">
+            </div>
+            <div class="field" style="margin-bottom:0;">
+              <label>Ingetin H- berapa hari</label>
+              <input type="text" inputmode="numeric" id="planner-item-leaddays" placeholder="3" maxlength="2">
+            </div>
+          </div>
+          <p class="hint" style="margin-top:8px;margin-bottom:0;">Reminder muncul dari H-segini sampai tanggal jatuh tempo, kalau bulan berjalan belum ada pengeluaran yang cocok sama item ini.</p>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block" style="margin-top:4px;">+ Tambah ke Planner</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Item Bulan Ini</h2>
+      <ul class="planner-item-list" id="planner-item-list"></ul>
+      <div class="planner-total-section">
+        <span class="planner-total-label">Total Rencana</span>
+        <span class="planner-total-amount" id="planner-total-amount">Rp0</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Self-dismissing recurring-item reminders ("cloud" notifications).
+     Fixed-position so it can float over any page, not just the home page --
+     clicking one switches to the home page (if needed) and prefills the
+     entry form there. -->
+<div class="planner-reminder-stack" id="planner-reminder-stack"></div>
+
+<!-- Expense consent gate: retype the commitment statement (not just a single
+     keyword) before an outgoing transaction actually saves. Checked with
+     fuzzy word-coverage matching, not exact-string, so typos/casing/missing
+     punctuation still pass -- the point is making you actually re-engage
+     with the words, not memorizing one token. -->
+<div class="consent-overlay" id="consent-overlay">
+  <div class="consent-box">
+    <div class="consent-icon">🛑</div>
+    <div class="consent-statement" id="consent-statement">
+      Gw consent: budget ini gw pake secukupnya &amp; berarti.<br>
+      Gw gak overspend, gak trading ugal-ugalan, gak foya-foya.
+    </div>
+    <div class="consent-summary" id="consent-summary"></div>
+    <div class="field" id="f-consent-word" style="margin-top:4px;margin-bottom:6px;">
+      <label>Ketik ulang pernyataan di atas buat lanjut (gak harus persis, typo/besar-kecil santai aja)</label>
+      <textarea id="in-consent-word" rows="3" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Gw consent: budget ini gw pake secukupnya..."></textarea>
+      <div class="err-text" id="consent-err-text">Ketik ulang pernyataannya dulu ya, minimal mirip.</div>
+    </div>
+    <div class="consent-actions">
+      <button type="button" class="btn btn-consent-cancel" id="consent-cancel-btn">Batal</button>
+      <button type="button" class="btn btn-finance" id="consent-confirm-btn">Gw Consent, Lanjut</button>
+    </div>
+  </div>
+</div>
+
+<!-- Overbudget consent gate: separate from the expense-consent gate above --
+     this one fires when SETTING a category target that would push the sum
+     of all category targets over the monthly budget cap. Same fuzzy
+     word-coverage matching engine, different statement and trigger. -->
+<div class="consent-overlay" id="overbudget-overlay">
+  <div class="consent-box">
+    <div class="consent-icon">⚠️</div>
+    <div class="consent-statement" id="overbudget-statement">
+      Budget ini overbudget, gw tau konsekuensinya.<br>
+      Gw menyesal, dan bulan depan gw gak akan mengulanginya.
+    </div>
+    <div class="consent-summary" id="overbudget-summary"></div>
+    <div class="field" id="f-overbudget-word" style="margin-top:4px;margin-bottom:6px;">
+      <label>Ketik ulang pernyataan di atas buat lanjut (gak harus persis, typo/besar-kecil santai aja)</label>
+      <textarea id="in-overbudget-word" rows="3" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Budget ini overbudget, gw tau konsekuensinya..."></textarea>
+      <div class="err-text" id="overbudget-err-text">Ketik ulang pernyataannya dulu ya, minimal mirip.</div>
+    </div>
+    <div class="consent-actions">
+      <button type="button" class="btn btn-consent-cancel" id="overbudget-cancel-btn">Batal</button>
+      <button type="button" class="btn btn-finance" id="overbudget-confirm-btn">Gw Paham, Lanjut</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ============================================================
+     STORAGE
+     ============================================================ */
+  // Namespaced per logged-in user (see initUserScopedKeys below) so two
+  // accounts sharing one browser never see each other's data. The
+  // localStorage copy is still written on every save -- it's an instant
+  // local cache / offline buffer, not the source of truth anymore.
+  let CURRENT_USER = null;
+  let CURRENT_PROFILE = null;
+  let DB_KEY = '', TARGETS_KEY = '', THEME_KEY = '';
+
+  function initUserScopedKeys(userId) {
+    const prefix = 'habbit_' + userId + '_';
+    DB_KEY = prefix + 'db_v1';
+    TARGETS_KEY = prefix + 'targets_v1';
+    THEME_KEY = prefix + 'theme';
+  }
+
+  function loadDB() {
+    try {
+      const raw = localStorage.getItem(DB_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        // Budget Planner didn't exist in older saves -- backfill an empty
+        // planner object so every planner function can assume it's always
+        // there, no per-call existence checks scattered everywhere.
+        if (!parsed.planner || typeof parsed.planner !== 'object') parsed.planner = {};
+        return parsed;
+      }
+    } catch (e) { console.error('DB corrupt, resetting.', e); }
+    return { running: [], history: [], planner: {} };
+  }
+  function saveDB() { localStorage.setItem(DB_KEY, JSON.stringify(db)); queueCloudSync(); }
+  let db = { running: [], history: [], planner: {} }; // real value loaded in DOMContentLoaded, after the cloud pull
+
+  function loadTargets() {
+    try {
+      const raw = localStorage.getItem(TARGETS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        // monthCutoffDay didn't exist in older saves -- default to 1
+        // (the 1st), which makes every month-boundary calculation behave
+        // exactly like a plain calendar month, identical to pre-cutoff-
+        // feature behavior. Existing users see zero change until they
+        // explicitly set a different cutoff day themselves.
+        if (!Number.isFinite(parsed.monthCutoffDay)) parsed.monthCutoffDay = 1;
+        // salary (gaji) + per-category Rupiah-vs-%-of-salary mode didn't
+        // exist in older saves -- backfill so every consumer can assume
+        // these fields always exist, no undefined checks needed elsewhere.
+        if (!Number.isFinite(parsed.salary)) parsed.salary = null;
+        if (!parsed.categoryTargetMode || typeof parsed.categoryTargetMode !== 'object') parsed.categoryTargetMode = {};
+        if (!parsed.categoryTargetPercent || typeof parsed.categoryTargetPercent !== 'object') parsed.categoryTargetPercent = {};
+        return parsed;
+      }
+    } catch (e) { console.error('Targets corrupt, resetting.', e); }
+    return {
+      monthlyBudget: null, categoryTargets: {}, savings: {}, monthCutoffDay: 1,
+      salary: null, categoryTargetMode: {}, categoryTargetPercent: {},
+    };
+  }
+  function saveTargets() { localStorage.setItem(TARGETS_KEY, JSON.stringify(targets)); queueCloudSync(); }
+  let targets = {
+    monthlyBudget: null, categoryTargets: {}, savings: {}, monthCutoffDay: 1,
+    salary: null, categoryTargetMode: {}, categoryTargetPercent: {},
+  }; // real value loaded in DOMContentLoaded, after the cloud pull
+
+  /* ============================================================
+     CLOUD SYNC (Supabase)
+     ============================================================ */
+  function setSyncIndicator(state) {
+    const wrap = document.getElementById('cal-sync-indicator');
+    const txt = document.getElementById('cal-sync-text');
+    if (!wrap || !txt) return;
+    wrap.classList.remove('saving', 'error');
+    if (state === 'saving') {
+      wrap.classList.add('saving');
+      txt.textContent = 'Menyimpan…';
+    } else if (state === 'error') {
+      wrap.classList.add('error');
+      txt.textContent = 'Gagal simpan (offline?)';
+    } else {
+      txt.textContent = 'Tersimpan';
+    }
+  }
+
+  // Pull the latest cloud copy down before the app boots, writing into the
+  // same localStorage keys loadDB()/loadTargets() read from -- so nothing
+  // else in the app needs to change.
+  async function pullCloudData(userId) {
+    try {
+      const [entriesRes, plannerRes, settingsRes, catTargetsRes, savingsRes] = await Promise.all([
+        supabase.from('habbit_entries').select('*').eq('user_id', userId),
+        supabase.from('habbit_planner_items').select('*').eq('user_id', userId),
+        supabase.from('habbit_settings').select('*').eq('user_id', userId).maybeSingle(),
+        supabase.from('habbit_category_targets').select('*').eq('user_id', userId),
+        supabase.from('habbit_savings_targets').select('*').eq('user_id', userId),
+      ]);
+      const firstError = entriesRes.error || plannerRes.error || settingsRes.error || catTargetsRes.error || savingsRes.error;
+      if (firstError) { console.error('cloud pull failed', firstError); return; }
+
+      const running = [], history = [];
+      (entriesRes.data || []).forEach(r => {
+        const row = {
+          id: r.id, activity: r.activity,
+          finance_flag: r.finance_flag, finance_type: r.finance_type, finance_tag: r.finance_tag,
+          nominal: r.nominal, qty: r.qty, qty_unit: r.qty_unit,
+          start_date: r.start_date, time_start: r.time_start,
+          end_date: r.end_date, time_end: r.time_end, total_second: r.total_second,
+          created_at: r.created_at,
+        };
+        (r.status === 'finished' ? history : running).push(row);
+      });
+
+      const planner = {};
+      (plannerRes.data || []).forEach(r => {
+        const mk = String(r.period_month).slice(0, 7); // 'YYYY-MM-01' -> 'YYYY-MM'
+        if (!planner[mk]) planner[mk] = [];
+        planner[mk].push({
+          id: r.id, name: r.name, amount: Number(r.amount), recurring: !!r.recurring,
+          dueDay: r.due_day, leadDays: r.lead_days,
+        });
+      });
+
+      localStorage.setItem(DB_KEY, JSON.stringify({ running, history, planner }));
+
+      const settings = settingsRes.data;
+      const categoryTargets = {}, categoryTargetMode = {}, categoryTargetPercent = {};
+      (catTargetsRes.data || []).forEach(r => {
+        categoryTargetMode[r.category] = r.mode;
+        if (r.mode === 'percent') categoryTargetPercent[r.category] = Number(r.percent);
+        else categoryTargets[r.category] = Number(r.amount);
+      });
+      const savings = {};
+      (savingsRes.data || []).forEach(r => {
+        const mk = String(r.target_month).slice(0, 7);
+        savings[mk] = { amount: r.target_amount != null ? Number(r.target_amount) : null, rate: r.target_rate != null ? Number(r.target_rate) : null };
+      });
+
+      localStorage.setItem(TARGETS_KEY, JSON.stringify({
+        monthlyBudget: settings ? settings.monthly_budget : null,
+        salary: settings ? settings.salary : null,
+        monthCutoffDay: settings && Number.isFinite(settings.month_cutoff_day) ? settings.month_cutoff_day : 1,
+        categoryTargets, categoryTargetMode, categoryTargetPercent, savings,
+      }));
+    } catch (e) {
+      console.error('cloud pull exception', e);
+    }
+  }
+
+  // Full reconcile on every save: upsert whatever's currently in memory,
+  // delete whatever's no longer there. Simpler and safer than tracking
+  // per-mutation diffs across the many db/targets mutation call sites in
+  // this file, and cheap enough at personal-use data volumes.
+  let cloudSyncTimer = null;
+  function queueCloudSync() {
+    if (!CURRENT_USER) return;
+    setSyncIndicator('saving');
+    clearTimeout(cloudSyncTimer);
+    cloudSyncTimer = setTimeout(pushCloudData, 800);
+  }
+
+  function habbitRowToDbRow(r, status) {
+    return {
+      id: r.id, user_id: CURRENT_USER.id, activity: r.activity,
+      finance_flag: !!r.finance_flag, finance_type: r.finance_type ?? null, finance_tag: r.finance_tag ?? null,
+      nominal: r.nominal ?? null, qty: r.qty ?? null, qty_unit: r.qty_unit ?? null,
+      start_date: r.start_date, time_start: r.time_start,
+      end_date: r.end_date ?? null, time_end: r.time_end ?? null, total_second: r.total_second ?? null,
+      status, created_at: r.created_at,
+    };
+  }
+
+  async function pushCloudData() {
+    if (!CURRENT_USER) return;
+    try {
+      const entryRows = [
+        ...db.running.map(r => habbitRowToDbRow(r, 'running')),
+        ...db.history.map(r => habbitRowToDbRow(r, 'finished')),
+      ];
+      if (entryRows.length) {
+        const { error } = await supabase.from('habbit_entries').upsert(entryRows);
+        if (error) throw error;
+      }
+      let delEntries = supabase.from('habbit_entries').delete().eq('user_id', CURRENT_USER.id);
+      if (entryRows.length) delEntries = delEntries.not('id', 'in', `(${entryRows.map(e => `"${e.id}"`).join(',')})`);
+      const { error: delEntriesErr } = await delEntries;
+      if (delEntriesErr) throw delEntriesErr;
+
+      const plannerRows = [];
+      Object.keys(db.planner || {}).forEach(mk => {
+        (db.planner[mk] || []).forEach(item => {
+          plannerRows.push({
+            id: item.id, user_id: CURRENT_USER.id, period_month: mk + '-01',
+            name: item.name, amount: item.amount, recurring: !!item.recurring,
+            due_day: item.dueDay ?? null, lead_days: item.leadDays ?? null,
+          });
+        });
+      });
+      if (plannerRows.length) {
+        const { error } = await supabase.from('habbit_planner_items').upsert(plannerRows);
+        if (error) throw error;
+      }
+      let delPlanner = supabase.from('habbit_planner_items').delete().eq('user_id', CURRENT_USER.id);
+      if (plannerRows.length) delPlanner = delPlanner.not('id', 'in', `(${plannerRows.map(p => `"${p.id}"`).join(',')})`);
+      const { error: delPlannerErr } = await delPlanner;
+      if (delPlannerErr) throw delPlannerErr;
+
+      const { error: settingsErr } = await supabase.from('habbit_settings').upsert({
+        user_id: CURRENT_USER.id,
+        monthly_budget: targets.monthlyBudget ?? null,
+        salary: targets.salary ?? null,
+        month_cutoff_day: targets.monthCutoffDay || 1,
+      });
+      if (settingsErr) throw settingsErr;
+
+      const catRows = Object.keys(targets.categoryTargets || {})
+        .concat(Object.keys(targets.categoryTargetPercent || {}))
+        .filter((v, i, arr) => arr.indexOf(v) === i)
+        .map(cat => {
+          const mode = (targets.categoryTargetMode || {})[cat] || 'amount';
+          return {
+            user_id: CURRENT_USER.id, category: cat, mode,
+            amount: mode === 'amount' ? (targets.categoryTargets[cat] ?? null) : null,
+            percent: mode === 'percent' ? ((targets.categoryTargetPercent || {})[cat] ?? null) : null,
+          };
+        })
+        .filter(r => r.amount != null || r.percent != null);
+      if (catRows.length) {
+        const { error } = await supabase.from('habbit_category_targets').upsert(catRows, { onConflict: 'user_id,category' });
+        if (error) throw error;
+      }
+      let delCats = supabase.from('habbit_category_targets').delete().eq('user_id', CURRENT_USER.id);
+      if (catRows.length) delCats = delCats.not('category', 'in', `(${catRows.map(c => `"${c.category}"`).join(',')})`);
+      const { error: delCatsErr } = await delCats;
+      if (delCatsErr) throw delCatsErr;
+
+      const savRows = Object.keys(targets.savings || {})
+        .map(mk => ({
+          user_id: CURRENT_USER.id, target_month: mk + '-01',
+          target_amount: targets.savings[mk] && targets.savings[mk].amount != null ? targets.savings[mk].amount : null,
+          target_rate: targets.savings[mk] && targets.savings[mk].rate != null ? targets.savings[mk].rate : null,
+        }))
+        .filter(r => r.target_amount != null || r.target_rate != null);
+      if (savRows.length) {
+        const { error } = await supabase.from('habbit_savings_targets').upsert(savRows, { onConflict: 'user_id,target_month' });
+        if (error) throw error;
+      }
+      let delSav = supabase.from('habbit_savings_targets').delete().eq('user_id', CURRENT_USER.id);
+      if (savRows.length) delSav = delSav.not('target_month', 'in', `(${savRows.map(r => `"${r.target_month}"`).join(',')})`);
+      const { error: delSavErr } = await delSav;
+      if (delSavErr) throw delSavErr;
+
+      setSyncIndicator('ok');
+    } catch (e) {
+      console.error('cloud push failed', e);
+      setSyncIndicator('error');
+    }
+  }
+
+  /* ============================================================
+     HELPERS
+     ============================================================ */
+  function newId() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+    return 'id-' + Date.now() + '-' + Math.random().toString(16).slice(2);
+  }
+  function toTimeOfDay(date) {
+    const p = n => String(n).padStart(2, '0');
+    return `${p(date.getHours())}:${p(date.getMinutes())}:${p(date.getSeconds())}`;
+  }
+  function toDateOnly(date) {
+    const p = n => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}`;
+  }
+  function toMonthOnly(date) {
+    const p = n => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${p(date.getMonth() + 1)}`;
+  }
+
+  const ESCAPE_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+  function escapeHtml(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, ch => ESCAPE_MAP[ch]); }
+
+  function initials(name) {
+    const parts = String(name || '?').trim().split(/\s+/).slice(0, 2);
+    return parts.map(w => (w[0] ? w[0].toUpperCase() : '')).join('') || '?';
+  }
+  function fmtClock(iso) {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '…';
+    return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  }
+  function fmtDurationSecs(totalSeconds) {
+    const s = Math.max(0, Math.floor(totalSeconds || 0));
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    const p = n => String(n).padStart(2, '0');
+    return h > 0 ? `${h}:${p(m)}:${p(sec)}` : `${p(m)}:${p(sec)}`;
+  }
+  function fmtRupiah(n) {
+    const num = Number(n) || 0;
+    const sign = num < 0 ? '-' : '';
+    return sign + 'Rp' + Math.abs(num).toLocaleString('id-ID');
+  }
+
+  // Nominal input field lives entirely in whole Rupiah (no decimals), and
+  // displays live comma-grouped thousands ("1,000,000") per explicit choice
+  // -- opposite of Indonesian convention (dot=thousands), but that's what
+  // was asked for. This ONLY affects what's shown in the #in-amount DOM
+  // input; everything that actually gets stored/exported (db.history's
+  // .nominal field, CSV/XLSX) is a plain number, untouched by commas --
+  // parseCommaAmount() is the one place that strips them back out again.
+  function parseCommaAmount(raw) {
+    if (!raw) return NaN;
+    const cleaned = String(raw).replace(/,/g, '').trim();
+    if (cleaned === '') return NaN;
+    return Number(cleaned);
+  }
+
+  // Non-interactive version for prefilling a value programmatically (bubble
+  // prefill, etc) where there's no real caret position to preserve --
+  // formatLiveCommaAmount() below is for the live-typing case.
+  function formatCommaAmount(n) {
+    const digits = String(Math.trunc(Number(n) || 0));
+    return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
+  // Live-masks the amount input as digits are typed: groups every 3 digits
+  // from the right with a comma, preserving caret position by counting
+  // digits (not characters) to the left of the cursor before reformatting.
+  function formatLiveCommaAmount(input) {
+    const cursorPos = input.selectionStart;
+    const digitsBefore = (input.value.slice(0, cursorPos).match(/\d/g) || []).length;
+
+    let digits = input.value.replace(/\D/g, '');
+    digits = digits.replace(/^0+(?=\d)/, ''); // no leading zeros ("007" -> "7")
+    const formatted = digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    input.value = formatted;
+
+    let pos = formatted.length;
+    if (digitsBefore === 0) {
+      pos = 0;
+    } else {
+      let count = 0;
+      for (let i = 0; i < formatted.length; i++) {
+        if (/\d/.test(formatted[i])) count++;
+        if (count === digitsBefore) { pos = i + 1; break; }
+      }
+    }
+    input.setSelectionRange(pos, pos);
+  }
+  function fmtRelativeTime(iso) {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    const mins = Math.floor((Date.now() - d.getTime()) / 60000);
+    if (mins < 1) return 'baru saja';
+    if (mins < 60) return `${mins} menit lalu`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs} jam lalu`;
+    const days = Math.floor(hrs / 24);
+    if (days < 7) return `${days} hari lalu`;
+    return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+  function fmtTimeOfDay(t) { return t ? String(t).slice(0, 5) : '…'; }
+  function fmtMonthLabel(monthKey) {
+    const [y, m] = monthKey.split('-').map(Number);
+    if (!y || !m) return monthKey;
+    return new Date(y, m - 1, 1).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+  }
+  function financeTypeOf(row) { return row.finance_type === 'income' ? 'income' : 'expense'; }
+
+  /* ============================================================
+     UI GLUE
+     ============================================================ */
+  let toastTimer = null;
+  function showToast(message, type) {
+    const el = document.getElementById('toast');
+    el.textContent = message;
+    el.classList.toggle('err', type === 'err');
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+  }
+  function setFieldInvalid(fieldId, invalid) {
+    const el = document.getElementById(fieldId);
+    el.classList.toggle('invalid', invalid);
+    const err = el.querySelector('.err-text');
+    if (err) err.classList.toggle('show', invalid);
+  }
+  async function withBusy(btn, busyLabel, fn) {
+    if (!btn) return fn();
+    const original = btn.textContent, wasDisabled = btn.disabled;
+    btn.disabled = true; btn.textContent = busyLabel;
+    try { return await fn(); }
+    finally { btn.disabled = wasDisabled; btn.textContent = original; }
+  }
+  // generic double-tap / double-click detector (works for touch + mouse)
+  const lastTapMap = new Map();
+  function isDoubleTap(key) {
+    const now = Date.now();
+    const last = lastTapMap.get(key) || 0;
+    lastTapMap.set(key, now);
+    return (now - last) < 380;
+  }
+
+  /* ============================================================
+     DATA ACCESS LAYER
+     ============================================================ */
+  function fetchRunning() {
+    return [...db.running].sort((a, b) => b.created_at.localeCompare(a.created_at));
+  }
+  function fetchHistory() {
+    return [...db.history].sort((a, b) => b.created_at.localeCompare(a.created_at));
+  }
+
+  function startActivity(activity) {
+    const clean = String(activity || '').trim().slice(0, 200);
+    if (clean.length < 3) throw new Error('Aktivitas minimal 3 karakter.');
+    const now = new Date();
+    const row = {
+      id: newId(), activity: clean,
+      time_start: toTimeOfDay(now), start_date: toDateOnly(now),
+      created_at: now.toISOString(),
+    };
+    db.running.push(row);
+    saveDB();
+    return row;
+  }
+
+  function recordExpense({ activity, financeTag, nominal, financeType }) {
+    const clean = String(activity || '').trim().slice(0, 200);
+    if (clean.length < 3) throw new Error('Aktivitas minimal 3 karakter.');
+    const amount = Number(nominal);
+    if (!Number.isFinite(amount) || amount <= 0) throw new Error('Nominal harus angka dan lebih dari 0.');
+    const cleanTag = financeTag ? String(financeTag).trim().slice(0, 60) : null;
+    const cleanType = financeType === 'income' ? 'income' : 'expense';
+
+    const now = new Date();
+    const today = toDateOnly(now), nowTime = toTimeOfDay(now);
+    const row = {
+      id: newId(), activity: clean,
+      time_start: nowTime, time_end: nowTime, total_second: 0, qty: null, qty_unit: null,
+      finance_flag: true, finance_tag: cleanTag, nominal: amount, finance_type: cleanType,
+      start_date: today, end_date: today, created_at: now.toISOString(),
+    };
+    db.history.push(row);
+    saveDB();
+    return row;
+  }
+
+  function toggleEntryFinanceType(id) {
+    const row = db.history.find(r => r.id === id);
+    if (!row || !row.finance_flag) return;
+    row.finance_type = financeTypeOf(row) === 'income' ? 'expense' : 'income';
+    saveDB();
+  }
+
+  function stopActivity({ id, qty, unit }) {
+    const idx = db.running.findIndex(r => r.id === id);
+    if (idx === -1) throw new Error('Aktivitas tidak ditemukan (sudah dihentikan?).');
+
+    let cleanQty = null;
+    if (qty !== null && qty !== undefined && qty !== '') {
+      cleanQty = Number(qty);
+      if (!Number.isFinite(cleanQty) || cleanQty <= 0) {
+        throw new Error('Jumlah harus angka lebih dari 0 (atau kosongkan).');
+      }
+    }
+    const cleanUnit = unit ? String(unit).trim().slice(0, 40) : null;
+
+    const running = db.running[idx];
+    const now = new Date();
+    const endDate = toDateOnly(now), endTime = toTimeOfDay(now);
+    const startInstant = new Date(`${running.start_date}T${running.time_start}`).getTime();
+    const endInstant = new Date(`${endDate}T${endTime}`).getTime();
+    const totalSeconds = Math.max(0, Math.round((endInstant - startInstant) / 1000));
+
+    const historyRow = {
+      id: newId(), activity: running.activity,
+      time_start: running.time_start, time_end: endTime, total_second: totalSeconds,
+      qty: cleanQty, qty_unit: cleanUnit,
+      finance_flag: false, finance_tag: null, nominal: null, finance_type: null,
+      start_date: running.start_date, end_date: endDate, created_at: now.toISOString(),
+    };
+    db.running.splice(idx, 1);
+    db.history.push(historyRow);
+    saveDB();
+    return historyRow;
+  }
+
+  /* ============================================================
+     STATE
+     ============================================================ */
+  const today = new Date();
+  const state = {
+    histPeriodType: 'day',
+    histPeriodValue: toDateOnly(today),
+    histType: 'B',
+    statsMonth: toMonthOnly(today),
+    savingsTargetMonth: toMonthOnly(new Date(today.getFullYear(), today.getMonth() + 1, 1)),
+    plannerMonth: toMonthOnly(today),
+    // Laporan Jangka Panjang period picker. Both null = default view (rolling
+    // 6 months trailing from today, the original pre-picker behavior). Once
+    // the user picks BOTH a year and a semester from the dropdowns, this
+    // switches to a fixed 6-month block (H1=Jan-Jun, H2=Jul-Des) for that
+    // year instead. Picking only one (not the other) is treated the same as
+    // neither picked -- stays on the default view until both are chosen.
+    longtermYear: null,
+    longtermSemester: null,
+  };
+
+  function startInstant(row) { return new Date(`${row.start_date}T${row.time_start}`).getTime(); }
+
+  // Last actual day-of-month for (year, month0) -- e.g. (2026,1) [Feb 2026]
+  // -> 28. Used to clamp a cutoff day like 31 down to whatever a given
+  // month actually has, instead of letting JS's Date silently roll the
+  // overflow into the NEXT month (new Date(2026,1,31) would otherwise
+  // become March 3, corrupting the boundary).
+  function lastDayOfMonth(year, month0) { return new Date(year, month0 + 1, 0).getDate(); }
+
+  // A "financial month" can start on any day-of-month (targets.monthCutoffDay),
+  // not just the 1st -- e.g. cutoff=25 means the period labeled "Agustus 2026"
+  // runs Jul 25 through Aug 24, not Aug 1 through Aug 31. Named after the
+  // month it STARTS in. cutoff=1 (the default) makes this identical to a
+  // plain calendar month, so existing behavior is unchanged unless the user
+  // explicitly sets a different cutoff.
+  function financialMonthBounds(y, m /* 1-12 */) {
+    const cutoff = Math.min(31, Math.max(1, Math.round(Number(targets.monthCutoffDay) || 1)));
+    const startMonth0 = m - 1; // 0-indexed month this period is named after
+    const startDay = Math.min(cutoff, lastDayOfMonth(y, startMonth0));
+    const start = new Date(y, startMonth0, startDay, 0, 0, 0, 0);
+
+    // End = the day before `cutoff` hits again next month, clamped the same way.
+    const endMonth0 = startMonth0 + 1;
+    const endYear = y + Math.floor(endMonth0 / 12);
+    const endMonthNorm = ((endMonth0 % 12) + 12) % 12;
+    const endCutoffDay = Math.min(cutoff, lastDayOfMonth(endYear, endMonthNorm));
+    const end = new Date(endYear, endMonthNorm, endCutoffDay, 0, 0, 0, 0);
+    end.setMilliseconds(-1); // step back 1ms = 23:59:59.999 the day before
+
+    return [start.getTime(), end.getTime()];
+  }
+
+  function getPeriodBounds(periodType, periodValue) {
+    if (periodType === 'day' && periodValue) {
+      const start = new Date(`${periodValue}T00:00:00`);
+      const end = new Date(`${periodValue}T23:59:59.999`);
+      if (!Number.isNaN(start.getTime())) return [start.getTime(), end.getTime()];
+    }
+    if (periodType === 'month' && periodValue) {
+      const parts = periodValue.split('-').map(Number);
+      const y = parts[0], m = parts[1];
+      if (y && m) return financialMonthBounds(y, m);
+    }
+    if (periodType === 'year' && periodValue) {
+      const y = Number(periodValue);
+      if (Number.isFinite(y) && y > 0) return [new Date(y, 0, 1).getTime(), new Date(y, 11, 31, 23, 59, 59, 999).getTime()];
+    }
+    return [-Infinity, Infinity];
+  }
+
+  function getFilteredHistory() {
+    const [start, end] = getPeriodBounds(state.histPeriodType, state.histPeriodValue);
+    return fetchHistory().filter(row => {
+      const t = startInstant(row);
+      if (t < start || t > end) return false;
+      if (state.histType === 'F' && !row.finance_flag) return false;
+      if (state.histType === 'A' && row.finance_flag) return false;
+      return true;
+    });
+  }
+
+  function getHistoryForMonth(monthKey) {
+    const [start, end] = getPeriodBounds('month', monthKey);
+    return fetchHistory().filter(row => {
+      const t = startInstant(row);
+      return t >= start && t <= end && row.finance_flag;
+    });
+  }
+
+  function computeMonthTotals(monthKey) {
+    const rows = getHistoryForMonth(monthKey);
+    let income = 0, expense = 0;
+    const byCategory = {};
+    rows.forEach(r => {
+      const amt = Number(r.nominal) || 0;
+      if (financeTypeOf(r) === 'income') {
+        income += amt;
+      } else {
+        expense += amt;
+        const tag = r.finance_tag || 'Lainnya';
+        byCategory[tag] = (byCategory[tag] || 0) + amt;
+      }
+    });
+    return { income, expense, net: income - expense, byCategory };
+  }
+
+  // Saving rate = net saved as a % of income this month. No income but some
+  // expense reads as -100% (spent with nothing coming in); no income and no
+  // expense reads as flat 0% (nothing happened yet, not "achievement" material).
+  function computeSavingRate(monthKey) {
+    const t = computeMonthTotals(monthKey);
+    const rate = t.income > 0 ? (t.net / t.income) * 100 : (t.expense > 0 ? -100 : 0);
+    return { ...t, rate };
+  }
+
+  /* ============================================================
+     RENDERING — HOME
+     ============================================================ */
+  function renderRunning() {
+    const rows = fetchRunning();
+    const box = document.getElementById('running-list');
+    if (rows.length === 0) { box.innerHTML = '<div class="empty">Belum ada aktivitas yang lagi jalan.</div>'; return; }
+    box.innerHTML = rows.map(r => {
+      const elapsed = Math.floor((Date.now() - new Date(r.created_at).getTime()) / 1000);
+      return `
+      <div class="run-item" data-id="${escapeHtml(r.id)}" data-start="${escapeHtml(r.created_at)}">
+        <div class="run-dot-wrap"><span class="pulse-dot"></span></div>
+        <div class="run-body">
+          <div class="run-activity" title="${escapeHtml(r.activity)}">${escapeHtml(r.activity)}</div>
+          <div class="run-time">mulai ${escapeHtml(fmtClock(r.created_at))}</div>
+          <div class="stop-form" data-stop-form-for="${escapeHtml(r.id)}">
+            <input type="text" inputmode="numeric" class="stop-qty" placeholder="10" maxlength="6">
+            <input type="text" class="stop-unit" placeholder="Repetisi" maxlength="40">
+            <button class="btn-stop-confirm" data-confirm-stop-id="${escapeHtml(r.id)}">✓ Selesai</button>
+            <button class="btn-link-cancel" data-cancel-stop-id="${escapeHtml(r.id)}">Batal</button>
+          </div>
+        </div>
+        <div style="text-align:right;">
+          <div class="run-elapsed mono" data-elapsed>${fmtDurationSecs(elapsed)}</div>
+          <button class="btn btn-stop" style="margin-top:6px;" data-stop-id="${escapeHtml(r.id)}">■ Stop</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function tickRunning() {
+    document.querySelectorAll('.run-item').forEach(el => {
+      const start = new Date(el.dataset.start).getTime();
+      const elapsed = Math.floor((Date.now() - start) / 1000);
+      const out = el.querySelector('[data-elapsed]');
+      if (out) out.textContent = fmtDurationSecs(elapsed);
+    });
+  }
+
+  function showStopForm(id) {
+    const form = document.querySelector(`[data-stop-form-for="${CSS.escape(id)}"]`);
+    const item = form && form.closest('.run-item');
+    if (form) form.classList.add('show');
+    if (item) { const b = item.querySelector('[data-stop-id]'); if (b) b.classList.add('hidden-btn'); }
+    const qtyInput = form && form.querySelector('.stop-qty');
+    if (qtyInput) qtyInput.focus();
+  }
+  function hideStopForm(id) {
+    const form = document.querySelector(`[data-stop-form-for="${CSS.escape(id)}"]`);
+    const item = form && form.closest('.run-item');
+    if (form) form.classList.remove('show');
+    if (item) { const b = item.querySelector('[data-stop-id]'); if (b) b.classList.remove('hidden-btn'); }
+  }
+  function readStopForm(id) {
+    const form = document.querySelector(`[data-stop-form-for="${CSS.escape(id)}"]`);
+    if (!form) return { qty: null, unit: null };
+    const qtyRaw = (form.querySelector('.stop-qty').value || '').trim();
+    const unitRaw = (form.querySelector('.stop-unit').value || '').trim();
+    return { qty: qtyRaw || null, unit: unitRaw || null };
+  }
+
+  function setHistRangeChips(range) {
+    document.querySelectorAll('#hist-filter .chip-filter').forEach(c => c.classList.toggle('active', c.dataset.range === range));
+  }
+  function setPeriodPickerVisibility(periodType) {
+    document.getElementById('period-day').style.display = periodType === 'day' ? '' : 'none';
+    document.getElementById('period-month').style.display = periodType === 'month' ? '' : 'none';
+    document.getElementById('period-year').style.display = periodType === 'year' ? '' : 'none';
+  }
+  function setHistTypeButtons(type) {
+    document.querySelectorAll('#hist-type-switch .type-btn').forEach(b => b.classList.toggle('active', b.dataset.type === type));
+  }
+
+  function renderHistory() {
+    const rows = getFilteredHistory();
+    const box = document.getElementById('history-list');
+    if (rows.length === 0) { box.innerHTML = '<div class="empty">Belum ada riwayat di rentang ini.</div>'; return; }
+    box.innerHTML = rows.map(r => {
+      if (r.finance_flag) {
+        const type = financeTypeOf(r);
+        const isIncome = type === 'income';
+        return `
+        <div class="hist-row">
+          <span class="type-pill finance ${isIncome ? 'income' : ''}" data-finance-id="${escapeHtml(r.id)}" title="Tap 2x buat ganti Pemasukan/Pengeluaran">${escapeHtml((r.finance_tag || (isIncome ? 'PEMASUKAN' : 'KELUAR DUIT')).toUpperCase())}</span>
+          <div class="hist-main">
+            <div class="hist-title">${escapeHtml(r.activity)}</div>
+            <div class="hist-sub">${escapeHtml(fmtRelativeTime(r.created_at))}</div>
+          </div>
+          <div class="hist-value ${isIncome ? 'income' : 'spend'}">${isIncome ? '+' : '-'}${fmtRupiah(r.nominal)}</div>
+        </div>`;
+      }
+      return `
+      <div class="hist-row">
+        <span class="type-pill drilling">AKTIVITAS</span>
+        <div class="hist-main">
+          <div class="hist-title">${escapeHtml(r.activity)}</div>
+          <div class="hist-sub">${fmtTimeOfDay(r.time_start)} – ${fmtTimeOfDay(r.time_end)} · ${escapeHtml(fmtRelativeTime(r.created_at))}</div>
+        </div>
+        <div style="text-align:right;">
+          <div class="hist-value dur">${fmtDurationSecs(r.total_second || 0)}</div>
+          ${r.qty != null && r.qty !== '' ? `<span class="hist-qty">${escapeHtml(r.qty)} ${escapeHtml(r.qty_unit || '')}</span>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function toggleFinanceFields(checked) {
+    document.getElementById('finance-fields').classList.toggle('show', checked);
+    const btn = document.getElementById('submit-btn');
+    btn.textContent = checked ? (financeState.type === 'income' ? '💰 Gas, Catat!' : '💸 Gas, Catat!') : '🚀 Gas, Mulai!';
+    btn.classList.toggle('btn-finance', checked);
+    btn.classList.toggle('btn-primary', !checked);
+    updateBudgetLive();
+  }
+
+  // Live "if I save this, where does it leave the category?" bar next to the
+  // nominal field. Only makes sense for an EXPENSE with a category that has a
+  // budget target set (targets.categoryTargets, from the Statistik & Target
+  // page) — no target means nothing to measure against, so the bar stays
+  // hidden rather than showing a meaningless 0%.
+  //
+  // "Projected" = money already spent in that category THIS MONTH (from
+  // saved history) + whatever amount is currently typed in the form (not
+  // saved yet). Green while that projection stays inside the budget. Past
+  // 100% it flips red, and — since a single overspend can blow way past the
+  // cap in one shot — switches to a stacked look: full red glow across the
+  // track (the overage), with a slim green segment inside it showing how
+  // much of that red was the originally-budgeted slice.
+  function updateBudgetLive() {
+    const wrap = document.getElementById('budget-live');
+    if (!financeState.checked || financeState.type !== 'expense') { wrap.classList.remove('show'); return; }
+
+    const tag = document.getElementById('in-tag').value.trim();
+    if (!tag) { wrap.classList.remove('show'); return; }
+
+    const cap = targets.categoryTargets[tag] || null;
+    if (!cap || cap <= 0) { wrap.classList.remove('show'); return; }
+
+    const typedAmount = parseCommaAmount(document.getElementById('in-amount').value) || 0;
+    const spentSoFar = computeMonthTotals(toMonthOnly(new Date())).byCategory[tag] || 0;
+    const projected = spentSoFar + typedAmount;
+    const pct = (projected / cap) * 100;
+    const isOver = pct > 100;
+
+    wrap.classList.add('show');
+    document.getElementById('budget-live-lbl').textContent = `Budget "${tag}" bulan ini`;
+    document.getElementById('budget-live-pct').textContent = `${pct.toFixed(0)}%`;
+    document.getElementById('budget-live-pct').classList.toggle('ok', !isOver);
+    document.getElementById('budget-live-pct').classList.toggle('over', isOver);
+
+    const fill = document.getElementById('budget-live-fill');
+    const fillOver = document.getElementById('budget-live-fill-over');
+    if (!isOver) {
+      fill.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+      fill.classList.remove('over');
+      fillOver.classList.remove('show');
+      fillOver.style.width = '0%';
+    } else {
+      // Full red track = the overage. The green inner segment's width is
+      // the ORIGINAL budget's share of the now-larger projected total, i.e.
+      // "this much of what you see was actually within budget."
+      fill.style.width = '100%';
+      fill.classList.add('over');
+      fillOver.classList.add('show');
+      fillOver.style.width = `${Math.max(0, Math.min(100, (cap / projected) * 100))}%`;
+    }
+
+    document.getElementById('budget-live-sub').textContent = isOver
+      ? `Over ${fmtRupiah(projected - cap)} dari budget ${fmtRupiah(cap)}`
+      : `${fmtRupiah(projected)} dari ${fmtRupiah(cap)}`;
+  }
+
+  /* "Ini urusan duit?" button-checkbox: click = toggle checked, double-click = flip income/expense (only while checked). Default color when checked is green (income). */
+  const financeState = { checked: false, type: 'income' };
+
+  // One-shot flag set by applyPlannerReminderToForm() -- a recurring/planned
+  // expense (set up a month in advance) skips the expense consent gate for
+  // exactly the NEXT submit, then resets. Any other form interaction in
+  // between (editing the amount, switching category, etc) doesn't clear it
+  // -- only an actual submit does, so it behaves like "this next save is
+  // pre-approved," not "consent is off until I say otherwise."
+  let skipConsentForNextSubmit = false;
+  function renderFinanceToggleBox() {
+    const box = document.getElementById('finance-toggle-box');
+    box.classList.toggle('checked', financeState.checked);
+    box.classList.toggle('income', financeState.checked && financeState.type === 'income');
+    box.classList.toggle('expense', financeState.checked && financeState.type === 'expense');
+    document.getElementById('ftb-icon').textContent = !financeState.checked ? '⚪' : (financeState.type === 'income' ? '🟢' : '🔴');
+    document.getElementById('ftb-title').textContent = !financeState.checked ? 'Ini urusan duit?' : (financeState.type === 'income' ? 'Pemasukan' : 'Pengeluaran');
+    document.getElementById('ftb-sub').textContent = !financeState.checked
+      ? 'Klik buat centang kalau aktivitas ini ada duitnya.'
+      : 'Double klik di dalam sini buat ganti Pemasukan / Pengeluaran.';
+    document.getElementById('ftb-check').classList.toggle('on', financeState.checked);
+  }
+  function resetActivityForm() {
+    document.getElementById('in-activity').value = '';
+    document.getElementById('in-amount').value = '';
+    document.getElementById('in-tag').value = '';
+    financeState.checked = false;
+    financeState.type = 'income';
+    renderFinanceToggleBox();
+    toggleFinanceFields(false);
+  }
+
+  /* ============================================================
+     RECENT-ACTIVITY QUICK-PICK BUBBLES
+     A compact, swipeable strip of activities you've logged in the last
+     30 days — tap one to prefill the form (name + finance state + last
+     nominal + tag) instead of retyping/rethinking what you called it last
+     time. Deduped by activity name (case/whitespace-insensitive), most
+     recently used first, capped so it never gets tall or crowded.
+     ============================================================ */
+  const RECENT_BUBBLES_WINDOW_DAYS = 30;
+  const RECENT_BUBBLES_MAX = 10;
+
+  // created_at is stored as an ISO string (now.toISOString(), see recordExpense
+  // / startActivity / stopActivity above) — NOT a numeric epoch. Parse it via
+  // Date so both the recency cutoff and the sort compare real timestamps
+  // instead of doing string/number coercion on mismatched types.
+  function habbitCreatedAtMs(row) {
+    const t = row && row.created_at ? new Date(row.created_at).getTime() : NaN;
+    return Number.isFinite(t) ? t : 0;
+  }
+
+  function getRecentActivityBubbles() {
+    const cutoff = Date.now() - RECENT_BUBBLES_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+    const seen = new Map(); // normalized name -> most recent row for that name
+    db.history
+      .filter(r => r.activity && habbitCreatedAtMs(r) >= cutoff)
+      .sort((a, b) => habbitCreatedAtMs(b) - habbitCreatedAtMs(a))
+      .forEach(r => {
+        const key = String(r.activity).trim().toLowerCase();
+        if (!key) return;
+        if (!seen.has(key)) seen.set(key, r); // first hit per key = most recent, since we sorted desc
+      });
+    return Array.from(seen.values()).slice(0, RECENT_BUBBLES_MAX);
+  }
+
+  function renderRecentBubbles() {
+    const scroll = document.getElementById('recent-bubbles-scroll');
+    const wrap = document.getElementById('recent-bubbles-wrap');
+    const rows = getRecentActivityBubbles();
+
+    if (rows.length === 0) {
+      wrap.style.display = 'none';
+      scroll.innerHTML = '';
+      return;
+    }
+    wrap.style.display = '';
+
+    scroll.innerHTML = rows.map((r, i) => {
+      const isFinance = !!r.finance_flag;
+      const typeClass = isFinance ? (r.finance_type === 'income' ? 'income' : 'expense') : '';
+      const icon = isFinance ? (r.finance_type === 'income' ? '💰' : '💸') : '⏱️';
+      const amtText = isFinance ? `<span class="rb-amt">${fmtRupiah(r.nominal)}</span>` : '';
+      // Trim only for display — the underlying row (used for prefill) keeps
+      // whatever casing/whitespace was originally typed.
+      const displayLabel = String(r.activity).trim();
+      return `<button type="button" class="recent-bubble ${typeClass}" data-bubble-index="${i}">
+        <span>${icon}</span><span>${escapeHtml(displayLabel)}</span>${amtText}
+      </button>`;
+    }).join('');
+
+    scroll.querySelectorAll('.recent-bubble').forEach(btn => {
+      btn.addEventListener('click', () => applyBubbleToForm(rows[Number(btn.dataset.bubbleIndex)]));
+    });
+  }
+
+  // Prefills the form from a past entry — does NOT submit anything. You still
+  // review/tweak (e.g. a different price today) and hit "Gas" yourself.
+  function applyBubbleToForm(row) {
+    document.getElementById('in-activity').value = row.activity;
+    setFieldInvalid('f-activity', false);
+
+    financeState.checked = !!row.finance_flag;
+    financeState.type = row.finance_flag && row.finance_type === 'expense' ? 'expense' : 'income';
+    renderFinanceToggleBox();
+    toggleFinanceFields(financeState.checked);
+
+    if (row.finance_flag) {
+      document.getElementById('in-amount').value = row.nominal != null ? formatCommaAmount(row.nominal) : '';
+      document.getElementById('in-tag').value = row.finance_tag || '';
+      setFieldInvalid('f-amount', false);
+    } else {
+      document.getElementById('in-amount').value = '';
+      document.getElementById('in-tag').value = '';
+    }
+    updateBudgetLive(); // amount/tag were just set above -- refresh again so the bar isn't stale
+
+    const focusTarget = document.getElementById(row.finance_flag ? 'in-amount' : 'in-activity');
+    focusTarget.focus();
+    if (typeof focusTarget.select === 'function') focusTarget.select();
+  }
+
+  function updateWhoBadge(name) {
+    document.getElementById('who-badge').textContent = initials(name);
+    document.getElementById('who-name').textContent = name;
+  }
+
+  function loadAll() {
+    renderRunning();
+    renderHistory();
+    renderRecentBubbles();
+    if (document.getElementById('page-stats').classList.contains('active')) renderStatsPage();
+    if (document.getElementById('page-longterm').classList.contains('active')) renderLongtermPage();
+    if (document.getElementById('page-planner').classList.contains('active')) renderPlannerPage();
+    renderPlannerReminders(); // reminder clouds are fixed-position/global, independent of which page is active
+  }
+
+  /* ============================================================
+     PROFILE NAME
+     ============================================================ */
+  function getTheme() { return localStorage.getItem(THEME_KEY) || 'dark'; }
+  function applyTheme(theme) {
+    document.body.classList.toggle('theme-light', theme === 'light');
+    document.getElementById('theme-toggle').textContent = theme === 'light' ? '☀️' : '🌙';
+    localStorage.setItem(THEME_KEY, theme);
+  }
+
+  // Name now comes straight from the logged-in account (profiles.full_name,
+  // same source dashboard.html/calendar.html use) rather than a local,
+  // editable, unauthenticated nickname.
+  function getProfileName() {
+    return (CURRENT_PROFILE && CURRENT_PROFILE.full_name) || (CURRENT_USER && CURRENT_USER.email) || 'Kamu';
+  }
+
+  /* ============================================================
+     DATA TOOLS — export / import / reset / excel
+     ============================================================ */
+  function exportBackup() {
+    const payload = { ...db, exportedAt: new Date().toISOString(), app: 'habbit-local' };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `habbit-backup-${toDateOnly(new Date())}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    showToast('Backup diunduh.');
+  }
+  function importBackup(file) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target.result);
+        if (!Array.isArray(data.running) || !Array.isArray(data.history)) throw new Error('invalid');
+        if (!confirm('Ini akan mengganti SEMUA data yang ada sekarang dengan isi file backup. Lanjutkan?')) return;
+        db = { running: data.running, history: data.history };
+        saveDB();
+        loadAll();
+        showToast('Backup berhasil dipulihkan.');
+      } catch (err) {
+        showToast('File backup tidak valid.', 'err');
+      }
+    };
+    reader.readAsText(file);
+  }
+  function resetAllData() {
+    if (!confirm('Hapus SEMUA aktivitas & riwayat di browser ini? Tindakan ini tidak bisa dibatalkan (kecuali kamu punya backup).')) return;
+    db = { running: [], history: [] };
+    saveDB();
+    loadAll();
+    showToast('Semua data dihapus.');
+  }
+
+  function exportExcel() {
+    if (typeof XLSX === 'undefined') { showToast('Gagal load library Excel, cek koneksi internet.', 'err'); return; }
+    const rows = fetchHistory();
+    if (rows.length === 0) { showToast('Belum ada riwayat buat diexport.', 'err'); return; }
+
+    const sheetRows = rows.map(r => {
+      if (r.finance_flag) {
+        const isIncome = financeTypeOf(r) === 'income';
+        return {
+          'Tanggal': r.start_date,
+          'Jam': fmtTimeOfDay(r.time_start),
+          'Aktivitas': r.activity,
+          'Tipe': isIncome ? 'Pemasukan' : 'Pengeluaran',
+          'Kategori': r.finance_tag || '-',
+          'Nominal': isIncome ? Number(r.nominal) || 0 : -(Number(r.nominal) || 0),
+          'Durasi (menit)': '',
+          'Jumlah': '',
+          'Satuan': '',
+        };
+      }
+      return {
+        'Tanggal': r.start_date,
+        'Jam': `${fmtTimeOfDay(r.time_start)}–${fmtTimeOfDay(r.time_end)}`,
+        'Aktivitas': r.activity,
+        'Tipe': 'Aktivitas',
+        'Kategori': '-',
+        'Nominal': '',
+        'Durasi (menit)': Math.round((r.total_second || 0) / 60),
+        'Jumlah': r.qty != null ? r.qty : '',
+        'Satuan': r.qty_unit || '',
+      };
+    });
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(sheetRows);
+    ws['!cols'] = [{ wch: 12 }, { wch: 14 }, { wch: 30 }, { wch: 12 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 10 }, { wch: 10 }];
+    XLSX.utils.book_append_sheet(wb, ws, 'Riwayat');
+
+    // second sheet: monthly summary
+    const monthsMap = {};
+    rows.forEach(r => {
+      if (!r.finance_flag) return;
+      const mk = r.start_date.slice(0, 7);
+      if (!monthsMap[mk]) monthsMap[mk] = { income: 0, expense: 0 };
+      const amt = Number(r.nominal) || 0;
+      if (financeTypeOf(r) === 'income') monthsMap[mk].income += amt; else monthsMap[mk].expense += amt;
+    });
+    const summaryRows = Object.keys(monthsMap).sort().map(mk => ({
+      'Bulan': fmtMonthLabel(mk),
+      'Pemasukan': monthsMap[mk].income,
+      'Pengeluaran': monthsMap[mk].expense,
+      'Tabungan': monthsMap[mk].income - monthsMap[mk].expense,
+      'Savings Rate (%)': monthsMap[mk].income > 0 ? Math.round(((monthsMap[mk].income - monthsMap[mk].expense) / monthsMap[mk].income) * 1000) / 10 : 0,
+    }));
+    const ws2 = XLSX.utils.json_to_sheet(summaryRows);
+    ws2['!cols'] = [{ wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 16 }];
+    XLSX.utils.book_append_sheet(wb, ws2, 'Ringkasan Bulanan');
+
+    XLSX.writeFile(wb, `habbit-export-${toDateOnly(new Date())}.xlsx`);
+    showToast('Excel berhasil diunduh.');
+  }
+
+  /* ============================================================
+     UNIVERSAL EXCEL BACKUP (full round-trip: export + re-import)
+     ============================================================
+     Unlike exportExcel() above (a quick, write-only, human-facing dump of
+     just the history log), this covers EVERY piece of app state across 6
+     sheets, using stable column headers designed to survive a human
+     opening the file, editing a few numbers, and saving it back --
+     exactly the "hand it to finance" use case this was built for. Each
+     sheet is read back independently on import, so a sheet that's
+     missing, reordered, or has extra columns doesn't break the others.
+     ============================================================ */
+
+  // Sheet 1: Riwayat -- one row per db.history entry (both activities and
+  // finance rows share this sheet, distinguished by the Tipe column). The
+  // ID column is what makes re-import idempotent/stable instead of
+  // regenerating IDs and silently breaking anything that reasons about a
+  // specific entry (recurring-item "already paid" matching goes off the
+  // activity NAME not the id, so this is more a correctness/traceability
+  // guarantee than a hard requirement today, but it costs nothing to keep).
+  function buildRiwayatSheetRows() {
+    return [...db.history].sort((a, b) => a.created_at.localeCompare(b.created_at)).map(r => ({
+      'ID': r.id,
+      'Tanggal Mulai': r.start_date,
+      'Jam Mulai': fmtTimeOfDay(r.time_start),
+      'Tanggal Selesai': r.end_date,
+      'Jam Selesai': fmtTimeOfDay(r.time_end),
+      'Aktivitas': r.activity,
+      'Tipe': r.finance_flag ? (financeTypeOf(r) === 'income' ? 'Pemasukan' : 'Pengeluaran') : 'Aktivitas',
+      'Kategori': r.finance_flag ? (r.finance_tag || '') : '',
+      'Nominal': r.finance_flag ? (Number(r.nominal) || 0) : '',
+      'Durasi (detik)': r.finance_flag ? '' : (r.total_second || 0),
+      'Jumlah': r.qty != null ? r.qty : '',
+      'Satuan': r.qty_unit || '',
+      'Dibuat Pada': r.created_at,
+    }));
+  }
+
+  // Sheet 2: Aktivitas Berjalan -- activities started but not yet stopped
+  // (db.running). Kept separate since the row shape genuinely differs
+  // (no end time/duration/finance fields at all).
+  function buildRunningSheetRows() {
+    return db.running.map(r => ({
+      'ID': r.id,
+      'Aktivitas': r.activity,
+      'Tanggal Mulai': r.start_date,
+      'Jam Mulai': fmtTimeOfDay(r.time_start),
+    }));
+  }
+
+  // Sheet 3: Target & Pengaturan -- every SCALAR targets field, one row per
+  // setting so a human can find+edit any single value without guessing
+  // which JSON key it maps to.
+  function buildSettingsSheetRows() {
+    return [
+      { 'Pengaturan': 'Gaji Bulanan (Rp)', 'Nilai': targets.salary || '' },
+      { 'Pengaturan': 'Target Pengeluaran Bulanan (Rp)', 'Nilai': targets.monthlyBudget || '' },
+      { 'Pengaturan': 'Tanggal Mulai Bulan Finansial', 'Nilai': targets.monthCutoffDay || 1 },
+    ];
+  }
+
+  // Sheet 4: Target Kategori -- one row per category target, covering
+  // categoryTargets + categoryTargetMode + categoryTargetPercent together
+  // (conceptually one row of settings per category, even though they're 3
+  // separate objects internally).
+  function buildCategoryTargetSheetRows() {
+    const cats = new Set([
+      ...Object.keys(targets.categoryTargets || {}),
+      ...Object.keys(targets.categoryTargetMode || {}),
+    ]);
+    return [...cats].sort().map(cat => {
+      const mode = targets.categoryTargetMode[cat] === 'percent' ? 'Persen' : 'Rupiah';
+      return {
+        'Kategori': cat,
+        'Mode': mode,
+        'Target (Rp)': Number(targets.categoryTargets[cat]) || 0,
+        'Target (%)': Number.isFinite(targets.categoryTargetPercent[cat]) ? targets.categoryTargetPercent[cat] : '',
+      };
+    });
+  }
+
+  // Sheet 5: Target Nabung -- one row per month with a savings target set.
+  function buildSavingsTargetSheetRows() {
+    return Object.keys(targets.savings || {}).sort().map(mk => ({
+      'Bulan (YYYY-MM)': mk,
+      'Target Nominal (Rp)': targets.savings[mk].amount || '',
+      'Target Savings Rate (%)': targets.savings[mk].rate || '',
+    }));
+  }
+
+  // Sheet 6: Budget Planner -- flattens db.planner's {monthKey: [items]}
+  // shape into one row per item across every month, since a spreadsheet
+  // has no natural nested-object representation.
+  function buildPlannerSheetRows() {
+    const out = [];
+    Object.keys(db.planner || {}).sort().forEach(mk => {
+      (db.planner[mk] || []).forEach(item => {
+        out.push({
+          'ID': item.id,
+          'Bulan (YYYY-MM)': mk,
+          'Nama Item': item.name,
+          'Nominal (Rp)': Number(item.amount) || 0,
+          'Recurring': item.recurring ? 'Ya' : 'Tidak',
+          'Tanggal Jatuh Tempo': item.recurring ? (item.dueDay || '') : '',
+          'Lead Days (hari pengingat sebelum jatuh tempo)': item.recurring ? (item.leadDays != null ? item.leadDays : '') : '',
+        });
+      });
+    });
+    return out;
+  }
+
+  function exportUniversalExcel() {
+    if (typeof XLSX === 'undefined') { showToast('Gagal load library Excel, cek koneksi internet.', 'err'); return; }
+
+    const wb = XLSX.utils.book_new();
+
+    const riwayatRows = buildRiwayatSheetRows();
+    const wsRiwayat = XLSX.utils.json_to_sheet(riwayatRows.length ? riwayatRows : [{ 'ID': '', 'Tanggal Mulai': '', 'Jam Mulai': '', 'Tanggal Selesai': '', 'Jam Selesai': '', 'Aktivitas': '', 'Tipe': '', 'Kategori': '', 'Nominal': '', 'Durasi (detik)': '', 'Jumlah': '', 'Satuan': '', 'Dibuat Pada': '' }]);
+    wsRiwayat['!cols'] = [{ wch: 24 }, { wch: 13 }, { wch: 10 }, { wch: 13 }, { wch: 10 }, { wch: 28 }, { wch: 12 }, { wch: 16 }, { wch: 14 }, { wch: 13 }, { wch: 10 }, { wch: 10 }, { wch: 22 }];
+    XLSX.utils.book_append_sheet(wb, wsRiwayat, 'Riwayat');
+
+    const runningRows = buildRunningSheetRows();
+    const wsRunning = XLSX.utils.json_to_sheet(runningRows.length ? runningRows : [{ 'ID': '', 'Aktivitas': '', 'Tanggal Mulai': '', 'Jam Mulai': '' }]);
+    wsRunning['!cols'] = [{ wch: 24 }, { wch: 28 }, { wch: 13 }, { wch: 10 }];
+    XLSX.utils.book_append_sheet(wb, wsRunning, 'Aktivitas Berjalan');
+
+    const wsSettings = XLSX.utils.json_to_sheet(buildSettingsSheetRows());
+    wsSettings['!cols'] = [{ wch: 34 }, { wch: 16 }];
+    XLSX.utils.book_append_sheet(wb, wsSettings, 'Target & Pengaturan');
+
+    const catRows = buildCategoryTargetSheetRows();
+    const wsCat = XLSX.utils.json_to_sheet(catRows.length ? catRows : [{ 'Kategori': '', 'Mode': '', 'Target (Rp)': '', 'Target (%)': '' }]);
+    wsCat['!cols'] = [{ wch: 20 }, { wch: 10 }, { wch: 14 }, { wch: 12 }];
+    XLSX.utils.book_append_sheet(wb, wsCat, 'Target Kategori');
+
+    const savingsRows = buildSavingsTargetSheetRows();
+    const wsSavings = XLSX.utils.json_to_sheet(savingsRows.length ? savingsRows : [{ 'Bulan (YYYY-MM)': '', 'Target Nominal (Rp)': '', 'Target Savings Rate (%)': '' }]);
+    wsSavings['!cols'] = [{ wch: 16 }, { wch: 18 }, { wch: 20 }];
+    XLSX.utils.book_append_sheet(wb, wsSavings, 'Target Nabung');
+
+    const plannerRows = buildPlannerSheetRows();
+    const wsPlanner = XLSX.utils.json_to_sheet(plannerRows.length ? plannerRows : [{ 'ID': '', 'Bulan (YYYY-MM)': '', 'Nama Item': '', 'Nominal (Rp)': '', 'Recurring': '', 'Tanggal Jatuh Tempo': '', 'Lead Days (hari pengingat sebelum jatuh tempo)': '' }]);
+    wsPlanner['!cols'] = [{ wch: 24 }, { wch: 16 }, { wch: 26 }, { wch: 14 }, { wch: 10 }, { wch: 16 }, { wch: 24 }];
+    XLSX.utils.book_append_sheet(wb, wsPlanner, 'Budget Planner');
+
+    XLSX.writeFile(wb, `habbit-backup-lengkap-${toDateOnly(new Date())}.xlsx`);
+    showToast('Backup lengkap ke Excel berhasil diunduh.');
+  }
+
+  // Excel/SheetJS can hand back a date-shaped cell as either a plain string
+  // (if the human typed/left it as text) or a JS Date object (if Excel
+  // auto-detected and formatted the cell as a date) -- this normalizes
+  // both back to the app's "YYYY-MM-DD" convention so a human editing the
+  // file in Excel before re-importing can't accidentally corrupt the data
+  // just because Excel reformatted a cell.
+  function normalizeDateCell(v) {
+    if (v instanceof Date) return toDateOnly(v);
+    const s = String(v == null ? '' : v).trim();
+    const m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (m) return `${m[1]}-${String(m[2]).padStart(2, '0')}-${String(m[3]).padStart(2, '0')}`;
+    return s;
+  }
+  // Same idea for a "HH:MM" or "HH:MM:SS" time cell -- always normalize to
+  // HH:MM:SS since that's what startInstant()/every date-math function
+  // expects internally.
+  function normalizeTimeCell(v) {
+    if (v instanceof Date) return toTimeOfDay(v);
+    const s = String(v == null ? '' : v).trim();
+    const m = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (m) return `${String(m[1]).padStart(2, '0')}:${m[2]}:${m[3] || '00'}`;
+    return s || '00:00:00';
+  }
+  function normalizeMonthKeyCell(v) {
+    const s = String(v == null ? '' : v).trim();
+    const m = s.match(/^(\d{4})-(\d{1,2})/);
+    return m ? `${m[1]}-${String(m[2]).padStart(2, '0')}` : s;
+  }
+  // Strips "Rp" / stray whitespace and normalizes whichever thousands-
+  // separator convention a human left behind after editing a Rupiah cell
+  // by hand in Excel. The app's OWN exports always use plain numbers, but
+  // an accountant re-typing a value might use either the comma-thousands
+  // convention this app displays (per the user's explicit choice earlier
+  // in this project) OR the Indonesian dot-thousands convention -- both
+  // need to survive a re-import without silently zeroing out the value.
+  function normalizeNumberCell(v) {
+    if (typeof v === 'number') return v;
+    let s = String(v == null ? '' : v).trim();
+    if (!s) return 0;
+    s = s.replace(/[^\d.,-]/g, ''); // strip 'Rp', currency symbols, spaces -- keep digits/./,/-
+    if (!s) return 0;
+
+    const hasDot = s.includes('.');
+    const hasComma = s.includes(',');
+    if (hasDot && hasComma) {
+      // Whichever separator appears LAST is the real decimal point; the
+      // other is thousands-grouping. Handles both '1.500.000,50' (ID/EU
+      // style) and '1,500,000.50' (US style) correctly.
+      const lastDot = s.lastIndexOf('.');
+      const lastComma = s.lastIndexOf(',');
+      s = lastComma > lastDot
+        ? s.replace(/\./g, '').replace(',', '.')
+        : s.replace(/,/g, '');
+    } else if (hasDot) {
+      // Dot-only is ambiguous ('5.000.000' thousands vs '5.5' decimal).
+      // Multiple dots is unambiguous thousands-grouping. A single dot
+      // followed by exactly 3 digits ('5.000') is treated as thousands
+      // too, since every Rupiah figure this app stores is a whole number
+      // -- a genuine decimal value with exactly 3 fractional digits
+      // essentially never occurs here, while '<amount>.000' commonly does.
+      const parts = s.split('.');
+      if (parts.length > 2 || (parts.length === 2 && parts[1].length === 3)) {
+        s = s.replace(/\./g, '');
+      }
+    } else if (hasComma) {
+      // Comma-only always means thousands-grouping here -- this app's own
+      // live-formatting exclusively uses commas that way, never as a
+      // decimal point.
+      s = s.replace(/,/g, '');
+    }
+
+    const n = Number(s);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function parseUniversalExcelWorkbook(wb) {
+    const sheet = (name) => {
+      const ws = wb.Sheets[name];
+      return ws ? XLSX.utils.sheet_to_json(ws, { defval: '' }) : [];
+    };
+
+    // ---- Riwayat ----
+    const history = sheet('Riwayat')
+      .filter(row => String(row['Aktivitas'] || '').trim() !== '')
+      .map(row => {
+        const tipe = String(row['Tipe'] || '').trim();
+        const isFinance = tipe === 'Pemasukan' || tipe === 'Pengeluaran';
+        const startDate = normalizeDateCell(row['Tanggal Mulai']);
+        const startTime = normalizeTimeCell(row['Jam Mulai']);
+        const endDate = normalizeDateCell(row['Tanggal Selesai']) || startDate;
+        const endTime = normalizeTimeCell(row['Jam Selesai']) || startTime;
+        const createdAtRaw = row['Dibuat Pada'];
+        let createdAt;
+        if (createdAtRaw instanceof Date) createdAt = createdAtRaw.toISOString();
+        else if (String(createdAtRaw || '').trim()) createdAt = String(createdAtRaw).trim();
+        else createdAt = new Date(`${startDate}T${startTime}`).toISOString();
+
+        return {
+          id: String(row['ID'] || '').trim() || newId(),
+          activity: String(row['Aktivitas']).trim().slice(0, 200),
+          time_start: startTime, time_end: endTime,
+          total_second: isFinance ? 0 : Math.max(0, Math.round(normalizeNumberCell(row['Durasi (detik)']))),
+          qty: row['Jumlah'] !== '' && row['Jumlah'] != null ? normalizeNumberCell(row['Jumlah']) : null,
+          qty_unit: String(row['Satuan'] || '').trim() || null,
+          finance_flag: isFinance,
+          finance_tag: isFinance ? (String(row['Kategori'] || '').trim() || null) : null,
+          nominal: isFinance ? normalizeNumberCell(row['Nominal']) : null,
+          finance_type: isFinance ? (tipe === 'Pemasukan' ? 'income' : 'expense') : null,
+          start_date: startDate, end_date: endDate, created_at: createdAt,
+        };
+      });
+
+    // ---- Aktivitas Berjalan ----
+    const running = sheet('Aktivitas Berjalan')
+      .filter(row => String(row['Aktivitas'] || '').trim() !== '')
+      .map(row => {
+        const startDate = normalizeDateCell(row['Tanggal Mulai']);
+        const startTime = normalizeTimeCell(row['Jam Mulai']);
+        return {
+          id: String(row['ID'] || '').trim() || newId(),
+          activity: String(row['Aktivitas']).trim().slice(0, 200),
+          time_start: startTime, start_date: startDate,
+          created_at: new Date(`${startDate}T${startTime}`).toISOString(),
+        };
+      });
+
+    // ---- Target & Pengaturan ----
+    const settingsRows = sheet('Target & Pengaturan');
+    const findSetting = (label) => {
+      const row = settingsRows.find(r => String(r['Pengaturan'] || '').trim() === label);
+      return row ? row['Nilai'] : '';
+    };
+    const salaryVal = normalizeNumberCell(findSetting('Gaji Bulanan (Rp)'));
+    const monthlyBudgetVal = normalizeNumberCell(findSetting('Target Pengeluaran Bulanan (Rp)'));
+    const cutoffVal = normalizeNumberCell(findSetting('Tanggal Mulai Bulan Finansial'));
+
+    // ---- Target Kategori ----
+    const categoryTargets = {}, categoryTargetMode = {}, categoryTargetPercent = {};
+    sheet('Target Kategori').forEach(row => {
+      const cat = String(row['Kategori'] || '').trim();
+      if (!cat) return;
+      const mode = String(row['Mode'] || '').trim().toLowerCase() === 'persen' ? 'percent' : 'rupiah';
+      categoryTargetMode[cat] = mode;
+      const rpVal = normalizeNumberCell(row['Target (Rp)']);
+      if (rpVal > 0) categoryTargets[cat] = rpVal;
+      if (row['Target (%)'] !== '' && row['Target (%)'] != null) {
+        categoryTargetPercent[cat] = normalizeNumberCell(row['Target (%)']);
+      }
+    });
+
+    // ---- Target Nabung ----
+    const savings = {};
+    sheet('Target Nabung').forEach(row => {
+      const mk = normalizeMonthKeyCell(row['Bulan (YYYY-MM)']);
+      if (!mk) return;
+      const amount = row['Target Nominal (Rp)'] !== '' ? normalizeNumberCell(row['Target Nominal (Rp)']) : null;
+      const rate = row['Target Savings Rate (%)'] !== '' ? normalizeNumberCell(row['Target Savings Rate (%)']) : null;
+      if (amount || rate) savings[mk] = { amount: amount || null, rate: rate || null };
+    });
+
+    // ---- Budget Planner ----
+    const planner = {};
+    sheet('Budget Planner').forEach(row => {
+      const mk = normalizeMonthKeyCell(row['Bulan (YYYY-MM)']);
+      const name = String(row['Nama Item'] || '').trim();
+      if (!mk || !name) return;
+      if (!Array.isArray(planner[mk])) planner[mk] = [];
+      const isRecurring = String(row['Recurring'] || '').trim().toLowerCase() === 'ya';
+      const item = {
+        id: String(row['ID'] || '').trim() || newId(),
+        name, amount: normalizeNumberCell(row['Nominal (Rp)']),
+        recurring: isRecurring,
+      };
+      if (isRecurring) {
+        const dueDay = normalizeNumberCell(row['Tanggal Jatuh Tempo']);
+        const leadDaysRaw = row['Lead Days (hari pengingat sebelum jatuh tempo)'];
+        item.dueDay = dueDay > 0 ? Math.min(31, Math.round(dueDay)) : 1;
+        item.leadDays = leadDaysRaw !== '' && leadDaysRaw != null ? Math.max(0, Math.round(normalizeNumberCell(leadDaysRaw))) : 0;
+      }
+      planner[mk].push(item);
+    });
+
+    return {
+      db: { running, history, planner },
+      targets: {
+        salary: salaryVal > 0 ? salaryVal : null,
+        monthlyBudget: monthlyBudgetVal > 0 ? monthlyBudgetVal : null,
+        monthCutoffDay: cutoffVal >= 1 ? Math.min(31, Math.round(cutoffVal)) : 1,
+        categoryTargets, categoryTargetMode, categoryTargetPercent,
+        savings,
+      },
+    };
+  }
+
+  function importUniversalExcel(file) {
+    if (typeof XLSX === 'undefined') { showToast('Gagal load library Excel, cek koneksi internet.', 'err'); return; }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
+        if (!wb.SheetNames || wb.SheetNames.length === 0) throw new Error('empty workbook');
+
+        const parsed = parseUniversalExcelWorkbook(wb);
+
+        if (!confirm('Ini akan mengganti SEMUA data (riwayat, target, gaji, budget planner, target nabung) dengan isi file Excel ini. Lanjutkan?')) return;
+
+        db = parsed.db;
+        targets = parsed.targets;
+        saveDB();
+        saveTargets();
+        loadAll();
+        showToast('Backup lengkap berhasil dipulihkan dari Excel.');
+      } catch (err) {
+        console.error('Universal Excel import failed:', err);
+        showToast('File Excel tidak valid atau formatnya gak dikenali.', 'err');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  /* ============================================================
+     RENDERING — STATS PAGE
+     ============================================================ */
+  function progressClass(pct) {
+    if (pct >= 100) return 'over';
+    if (pct >= 80) return 'warn';
+    return 'ok';
+  }
+
+  function renderStatsPage() {
+    const monthKey = state.statsMonth;
+    const totals = computeMonthTotals(monthKey);
+
+    document.getElementById('stats-income').textContent = fmtRupiah(totals.income);
+    document.getElementById('stats-expense').textContent = fmtRupiah(totals.expense);
+    const netEl = document.getElementById('stats-net');
+    netEl.textContent = fmtRupiah(totals.net);
+    netEl.style.color = totals.net >= 0 ? 'var(--green)' : 'var(--red)';
+
+    // salary (gaji) -- feeds any category currently set to %-of-salary mode
+    const salaryInput = document.getElementById('input-salary');
+    if (document.activeElement !== salaryInput) {
+      salaryInput.value = targets.salary ? formatCommaAmount(targets.salary) : '';
+    }
+
+    // financial month cutoff day
+    const cutoffInput = document.getElementById('input-month-cutoff');
+    if (document.activeElement !== cutoffInput) {
+      cutoffInput.value = String(targets.monthCutoffDay || 1);
+    }
+    const [pStart, pEnd] = getPeriodBounds('month', monthKey);
+    const rangeFmt = { day: 'numeric', month: 'short', year: 'numeric' };
+    document.getElementById('month-cutoff-preview').textContent =
+      `Periode "${fmtMonthLabel(monthKey)}" saat ini: ${new Date(pStart).toLocaleDateString('id-ID', rangeFmt)} — ${new Date(pEnd).toLocaleDateString('id-ID', rangeFmt)}`;
+
+    // monthly budget target
+    const budgetInput = document.getElementById('input-monthly-target');
+    if (document.activeElement !== budgetInput) {
+      budgetInput.value = targets.monthlyBudget ? formatCommaAmount(targets.monthlyBudget) : '';
+    }
+    const progBox = document.getElementById('monthly-target-progress');
+    if (targets.monthlyBudget && targets.monthlyBudget > 0) {
+      const pct = Math.min(150, (totals.expense / targets.monthlyBudget) * 100);
+      const cls = progressClass((totals.expense / targets.monthlyBudget) * 100);
+      progBox.innerHTML = `
+        <div class="progress-bar-wrap"><div class="progress-bar ${cls}" style="width:${Math.min(100, pct)}%"></div></div>
+        <div class="progress-summary">
+          <span>${fmtRupiah(totals.expense)} terpakai</span>
+          <span>dari ${fmtRupiah(targets.monthlyBudget)}</span>
+        </div>`;
+    } else {
+      progBox.innerHTML = '<p class="category-target-note">Belum ada target dipasang.</p>';
+    }
+
+    // categories
+    const catBox = document.getElementById('category-list');
+    const cats = Object.entries(totals.byCategory).sort((a, b) => b[1] - a[1]);
+    if (cats.length === 0) {
+      catBox.innerHTML = '<div class="empty">Belum ada data pengeluaran di bulan ini.</div>';
+    } else {
+      catBox.innerHTML = cats.map(([tag, amt]) => {
+        const target = targets.categoryTargets[tag] || null;
+        let bar = '';
+        if (target) {
+          const pct = Math.min(150, (amt / target) * 100);
+          const cls = progressClass((amt / target) * 100);
+          bar = `<div class="progress-bar-wrap"><div class="progress-bar ${cls}" style="width:${Math.min(100, pct)}%"></div></div>`;
+        }
+        const safeTag = escapeHtml(tag);
+        // Rupiah mode is the default (matches every pre-existing save --
+        // no migration needed, categories with no mode entry just behave
+        // exactly like before this feature existed).
+        const mode = targets.categoryTargetMode[tag] === 'percent' ? 'percent' : 'rupiah';
+        const pctVal = Number.isFinite(targets.categoryTargetPercent[tag]) ? targets.categoryTargetPercent[tag] : 0;
+        const hasSalary = Number.isFinite(targets.salary) && targets.salary > 0;
+
+        const modeToggle = `
+          <div class="cat-mode-toggle" data-cat="${safeTag}">
+            <button type="button" class="cat-mode-btn ${mode === 'rupiah' ? 'active' : ''}" data-mode="rupiah" data-cat="${safeTag}">Rupiah</button>
+            <button type="button" class="cat-mode-btn ${mode === 'percent' ? 'active' : ''}" data-mode="percent" data-cat="${safeTag}">% Gaji</button>
+          </div>`;
+
+        let inputRow;
+        if (mode === 'percent') {
+          const derivedRp = hasSalary ? Math.round(targets.salary * pctVal / 100) : 0;
+          inputRow = `
+          <div class="category-target-row percent-mode">
+            <div class="cat-percent-row">
+              <input type="range" min="0" max="100" step="1" class="cat-percent-slider" data-cat="${safeTag}" value="${pctVal}" ${hasSalary ? '' : 'disabled'}>
+              <span class="cat-percent-val" id="cat-percent-val-${safeTag}">${pctVal}%</span>
+            </div>
+            ${hasSalary
+              ? `<span class="cat-percent-derived">= ${fmtRupiah(derivedRp)} dari gaji ${fmtRupiah(targets.salary)}</span>`
+              : `<span class="cat-percent-nosalary">Set gaji dulu di atas biar % ini kehitung ke Rupiah.</span>`}
+          </div>`;
+        } else {
+          inputRow = `
+          <div class="category-target-row">
+            <input type="text" inputmode="numeric" class="cat-target-input" data-cat="${safeTag}" placeholder="Set target kategori ini" value="${target ? formatCommaAmount(target) : ''}">
+            <button class="btn-save cat-target-save" data-cat="${safeTag}">Simpan</button>
+          </div>`;
+        }
+
+        return `
+        <div class="category-row">
+          <div class="category-row-top">
+            <span class="category-name">${safeTag}</span>
+            <span class="category-amt mono">${fmtRupiah(amt)}${target ? ` / ${fmtRupiah(target)}` : ''}</span>
+          </div>
+          ${bar}
+          ${modeToggle}
+          ${inputRow}
+        </div>`;
+      }).join('');
+    }
+  }
+
+  /* ============================================================
+     RENDERING — LONG TERM PAGE
+     ============================================================ */
+  function lastNMonthKeys(n) {
+    const out = [];
+    const d = new Date();
+    for (let i = n - 1; i >= 0; i--) {
+      out.push(toMonthOnly(new Date(d.getFullYear(), d.getMonth() - i, 1)));
+    }
+    return out;
+  }
+
+  // Fixed 6-month block for a given year + semester -- H1 = Jan..Jun,
+  // H2 = Jul..Des. Unlike lastNMonthKeys() this is NOT relative to today,
+  // so it can render any past (or future) half-year the dropdowns pick.
+  function semesterMonthKeys(year, semester) {
+    const startMonth0 = semester === 'H2' ? 6 : 0; // 0-indexed: Jan=0, Jul=6
+    const out = [];
+    for (let i = 0; i < 6; i++) {
+      out.push(toMonthOnly(new Date(year, startMonth0 + i, 1)));
+    }
+    return out;
+  }
+
+  // Single choke-point for "which 6 months does the longterm report show
+  // right now" -- both the default (rolling trailing-6-months) and the
+  // picked (fixed year+semester) cases resolve through here, so nothing
+  // downstream needs to know which mode is active.
+  function getLongtermMonthKeys() {
+    if (state.longtermYear && state.longtermSemester) {
+      return semesterMonthKeys(state.longtermYear, state.longtermSemester);
+    }
+    return lastNMonthKeys(6);
+  }
+
+  function renderLongtermPage() {
+    const isPicked = !!(state.longtermYear && state.longtermSemester);
+    const months = getLongtermMonthKeys();
+    const data = months.map(mk => ({ mk, ...computeSavingRate(mk) }));
+
+    // section title reflects which mode is active, so it's never ambiguous
+    // whether the list below is the rolling default or a picked half-year
+    document.getElementById('longterm-list-title').textContent = isPicked
+      ? `Tren ${state.longtermSemester === 'H2' ? 'H2 (Jul–Des)' : 'H1 (Jan–Jun)'} ${state.longtermYear}`
+      : 'Tren 6 Bulan Terakhir';
+    document.getElementById('longterm-reset-btn').style.display = isPicked ? '' : 'none';
+
+    // populate the year dropdown once with a sensible range (a handful of
+    // years back through a couple ahead), and keep both dropdowns synced to
+    // state -- but only touch a <select> the user isn't currently open on,
+    // same "don't clobber active input" pattern used everywhere else.
+    const yearSelect = document.getElementById('longterm-year-select');
+    if (yearSelect.options.length <= 1) {
+      const nowY = new Date().getFullYear();
+      const years = [];
+      for (let y = nowY + 1; y >= nowY - 6; y--) years.push(y);
+      years.forEach(y => {
+        const opt = document.createElement('option');
+        opt.value = String(y);
+        opt.textContent = String(y);
+        yearSelect.appendChild(opt);
+      });
+    }
+    if (document.activeElement !== yearSelect) {
+      yearSelect.value = state.longtermYear ? String(state.longtermYear) : '';
+    }
+    const semesterSelect = document.getElementById('longterm-semester-select');
+    if (document.activeElement !== semesterSelect) {
+      semesterSelect.value = state.longtermSemester || '';
+    }
+
+    const maxVal = Math.max(1, ...data.map(d => Math.max(d.income, d.expense)));
+    const box = document.getElementById('longterm-list');
+    const hasAny = data.some(d => d.income > 0 || d.expense > 0);
+    if (!hasAny) {
+      box.innerHTML = '<div class="empty">Belum ada data finance buat dianalisa.</div>';
+    } else {
+      box.innerHTML = data.map(d => {
+        const ratePos = d.rate >= 0;
+        return `
+        <div class="month-row">
+          <div class="month-row-top">
+            <span class="month-label">${fmtMonthLabel(d.mk)}</span>
+            <span class="rate-badge ${ratePos ? 'pos' : 'neg'}">${d.income > 0 ? (ratePos ? '+' : '') + d.rate.toFixed(1) + '% saved' : 'no income'}</span>
+          </div>
+          <div class="month-bars">
+            <div class="mbar-row">
+              <span class="mbar-lbl">Masuk</span>
+              <div class="mbar-track"><div class="mbar-fill in" style="width:${(d.income / maxVal) * 100}%"></div></div>
+              <span class="mbar-val mono">${fmtRupiah(d.income)}</span>
+            </div>
+            <div class="mbar-row">
+              <span class="mbar-lbl">Keluar</span>
+              <div class="mbar-track"><div class="mbar-fill out" style="width:${(d.expense / maxVal) * 100}%"></div></div>
+              <span class="mbar-val mono">${fmtRupiah(d.expense)}</span>
+            </div>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    // savings target form defaults
+    const monthInput = document.getElementById('savings-target-month');
+    if (document.activeElement !== monthInput) monthInput.value = state.savingsTargetMonth;
+    renderSavingsProgress();
+    showSavingRatePopup();
+  }
+
+  // Achievement-style popup: current month's saving rate, pops in bottom-right
+  // of the Laporan Jangka Panjang page, holds for a few seconds, fades on its
+  // own. Re-triggering (e.g. a fresh finance entry) restarts the same timer
+  // rather than stacking multiple popups.
+  let saveRatePopupTimer = null;
+  function showSavingRatePopup() {
+    const popup = document.getElementById('saverate-popup');
+    if (!popup) return;
+    const thisMonth = toMonthOnly(new Date());
+    const { rate, income } = computeSavingRate(thisMonth);
+    const pos = rate >= 0;
+    const valEl = document.getElementById('saverate-popup-val');
+    valEl.textContent = `${pos ? '+' : ''}${rate.toFixed(0)}%`;
+    valEl.classList.toggle('pos', pos);
+    valEl.classList.toggle('neg', !pos);
+    document.getElementById('saverate-popup-sub').textContent =
+      income > 0 ? `${fmtMonthLabel(thisMonth)}` : 'belum ada pemasukan bulan ini';
+
+    popup.classList.add('show');
+    clearTimeout(saveRatePopupTimer);
+    saveRatePopupTimer = setTimeout(() => popup.classList.remove('show'), 7000);
+  }
+
+  function renderSavingsProgress() {
+    const mk = document.getElementById('savings-target-month').value || state.savingsTargetMonth;
+    const t = targets.savings[mk];
+    const card = document.getElementById('savings-progress-card');
+    const amountInput = document.getElementById('savings-target-amount');
+    const rateInput = document.getElementById('savings-target-rate');
+    if (document.activeElement !== amountInput) amountInput.value = t ? (t.amount || '') : '';
+    if (document.activeElement !== rateInput) rateInput.value = t ? (t.rate || '') : '';
+
+    if (!t) { card.style.display = 'none'; return; }
+    card.style.display = '';
+    const totals = computeMonthTotals(mk);
+    document.getElementById('savings-progress-title').textContent = `Progress Nabung — ${fmtMonthLabel(mk)}`;
+    const targetAmt = t.amount || 0;
+    const pct = targetAmt > 0 ? Math.min(150, (totals.net / targetAmt) * 100) : 0;
+    const cls = totals.net < 0 ? 'over' : progressClass(pct);
+    document.getElementById('savings-progress-bar').className = `progress-bar ${cls}`;
+    document.getElementById('savings-progress-bar').style.width = `${Math.max(0, Math.min(100, pct))}%`;
+    document.getElementById('savings-progress-current').textContent = `${fmtRupiah(totals.net)} terkumpul`;
+    document.getElementById('savings-progress-target').textContent = `dari target ${fmtRupiah(targetAmt)}${t.rate ? ` (${t.rate}% dari pemasukan)` : ''}`;
+  }
+
+  /* ============================================================
+     BUDGET PLANNER
+     A planning list, separate from db.history (actual recorded
+     transactions) and separate from targets.categoryTargets (spending
+     caps) -- this is "things I intend to spend," not "things I already
+     spent" or "how much I'm allowed to spend per category." Lives in
+     db.planner[monthKey] = [{id,name,amount,recurring,dueDay,leadDays}, ...].
+     Recurring items don't auto-record anything; they surface a dismissible
+     reminder that, when clicked, prefills the entry form -- same
+     non-auto-submit philosophy as the recent-activity bubbles and the
+     expense consent gate (money never moves without you actually hitting
+     submit yourself).
+     ============================================================ */
+  const PLANNER_MONTHS_AHEAD = 11; // current + 11 more = 12 months of runway, matching the source app
+
+  function nextNMonthKeys(n) {
+    const out = [];
+    const d = new Date();
+    for (let i = 0; i <= n; i++) {
+      out.push(toMonthOnly(new Date(d.getFullYear(), d.getMonth() + i, 1)));
+    }
+    return out;
+  }
+
+  function ensurePlannerMonth(mk) {
+    if (!Array.isArray(db.planner[mk])) db.planner[mk] = [];
+    return db.planner[mk];
+  }
+
+  let plannerPeriodOpen = false;
+  let plannerCloseTimer = null;
+  function setPlannerPeriodOpen(v) {
+    plannerPeriodOpen = v;
+    document.getElementById('planner-period-selector').classList.toggle('open', v);
+  }
+
+  function renderPlannerPeriodTitle() {
+    const items = ensurePlannerMonth(state.plannerMonth);
+    document.getElementById('planner-period-title').textContent = fmtMonthLabel(state.plannerMonth);
+    const thisMonth = toMonthOnly(new Date());
+    document.getElementById('planner-period-meta').textContent =
+      `${items.length} item${state.plannerMonth === thisMonth ? ' · Bulan ini' : ''}`;
+  }
+
+  function renderPlannerPeriodFlyout() {
+    const flyout = document.getElementById('planner-period-flyout');
+    const thisMonth = toMonthOnly(new Date());
+    flyout.innerHTML = nextNMonthKeys(PLANNER_MONTHS_AHEAD).map(mk => {
+      const hasItems = (db.planner[mk] || []).length > 0;
+      return `<button type="button" class="planner-flyout-row${mk === state.plannerMonth ? ' active' : ''}" data-month="${mk}">
+        ${hasItems ? '●' : '○'} <span>${fmtMonthLabel(mk)}</span>${mk === thisMonth ? '<span class="now-tag">Sekarang</span>' : ''}
+      </button>`;
+    }).join('');
+    flyout.querySelectorAll('.planner-flyout-row').forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.plannerMonth = btn.dataset.month;
+        setPlannerPeriodOpen(false);
+        renderPlannerPage();
+      });
+    });
+  }
+
+  function closeAllPlannerMoveMenus(except) {
+    document.querySelectorAll('.planner-move-wrap.open').forEach(w => { if (w !== except) w.classList.remove('open'); });
+  }
+
+  function renderPlannerItemList() {
+    const items = ensurePlannerMonth(state.plannerMonth);
+    const listEl = document.getElementById('planner-item-list');
+
+    if (items.length === 0) {
+      listEl.innerHTML = '<li class="empty">Belum ada item bulan ini. Tambahin lewat form di samping.</li>';
+    } else {
+      const otherMonths = nextNMonthKeys(PLANNER_MONTHS_AHEAD).filter(mk => mk !== state.plannerMonth);
+      listEl.innerHTML = items.map(item => {
+        const moveOptionsHtml = otherMonths.map(mk =>
+          `<button type="button" class="planner-move-menu-item" data-target="${mk}">${fmtMonthLabel(mk)}</button>`
+        ).join('');
+        return `
+        <li class="planner-item-card" data-id="${escapeHtml(item.id)}">
+          <div class="planner-item-info">
+            <span class="planner-item-name">${escapeHtml(item.name)}</span>
+            <span class="planner-item-amt">${fmtRupiah(item.amount)}</span>
+          </div>
+          ${item.recurring ? `<span class="planner-item-badge">🔁 tgl ${item.dueDay}</span>` : ''}
+          <div class="planner-item-actions">
+            <div class="planner-move-wrap">
+              <button type="button" class="planner-btn-move" title="Pindah ke bulan lain" data-move-btn>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+              </button>
+              <div class="planner-move-menu">${moveOptionsHtml}</div>
+            </div>
+            <button type="button" class="planner-btn-delete" title="Hapus" data-delete-btn>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+            </button>
+          </div>
+        </li>`;
+      }).join('');
+
+      listEl.querySelectorAll('.planner-item-card').forEach(li => {
+        const id = li.dataset.id;
+        const moveWrap = li.querySelector('.planner-move-wrap');
+        li.querySelector('[data-move-btn]').addEventListener('click', (e) => {
+          e.stopPropagation();
+          const willOpen = !moveWrap.classList.contains('open');
+          closeAllPlannerMoveMenus(moveWrap);
+          moveWrap.classList.toggle('open', willOpen);
+        });
+        li.querySelectorAll('.planner-move-menu-item').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            movePlannerItem(id, btn.dataset.target);
+          });
+        });
+        li.querySelector('[data-delete-btn]').addEventListener('click', () => deletePlannerItem(id));
+      });
+    }
+
+    const total = items.reduce((sum, it) => sum + (Number(it.amount) || 0), 0);
+    document.getElementById('planner-total-amount').textContent = fmtRupiah(total);
+  }
+
+  function renderPlannerPage() {
+    renderPlannerPeriodTitle();
+    renderPlannerPeriodFlyout();
+    renderPlannerItemList();
+  }
+
+  function deletePlannerItem(id) {
+    db.planner[state.plannerMonth] = ensurePlannerMonth(state.plannerMonth).filter(it => it.id !== id);
+    saveDB();
+    renderPlannerPage();
+  }
+
+  function movePlannerItem(id, targetMk) {
+    const arr = ensurePlannerMonth(state.plannerMonth);
+    const idx = arr.findIndex(it => it.id === id);
+    if (idx === -1) return;
+    const [item] = arr.splice(idx, 1);
+    ensurePlannerMonth(targetMk).push(item);
+    closeAllPlannerMoveMenus(null);
+    saveDB();
+    renderPlannerPage();
+    showToast(`Item dipindah ke ${fmtMonthLabel(targetMk)}.`);
+  }
+
+  /* ---------- Recurring reminders (self-dismissing "cloud" notifications) ----------
+     A recurring item is "due" this month if today's day-of-month is within
+     [dueDay - leadDays, dueDay] AND there's no matching expense already
+     recorded this month for that item (matched by name, case-insensitive --
+     good enough to stop re-nagging once you've actually paid it, without
+     needing a hard link between the planner item and a specific history
+     row). Each due item gets its own cloud; clicking one prefills the entry
+     form (mirrors applyBubbleToForm's bubble-prefill pattern) and dismisses
+     just that cloud -- it does NOT record anything by itself. */
+  function isPlannerItemAlreadyPaidThisMonth(item) {
+    const mk = toMonthOnly(new Date());
+    const totals = computeMonthTotals(mk);
+    const rows = getHistoryForMonth(mk);
+    const wantName = String(item.name).trim().toLowerCase();
+    return rows.some(r => financeTypeOf(r) === 'expense' && String(r.activity).trim().toLowerCase() === wantName);
+  }
+
+  function getDuePlannerReminders() {
+    const thisMonth = toMonthOnly(new Date());
+    const items = db.planner[thisMonth] || [];
+    const todayDate = new Date().getDate();
+    return items.filter(item => {
+      if (!item.recurring) return false;
+      const due = Number(item.dueDay) || 1;
+      const lead = Number(item.leadDays) || 0;
+      const windowStart = due - lead;
+      // Window can start before day 1 (e.g. due=2,lead=5 -> windowStart=-3) --
+      // clamp to 1 so it just means "the reminder window opens on the 1st."
+      const effectiveStart = Math.max(1, windowStart);
+      if (todayDate < effectiveStart || todayDate > due) return false;
+      return !isPlannerItemAlreadyPaidThisMonth(item);
+    });
+  }
+
+  const dismissedReminderIds = new Set(); // session-only -- reappears next reload, which is fine since it's cheap to re-dismiss and guarantees a paid item's cloud can't get stuck showing from a stale dismiss
+
+  function renderPlannerReminders() {
+    const stack = document.getElementById('planner-reminder-stack');
+    if (!stack) return;
+    const due = getDuePlannerReminders().filter(item => !dismissedReminderIds.has(item.id));
+    stack.innerHTML = due.map(item => `
+      <div class="planner-reminder-cloud" data-id="${escapeHtml(item.id)}">
+        <span class="planner-reminder-icon">🔔</span>
+        <div class="planner-reminder-body">
+          <div class="planner-reminder-title">${escapeHtml(item.name)}</div>
+          <div class="planner-reminder-sub">${fmtRupiah(item.amount)} · jatuh tempo tgl ${item.dueDay}</div>
+        </div>
+        <button type="button" class="planner-reminder-dismiss" data-dismiss>✕</button>
+      </div>`).join('');
+
+    stack.querySelectorAll('.planner-reminder-cloud').forEach(cloud => {
+      const id = cloud.dataset.id;
+      const item = due.find(it => it.id === id);
+      cloud.querySelector('[data-dismiss]').addEventListener('click', (e) => {
+        e.stopPropagation();
+        dismissedReminderIds.add(id);
+        renderPlannerReminders();
+      });
+      cloud.addEventListener('click', () => {
+        applyPlannerReminderToForm(item);
+        dismissedReminderIds.add(id);
+        renderPlannerReminders();
+      });
+      requestAnimationFrame(() => cloud.classList.add('show'));
+    });
+  }
+
+  // Prefills the entry form from a due planner item -- same non-auto-submit
+  // pattern as applyBubbleToForm(). Recurring/planned expenses skip the
+  // expense consent gate once actually submitted (per explicit product
+  // decision: retyping a commitment statement is for catching impulsive
+  // spending, and a bill you scheduled a month in advance isn't that).
+  function applyPlannerReminderToForm(item) {
+    switchToPage('home');
+
+    document.getElementById('in-activity').value = item.name;
+    setFieldInvalid('f-activity', false);
+
+    financeState.checked = true;
+    financeState.type = 'expense';
+    renderFinanceToggleBox();
+    toggleFinanceFields(true);
+
+    document.getElementById('in-amount').value = formatCommaAmount(item.amount);
+    document.getElementById('in-tag').value = '';
+    setFieldInvalid('f-amount', false);
+    skipConsentForNextSubmit = true;
+    updateBudgetLive();
+
+    const amtField = document.getElementById('in-amount');
+    amtField.focus();
+    if (typeof amtField.select === 'function') amtField.select();
+    showToast(`"${item.name}" diisi ke form -- cek dulu, terus Gas, Catat!`);
+  }
+
+  /* ============================================================
+     FORM HANDLERS
+     ============================================================ */
+  async function handleSubmit() {
+    const activity = document.getElementById('in-activity').value.trim();
+    const isFinance = financeState.checked;
+    const amountRaw = document.getElementById('in-amount').value.trim();
+    const tagRaw = document.getElementById('in-tag').value.trim();
+    const financeType = financeState.type;
+
+    let ok = true;
+    if (activity.length < 3) { setFieldInvalid('f-activity', true); ok = false; }
+    let amount = null;
+    if (isFinance) {
+      amount = parseCommaAmount(amountRaw);
+      if (!amountRaw || !Number.isFinite(amount) || amount <= 0) { setFieldInvalid('f-amount', true); ok = false; }
+    }
+    if (!ok) { showToast('Lengkapi dulu isian yang merah ya.', 'err'); return; }
+
+    const payload = { activity, isFinance, financeTag: tagRaw || null, amount, financeType };
+
+    // A recurring/planned item (from a Budget Planner reminder click) gets
+    // exactly one free pass through the consent gate -- it was scheduled a
+    // month in advance, not an impulsive decision made in this moment.
+    // Consumed here regardless of which branch runs, so it can never leak
+    // into a later, unrelated submit.
+    const skipConsent = skipConsentForNextSubmit;
+    skipConsentForNextSubmit = false;
+
+    // Expense-only speed bump: force a re-typed consent keyword before an
+    // outgoing transaction actually saves, so it can't be clicked through on
+    // autopilot. Income and pure activities skip straight to committing —
+    // this is specifically about catching impulsive spending, not gating
+    // every action in the app.
+    if (isFinance && financeType === 'expense' && !skipConsent) {
+      openExpenseConsentModal(payload, () => commitActivitySubmit(payload));
+    } else {
+      await commitActivitySubmit(payload);
+    }
+  }
+
+  async function commitActivitySubmit({ activity, isFinance, financeTag, amount, financeType }) {
+    const btn = document.getElementById('submit-btn');
+    await withBusy(btn, 'Menyimpan…', async () => {
+      try {
+        if (isFinance) recordExpense({ activity, financeTag, nominal: amount, financeType });
+        else startActivity(activity);
+        resetActivityForm();
+        showToast(isFinance ? (financeType === 'income' ? 'Pemasukan tercatat.' : 'Pengeluaran tercatat.') : 'Gas, semangat aktivitasnya!');
+        loadAll();
+      } catch (e) {
+        showToast('Gagal simpan: ' + (e.message || 'coba lagi.'), 'err');
+      }
+    });
+  }
+
+  /* ============================================================
+     EXPENSE CONSENT GATE
+     A speed bump before an outgoing transaction actually saves: re-type the
+     WHOLE commitment statement, not just a single memorizable keyword --
+     typing one word over and over turns into a reflex within days and stops
+     meaning anything. Checked as fuzzy word-coverage (~80%+ of the
+     statement's words present, small typos and casing/punctuation forgiven)
+     rather than an exact string match, since the goal is "did you actually
+     re-engage with the words," not spelling precision.
+     ============================================================ */
+  const CONSENT_MATCH_THRESHOLD = 0.8;
+
+  // Levenshtein edit distance -- used to forgive small typos ("bbudget" ->
+  // "budget", "gk" -> "gak") without accepting genuinely different words.
+  function levenshteinDistance(a, b) {
+    if (a === b) return 0;
+    const m = a.length, n = b.length;
+    if (m === 0) return n;
+    if (n === 0) return m;
+    let prev = Array.from({ length: n + 1 }, (_, j) => j);
+    for (let i = 1; i <= m; i++) {
+      const curr = [i];
+      for (let j = 1; j <= n; j++) {
+        const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+        curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+      }
+      prev = curr;
+    }
+    return prev[n];
+  }
+
+  // Lowercase, strip punctuation, split hyphenated compounds into their
+  // parts ("ugal-ugalan" -> "ugal","ugalan") so "ugal ugalan" typed without
+  // a hyphen still lines up -- that's how people naturally type it.
+  function consentNormalizeWords(text) {
+    return String(text || '')
+      .toLowerCase()
+      .replace(/[.,:;!?&]/g, ' ')
+      .replace(/-/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .split(' ')
+      .filter(Boolean);
+  }
+
+  function consentWordMatches(canonWord, typedWordSet) {
+    if (typedWordSet.has(canonWord)) return true;
+    const maxDist = canonWord.length <= 5 ? 1 : 2; // short words get less typo slack, or "ini"/"gak" could match almost anything
+    for (const tw of typedWordSet) {
+      if (Math.abs(tw.length - canonWord.length) > maxDist) continue; // cheap skip before the real distance calc
+      if (levenshteinDistance(canonWord, tw) <= maxDist) return true;
+    }
+    return false;
+  }
+
+  // Coverage, not equality: what fraction of the canonical statement's words
+  // (by position, so repeats like "gw"/"gak" each need their own match) show
+  // up somewhere in what was typed. A `set()` on the typed side means
+  // spamming one cheap word many times can't inflate the score.
+  //
+  // `canonicalText` defaults to the expense-consent statement (the original,
+  // single-purpose behavior) but can be passed explicitly so the same fuzzy
+  // engine also drives the overbudget-consent statement, which has entirely
+  // different wording -- one matching implementation, multiple statements.
+  function consentCoverage(typedText, canonicalText) {
+    const source = canonicalText != null ? canonicalText : document.getElementById('consent-statement').textContent;
+    const canonWords = consentNormalizeWords(source);
+    if (canonWords.length === 0) return 1;
+    const typedWordSet = new Set(consentNormalizeWords(typedText));
+    const matchedCount = canonWords.filter(w => consentWordMatches(w, typedWordSet)).length;
+    return matchedCount / canonWords.length;
+  }
+
+  let pendingConsentConfirm = null;
+
+  function openExpenseConsentModal(payload, onConfirm) {
+    pendingConsentConfirm = onConfirm;
+    document.getElementById('consent-summary').innerHTML =
+      `<span class="cs-amt">${fmtRupiah(payload.amount)}</span> — ${escapeHtml(payload.activity)}`;
+    const input = document.getElementById('in-consent-word');
+    input.value = '';
+    setFieldInvalid('f-consent-word', false);
+    document.getElementById('consent-overlay').classList.add('show');
+    setTimeout(() => input.focus(), 30);
+  }
+
+  function closeExpenseConsentModal() {
+    document.getElementById('consent-overlay').classList.remove('show');
+    pendingConsentConfirm = null;
+  }
+
+  async function attemptConsentConfirm() {
+    const input = document.getElementById('in-consent-word');
+    if (consentCoverage(input.value) < CONSENT_MATCH_THRESHOLD) {
+      setFieldInvalid('f-consent-word', true);
+      input.focus();
+      return;
+    }
+    const confirmFn = pendingConsentConfirm;
+    closeExpenseConsentModal();
+    if (confirmFn) await confirmFn();
+  }
+
+  /* ============================================================
+     OVERBUDGET CONSENT GATE
+     Fires when SAVING a category target that would push the sum of all
+     category targets over the monthly budget cap -- e.g. monthly budget is
+     Rp1.000.000 but "Makan" alone is being set to Rp1.200.000, or the sum
+     across all categories tips over once this one is added. Same fuzzy
+     word-coverage engine as the expense consent gate, separate statement
+     and separate modal (canceling here must REVERT the target save, not
+     resume some pending expense -- different semantics from that gate).
+     ============================================================ */
+  let pendingOverbudgetConfirm = null;
+
+  function openOverbudgetConsentModal({ cat, catAmount, sumAmount, cap }, onConfirm) {
+    pendingOverbudgetConfirm = onConfirm;
+    document.getElementById('overbudget-summary').innerHTML =
+      `<span class="cs-amt">${fmtRupiah(sumAmount)}</span> total target — cap bulanan ${fmtRupiah(cap)}<br>` +
+      `(${escapeHtml(cat)}: ${fmtRupiah(catAmount)})`;
+    const input = document.getElementById('in-overbudget-word');
+    input.value = '';
+    setFieldInvalid('f-overbudget-word', false);
+    document.getElementById('overbudget-overlay').classList.add('show');
+    setTimeout(() => input.focus(), 30);
+  }
+
+  function closeOverbudgetConsentModal() {
+    document.getElementById('overbudget-overlay').classList.remove('show');
+    pendingOverbudgetConfirm = null;
+  }
+
+  async function attemptOverbudgetConfirm() {
+    const input = document.getElementById('in-overbudget-word');
+    const canonicalText = document.getElementById('overbudget-statement').textContent;
+    if (consentCoverage(input.value, canonicalText) < CONSENT_MATCH_THRESHOLD) {
+      setFieldInvalid('f-overbudget-word', true);
+      input.focus();
+      return;
+    }
+    const confirmFn = pendingOverbudgetConfirm;
+    closeOverbudgetConsentModal();
+    if (confirmFn) await confirmFn();
+  }
+
+  async function handleConfirmStop(id, qty, unit, btn) {
+    await withBusy(btn, 'Menghentikan…', async () => {
+      try {
+        stopActivity({ id, qty, unit });
+        showToast('Aktivitas dihentikan.');
+        loadAll();
+      } catch (e) {
+        showToast('Gagal menghentikan: ' + (e.message || ''), 'err');
+      }
+    });
+  }
+
+  // Shared page-switch logic -- used by nav tab clicks AND by
+  // applyPlannerReminderToForm() (clicking a reminder cloud needs to jump to
+  // the home page first if you're viewing a different page, since that's
+  // where the entry form actually lives).
+  function switchToPage(page) {
+    document.querySelectorAll('.nav-tab').forEach(b => b.classList.toggle('active', b.dataset.page === page));
+    document.querySelectorAll('.page-view').forEach(p => p.classList.toggle('active', p.id === 'page-' + page));
+    if (page === 'stats') renderStatsPage();
+    if (page === 'longterm') renderLongtermPage();
+    if (page === 'planner') renderPlannerPage();
+  }
+
+  function wireEvents() {
+    document.getElementById('submit-btn').addEventListener('click', handleSubmit);
+    document.getElementById('in-activity').addEventListener('input', () => setFieldInvalid('f-activity', false));
+    document.getElementById('in-amount').addEventListener('input', function () {
+      formatLiveCommaAmount(this);
+      setFieldInvalid('f-amount', false);
+      updateBudgetLive();
+    });
+    document.getElementById('in-tag').addEventListener('input', updateBudgetLive);
+
+    document.getElementById('consent-confirm-btn').addEventListener('click', attemptConsentConfirm);
+    document.getElementById('consent-cancel-btn').addEventListener('click', closeExpenseConsentModal);
+    document.getElementById('in-consent-word').addEventListener('input', () => setFieldInvalid('f-consent-word', false));
+    document.getElementById('in-consent-word').addEventListener('keydown', (e) => {
+      // plain Enter inserts a newline (natural for retyping a 2-line
+      // statement) -- Ctrl/Cmd+Enter is the submit shortcut instead.
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        attemptConsentConfirm();
+      }
+    });
+    document.getElementById('consent-overlay').addEventListener('click', (e) => {
+      if (e.target.id === 'consent-overlay') closeExpenseConsentModal();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && document.getElementById('consent-overlay').classList.contains('show')) {
+        closeExpenseConsentModal();
+      }
+    });
+
+    document.getElementById('overbudget-confirm-btn').addEventListener('click', attemptOverbudgetConfirm);
+    document.getElementById('overbudget-cancel-btn').addEventListener('click', closeOverbudgetConsentModal);
+    document.getElementById('in-overbudget-word').addEventListener('input', () => setFieldInvalid('f-overbudget-word', false));
+    document.getElementById('in-overbudget-word').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        attemptOverbudgetConfirm();
+      }
+    });
+    document.getElementById('overbudget-overlay').addEventListener('click', (e) => {
+      if (e.target.id === 'overbudget-overlay') closeOverbudgetConsentModal();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && document.getElementById('overbudget-overlay').classList.contains('show')) {
+        closeOverbudgetConsentModal();
+      }
+    });
+    // "Ini urusan duit?" box: single click toggles checked on/off, double-click (only while
+    // checked) flips Pemasukan(green)/Pengeluaran(red). We delay the single-click action briefly
+    // so we can cancel it if a second click arrives in time.
+    let ftbClickTimer = null;
+    document.getElementById('finance-toggle-box').addEventListener('click', () => {
+      if (ftbClickTimer) {
+        clearTimeout(ftbClickTimer);
+        ftbClickTimer = null;
+        if (financeState.checked) {
+          financeState.type = financeState.type === 'income' ? 'expense' : 'income';
+          renderFinanceToggleBox();
+          toggleFinanceFields(true);
+          // Switching type invalidates a pending "skip consent" pre-approval
+          // from a planner reminder click -- that pre-approval was for the
+          // SPECIFIC planned expense prefilled, not for whatever this form
+          // now represents after being edited.
+          skipConsentForNextSubmit = false;
+        }
+      } else {
+        ftbClickTimer = setTimeout(() => {
+          ftbClickTimer = null;
+          financeState.checked = !financeState.checked;
+          if (financeState.checked) financeState.type = 'income';
+          renderFinanceToggleBox();
+          toggleFinanceFields(financeState.checked);
+          skipConsentForNextSubmit = false; // same reasoning -- toggling finance on/off invalidates it
+        }, 280);
+      }
+    });
+    document.getElementById('finance-toggle-box').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); document.getElementById('finance-toggle-box').click(); }
+    });
+
+    document.getElementById('theme-toggle').addEventListener('click', () => {
+      applyTheme(document.body.classList.contains('theme-light') ? 'dark' : 'light');
+    });
+    document.getElementById('nav-hint').addEventListener('click', () => {
+      document.getElementById('nav-hover-zone').classList.toggle('nav-open');
+    });
+    document.addEventListener('click', (e) => {
+      const zone = document.getElementById('nav-hover-zone');
+      if (zone.classList.contains('nav-open') && !zone.contains(e.target)) zone.classList.remove('nav-open');
+    });
+
+    document.getElementById('running-list').addEventListener('input', (e) => {
+      if (e.target.matches('.stop-qty')) e.target.value = e.target.value.replace(/[^\d]/g, '');
+    });
+
+    document.getElementById('hist-filter').addEventListener('click', (e) => {
+      const chip = e.target.closest('.chip-filter');
+      if (!chip) return;
+      const periodType = chip.dataset.range;
+      const now = new Date();
+      let periodValue;
+      if (periodType === 'day') {
+        periodValue = document.getElementById('period-day').value || now.toISOString().slice(0, 10);
+        document.getElementById('period-day').value = periodValue;
+      } else if (periodType === 'month') {
+        periodValue = document.getElementById('period-month').value || now.toISOString().slice(0, 7);
+        document.getElementById('period-month').value = periodValue;
+      } else {
+        periodValue = document.getElementById('period-year').value || String(now.getFullYear());
+        document.getElementById('period-year').value = periodValue;
+      }
+      state.histPeriodType = periodType;
+      state.histPeriodValue = periodValue;
+      setHistRangeChips(periodType);
+      setPeriodPickerVisibility(periodType);
+      renderHistory();
+    });
+
+    ['period-day', 'period-month', 'period-year'].forEach(id => {
+      document.getElementById(id).addEventListener('change', (e) => {
+        state.histPeriodValue = e.target.value;
+        renderHistory();
+      });
+    });
+
+    document.getElementById('hist-type-switch').addEventListener('click', (e) => {
+      const btn = e.target.closest('.type-btn');
+      if (!btn) return;
+      state.histType = btn.dataset.type;
+      setHistTypeButtons(btn.dataset.type);
+      renderHistory();
+    });
+
+    document.getElementById('running-list').addEventListener('click', (e) => {
+      const stopBtn = e.target.closest('[data-stop-id]');
+      if (stopBtn) { showStopForm(stopBtn.dataset.stopId); return; }
+      const cancelBtn = e.target.closest('[data-cancel-stop-id]');
+      if (cancelBtn) { hideStopForm(cancelBtn.dataset.cancelStopId); return; }
+      const confirmBtn = e.target.closest('[data-confirm-stop-id]');
+      if (confirmBtn) {
+        const id = confirmBtn.dataset.confirmStopId;
+        const { qty, unit } = readStopForm(id);
+        handleConfirmStop(id, qty, unit, confirmBtn);
+      }
+    });
+
+    // double-tap toggle on history finance tag pills
+    document.getElementById('history-list').addEventListener('click', (e) => {
+      const pill = e.target.closest('[data-finance-id]');
+      if (!pill) return;
+      const id = pill.dataset.financeId;
+      if (isDoubleTap('hist-' + id)) {
+        toggleEntryFinanceType(id);
+        renderHistory();
+        showToast('Tipe transaksi diganti.');
+      }
+    });
+
+    document.getElementById('export-btn').addEventListener('click', exportBackup);
+    document.getElementById('export-excel-btn').addEventListener('click', exportExcel);
+    document.getElementById('export-universal-excel-btn').addEventListener('click', exportUniversalExcel);
+    document.getElementById('import-universal-excel-input').addEventListener('change', (e) => {
+      if (e.target.files[0]) importUniversalExcel(e.target.files[0]);
+      e.target.value = '';
+    });
+    document.getElementById('import-input').addEventListener('change', (e) => {
+      if (e.target.files[0]) importBackup(e.target.files[0]);
+      e.target.value = '';
+    });
+    document.getElementById('reset-btn').addEventListener('click', resetAllData);
+
+    // nav tabs
+    document.querySelectorAll('.nav-tab').forEach(btn => {
+      btn.addEventListener('click', () => switchToPage(btn.dataset.page));
+    });
+
+    // stats page
+    document.getElementById('stats-month').addEventListener('change', (e) => {
+      state.statsMonth = e.target.value || state.statsMonth;
+      renderStatsPage();
+    });
+    document.getElementById('input-monthly-target').addEventListener('input', function () {
+      formatLiveCommaAmount(this);
+    });
+    document.getElementById('save-monthly-target').addEventListener('click', () => {
+      const val = parseCommaAmount(document.getElementById('input-monthly-target').value);
+      targets.monthlyBudget = (Number.isFinite(val) && val > 0) ? val : null;
+      saveTargets();
+      renderStatsPage();
+      showToast('Target bulanan disimpan.');
+    });
+    document.getElementById('input-salary').addEventListener('input', function () {
+      formatLiveCommaAmount(this);
+    });
+    document.getElementById('save-salary').addEventListener('click', () => {
+      const val = parseCommaAmount(document.getElementById('input-salary').value);
+      const newSalary = (Number.isFinite(val) && val > 0) ? val : null;
+
+      // Re-derive every category currently in %-mode against the CANDIDATE
+      // new salary, but into a draft copy first -- a salary change can
+      // shift several % categories' Rupiah caps at once, so this needs one
+      // sum-vs-monthly-cap check across all of them before committing
+      // anything, same guarantee the per-category Simpan flow gives for a
+      // single category.
+      const draftTargets = Object.assign({}, targets.categoryTargets);
+      Object.keys(targets.categoryTargetMode).forEach((cat) => {
+        if (targets.categoryTargetMode[cat] !== 'percent') return;
+        const pct = Number.isFinite(targets.categoryTargetPercent[cat]) ? targets.categoryTargetPercent[cat] : 0;
+        if (newSalary) {
+          draftTargets[cat] = Math.round(newSalary * pct / 100);
+        } else {
+          delete draftTargets[cat];
+        }
+      });
+
+      const commitSalary = () => {
+        targets.salary = newSalary;
+        targets.categoryTargets = draftTargets;
+        saveTargets();
+        renderStatsPage();
+        showToast('Gaji disimpan.');
+      };
+
+      const cap = targets.monthlyBudget;
+      const sum = Object.values(draftTargets).reduce((s, v) => s + (Number(v) || 0), 0);
+      if (cap && cap > 0 && sum > cap) {
+        // Pick the largest %-mode category as the representative line item
+        // shown in the modal (the gate's summary UI is single-category
+        // shaped); the sum/cap shown is still the true total across ALL
+        // categories, so the consequence being consented to is accurate.
+        const percentCats = Object.keys(targets.categoryTargetMode).filter(c => targets.categoryTargetMode[c] === 'percent');
+        const repCat = percentCats.sort((a, b) => (draftTargets[b] || 0) - (draftTargets[a] || 0))[0] || '(kategori %)';
+        openOverbudgetConsentModal(
+          { cat: repCat, catAmount: draftTargets[repCat] || 0, sumAmount: sum, cap },
+          commitSalary
+        );
+        return;
+      }
+
+      commitSalary();
+    });
+    document.getElementById('input-month-cutoff').addEventListener('input', function () {
+      this.value = this.value.replace(/[^\d]/g, '').slice(0, 2);
+    });
+    document.getElementById('save-month-cutoff').addEventListener('click', () => {
+      const raw = Number(document.getElementById('input-month-cutoff').value);
+      const clamped = Number.isFinite(raw) && raw >= 1 ? Math.min(31, Math.round(raw)) : 1;
+      targets.monthCutoffDay = clamped;
+      saveTargets();
+      loadAll(); // period boundaries changed -- refresh history/bubbles + stats/longterm if active
+      showToast(`Tanggal mulai bulan finansial disimpan: tanggal ${clamped}.`);
+    });
+    document.getElementById('category-list').addEventListener('input', (e) => {
+      if (e.target.matches('.cat-target-input')) formatLiveCommaAmount(e.target);
+      if (e.target.matches('.cat-percent-slider')) {
+        // Live-update the displayed %/derived-Rupiah text while dragging,
+        // but don't validate or save yet -- that happens on 'change' (drag
+        // release), same intent as the Rupiah field needing an explicit
+        // Simpan click rather than saving on every keystroke.
+        const cat = e.target.dataset.cat;
+        const pct = Number(e.target.value) || 0;
+        const valEl = document.getElementById(`cat-percent-val-${cat}`);
+        if (valEl) valEl.textContent = `${pct}%`;
+        const derivedEl = e.target.closest('.category-target-row').querySelector('.cat-percent-derived');
+        if (derivedEl && Number.isFinite(targets.salary) && targets.salary > 0) {
+          derivedEl.textContent = `= ${fmtRupiah(Math.round(targets.salary * pct / 100))} dari gaji ${fmtRupiah(targets.salary)}`;
+        }
+      }
+    });
+    document.getElementById('category-list').addEventListener('change', (e) => {
+      if (!e.target.matches('.cat-percent-slider')) return;
+      const cat = e.target.dataset.cat;
+      const pct = Number(e.target.value) || 0;
+      targets.categoryTargetPercent[cat] = pct;
+
+      // No salary set yet -- nothing to derive into Rupiah, so just persist
+      // the chosen % (it'll resolve once a salary is saved) without running
+      // it through the Rupiah-cap validation path.
+      if (!Number.isFinite(targets.salary) || targets.salary <= 0) {
+        saveTargets();
+        renderStatsPage();
+        return;
+      }
+
+      const val = Math.round(targets.salary * pct / 100);
+      applyCategoryTargetValue(cat, val);
+    });
+    document.getElementById('category-list').addEventListener('click', (e) => {
+      const modeBtn = e.target.closest('.cat-mode-btn');
+      if (modeBtn) {
+        const cat = modeBtn.dataset.cat;
+        const mode = modeBtn.dataset.mode;
+        targets.categoryTargetMode[cat] = mode;
+        saveTargets();
+        // Switching TO percent mode with a salary already set + a % already
+        // chosen for this category (or a fresh 0%) should immediately
+        // re-derive/re-sync the Rupiah cap so validation/budget bars stay
+        // consistent with what's now showing on screen.
+        if (mode === 'percent' && Number.isFinite(targets.salary) && targets.salary > 0) {
+          const pct = Number.isFinite(targets.categoryTargetPercent[cat]) ? targets.categoryTargetPercent[cat] : 0;
+          targets.categoryTargets[cat] = Math.round(targets.salary * pct / 100);
+          saveTargets();
+        }
+        renderStatsPage();
+        return;
+      }
+
+      const btn = e.target.closest('.cat-target-save');
+      if (!btn) return;
+      const cat = btn.dataset.cat;
+      const input = document.querySelector(`.cat-target-input[data-cat="${CSS.escape(cat)}"]`);
+      const val = parseCommaAmount(input.value);
+
+      // Clearing the target (empty/0/invalid input) never needs validation --
+      // removing a cap can't push anything OVER a cap.
+      if (!Number.isFinite(val) || val <= 0) {
+        delete targets.categoryTargets[cat];
+        saveTargets();
+        renderStatsPage();
+        showToast(`Target kategori "${cat}" dihapus.`);
+        return;
+      }
+
+      applyCategoryTargetValue(cat, val, input);
+    });
+
+    // Shared save-with-validation path for BOTH the Rupiah input (Simpan
+    // click) and the % slider (on drag-release) -- whichever mode produced
+    // `val` (a Rupiah amount), the overbudget check and save logic is
+    // identical from here on.
+    function applyCategoryTargetValue(cat, val, input) {
+      const overage = categoryTargetExceedsBudget(cat, val);
+      if (overage) {
+        // Blocked by default -- requires explicitly working through the
+        // overbudget consent gate (retype the commitment statement) before
+        // it actually saves. Canceling that modal leaves the target
+        // untouched, so the input still shows what was typed for editing.
+        openOverbudgetConsentModal(
+          { cat, catAmount: val, sumAmount: overage.sum, cap: overage.cap },
+          () => commitCategoryTarget(cat, val, input)
+        );
+        return;
+      }
+
+      commitCategoryTarget(cat, val, input);
+    }
+
+    // Actually saves a category target -- separated out so both the direct
+    // (under-budget) path and the overbudget-consent-confirmed path call the
+    // exact same save logic, no duplication.
+    function commitCategoryTarget(cat, val, input) {
+      targets.categoryTargets[cat] = val;
+      saveTargets();
+      renderStatsPage();
+      showToast(`Target kategori "${cat}" disimpan.`);
+    }
+
+    // Sum of ALL category targets (with `cat` replaced by `val`, since this
+    // is evaluating a not-yet-saved edit to that one category) vs the
+    // monthly budget cap. No monthlyBudget set at all means there's nothing
+    // to enforce against, so validation is a no-op in that case.
+    function categoryTargetExceedsBudget(cat, val) {
+      const cap = targets.monthlyBudget;
+      if (!cap || cap <= 0) return null;
+      let sum = val;
+      Object.entries(targets.categoryTargets).forEach(([c, amt]) => {
+        if (c === cat) return; // replaced by `val` above, don't double-count
+        sum += Number(amt) || 0;
+      });
+      return sum > cap ? { sum, cap } : null;
+    }
+
+    // long term page
+    document.getElementById('longterm-year-select').addEventListener('change', (e) => {
+      state.longtermYear = e.target.value ? Number(e.target.value) : null;
+      renderLongtermPage();
+    });
+    document.getElementById('longterm-semester-select').addEventListener('change', (e) => {
+      state.longtermSemester = e.target.value || null;
+      renderLongtermPage();
+    });
+    document.getElementById('longterm-reset-btn').addEventListener('click', () => {
+      state.longtermYear = null;
+      state.longtermSemester = null;
+      renderLongtermPage();
+    });
+    document.getElementById('savings-target-month').addEventListener('change', (e) => {
+      state.savingsTargetMonth = e.target.value || state.savingsTargetMonth;
+      renderSavingsProgress();
+    });
+    document.getElementById('savings-target-amount').addEventListener('input', function () {
+      this.value = this.value.replace(/[^\d]/g, '');
+    });
+    document.getElementById('savings-target-rate').addEventListener('input', function () {
+      this.value = this.value.replace(/[^\d]/g, '');
+    });
+    document.getElementById('save-savings-target').addEventListener('click', () => {
+      const mk = document.getElementById('savings-target-month').value || state.savingsTargetMonth;
+      const amount = Number(document.getElementById('savings-target-amount').value) || 0;
+      const rate = Number(document.getElementById('savings-target-rate').value) || 0;
+      if (amount <= 0 && rate <= 0) { showToast('Isi minimal salah satu target (nominal / rate).', 'err'); return; }
+      targets.savings[mk] = { amount: amount || null, rate: rate || null };
+      saveTargets();
+      renderSavingsProgress();
+      showToast(`Target nabung ${fmtMonthLabel(mk)} disimpan.`);
+    });
+
+    // ---------- Budget Planner ----------
+    const plannerTitleEl = document.getElementById('planner-period-title');
+    const plannerFlyoutEl = document.getElementById('planner-period-flyout');
+    document.getElementById('planner-period-trigger').addEventListener('click', (e) => {
+      e.stopPropagation();
+      setPlannerPeriodOpen(!plannerPeriodOpen);
+    });
+    if (window.matchMedia('(hover: hover)').matches) {
+      const openPlannerPeriod = () => { clearTimeout(plannerCloseTimer); setPlannerPeriodOpen(true); };
+      const schedulePlannerClose = () => { clearTimeout(plannerCloseTimer); plannerCloseTimer = setTimeout(() => setPlannerPeriodOpen(false), 150); };
+      plannerTitleEl.addEventListener('mouseenter', openPlannerPeriod);
+      plannerTitleEl.addEventListener('mouseleave', schedulePlannerClose);
+      plannerFlyoutEl.addEventListener('mouseenter', openPlannerPeriod);
+      plannerFlyoutEl.addEventListener('mouseleave', schedulePlannerClose);
+    }
+    document.addEventListener('click', (e) => {
+      if (!document.getElementById('planner-period-selector').contains(e.target)) setPlannerPeriodOpen(false);
+    });
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.planner-move-wrap')) closeAllPlannerMoveMenus(null);
+    });
+
+    document.getElementById('planner-item-amount').addEventListener('input', function () {
+      formatLiveCommaAmount(this);
+    });
+    document.getElementById('planner-item-dueday').addEventListener('input', function () {
+      this.value = this.value.replace(/[^\d]/g, '').slice(0, 2);
+    });
+    document.getElementById('planner-item-leaddays').addEventListener('input', function () {
+      this.value = this.value.replace(/[^\d]/g, '').slice(0, 2);
+    });
+    document.getElementById('planner-item-recurring').addEventListener('change', function () {
+      document.getElementById('planner-recurring-fields').classList.toggle('show', this.checked);
+    });
+
+    document.getElementById('planner-add-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const name = document.getElementById('planner-item-name').value.trim();
+      const amount = parseCommaAmount(document.getElementById('planner-item-amount').value);
+      const recurring = document.getElementById('planner-item-recurring').checked;
+
+      if (!name) { showToast('Isi nama itemnya dulu ya.', 'err'); return; }
+      if (!Number.isFinite(amount) || amount <= 0) { showToast('Isi nominal yang valid ya.', 'err'); return; }
+
+      const item = { id: newId(), name, amount, recurring: false };
+      if (recurring) {
+        const dueDay = Math.min(31, Math.max(1, Number(document.getElementById('planner-item-dueday').value) || 1));
+        const leadDays = Math.max(0, Number(document.getElementById('planner-item-leaddays').value) || 0);
+        item.recurring = true;
+        item.dueDay = dueDay;
+        item.leadDays = leadDays;
+      }
+
+      ensurePlannerMonth(state.plannerMonth).push(item);
+      saveDB();
+
+      document.getElementById('planner-add-form').reset();
+      document.getElementById('planner-recurring-fields').classList.remove('show');
+      renderPlannerPage();
+      renderPlannerReminders(); // a newly-added recurring item might already be due this month
+      showToast(`"${name}" ditambahin ke planner.`);
+    });
+  }
+
+  /* ============================================================
+     BOOTSTRAP
+     ============================================================ */
+  document.addEventListener('DOMContentLoaded', async () => {
+    // AUTH GUARD — this app has no guest/demo mode, straight bounce to
+    // login if there's no real session.
+    const authCtx = await requireAuth('index.html');
+    if (!authCtx) return; // requireAuth already redirected
+    CURRENT_USER = authCtx.user;
+    CURRENT_PROFILE = authCtx.profile;
+
+    initUserScopedKeys(CURRENT_USER.id);
+    setSyncIndicator('saving');
+    await pullCloudData(CURRENT_USER.id);
+    db = loadDB();
+    targets = loadTargets();
+    setSyncIndicator('ok');
+
+    applyTheme(getTheme());
+    updateWhoBadge(getProfileName());
+    renderFinanceToggleBox();
+    wireEvents();
+    document.getElementById('period-day').value = state.histPeriodValue;
+    document.getElementById('stats-month').value = state.statsMonth;
+    document.getElementById('savings-target-month').value = state.savingsTargetMonth;
+    loadAll();
+    setInterval(tickRunning, 1000);
+
+    // Realtime: pick up changes made from another device/tab (e.g. this
+    // same account's habbit_entries edited elsewhere) without a manual
+    // refresh. calendar.html's read-only Habbit panel listens for the same
+    // table, so this also keeps that view live.
+    supabase
+      .channel('habbit_own_sync_' + CURRENT_USER.id)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'habbit_entries', filter: `user_id=eq.${CURRENT_USER.id}` }, async () => {
+        await pullCloudData(CURRENT_USER.id);
+        db = loadDB();
+        loadAll();
+      })
+      .subscribe();
+  });
+})();
+</script>
+</body>
+</html>

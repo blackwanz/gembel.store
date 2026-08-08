@@ -1,0 +1,33 @@
+name: Run DB Migrations
+
+# Manual-trigger only -- never runs on push, so schema changes only apply
+# when someone deliberately clicks "Run workflow" in the Actions tab.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "yes" to apply pending migrations (db/migrations/*.sql) to the live Supabase project'
+        required: true
+        default: 'no'
+
+jobs:
+  migrate:
+    name: Apply pending migrations
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "yes" ]; then
+            echo "Confirmation input must be exactly 'yes'. Aborting without touching the database."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v3
+
+      - name: Run db/migrate.sh
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          chmod +x db/migrate.sh
+          ./db/migrate.sh

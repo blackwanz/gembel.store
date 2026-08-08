@@ -1,20 +1,19 @@
 {
-  "name": "gembel.store",
+  "name": "gembel.fun",
   "version": "1.0.0",
-  "description": "UAT Gembel.fun",
-  "main": "index.js",
+  "description": "gembel.fun",
+  "main": "test-email.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/blackwanz/gembel.store.git"
+    "url": "git+https://github.com/blackwanz/gembel.fun.git"
   },
-  "keywords": [],
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/blackwanz/gembel.store/issues"
+    "url": "https://github.com/blackwanz/gembel.fun/issues"
   },
-  "homepage": "https://github.com/blackwanz/gembel.store#readme"
+  "homepage": "https://github.com/blackwanz/gembel.fun#readme"
 }

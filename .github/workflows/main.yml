@@ -8,12 +8,11 @@ on:
 
 jobs:
   # ==========================================
-  # JOB 1: DEPLOY KE UAT
+  # JOB 1: DEPLOY KE UAT 
   # ==========================================
   deploy-uat:
-    name: Deploy to UAT (Port 3000)
+    name: Deploy to UAT (Blue - Port 3000)
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/uat'
     steps:
       - name: Log Status & Kondisi (UAT)
         run: |
@@ -22,57 +21,46 @@ jobs:
           echo "Branch saat ini : ${{ github.ref }}"
           echo "Target VPS IP   : ${{ secrets.VPS_IP }}"
           echo "------------------------------------------------"
-          echo "KONDISI TERPENUHI: Push dilakukan di branch 'uat'."
-          echo "Melanjutkan proses deployment ke UAT..."
+          if [ "${{ github.ref }}" == "refs/heads/uat" ]; then
+            echo "KONDISI TERPENUHI: Push dilakukan di branch 'uat'."
+            echo "Melanjutkan proses deployment ke UAT..."
+          else
+            echo "SKIPPED: Job ini di-skip karena push dilakukan di branch '${{ github.ref }}', BUKAN di 'uat'."
+            echo "Step deployment di bawah ini tidak akan dijalankan."
+          fi
 
       - uses: actions/checkout@v3
+        if: github.ref == 'refs/heads/uat'
 
       - name: Setup SSH
+        if: github.ref == 'refs/heads/uat'
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.VPS_IP }} >> ~/.ssh/known_hosts
 
-      - name: Build & Deploy UAT
+      - name: Build New Environment (UAT / Blue)
+        if: github.ref == 'refs/heads/uat'
         run: |
           ssh -i ~/.ssh/id_rsa ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }} << 'EOF'
-            set -e
-            cd /var/www/gembel.store
-
+            cd /var/www/gembelfun
+            
             # Tarik kode khusus dari branch uat
             git pull origin uat
-
-            echo "Membangun versi UAT (Port 3000)..."
-            docker compose up -d --build uat
-
-            echo "Menunggu container UAT ready (health check)..."
-            READY=0
-            for i in $(seq 1 30); do
-              if curl -fsS --max-time 3 http://127.0.0.1:3000/ > /dev/null 2>&1; then
-                READY=1
-                echo "UAT healthy setelah percobaan ke-$i."
-                break
-              fi
-              echo "  Belum ready, percobaan $i/30..."
-              sleep 2
-            done
-
-            if [ "$READY" -ne 1 ]; then
-              echo "GAGAL: Container UAT tidak healthy dalam 60 detik. Cek log dengan: docker compose logs uat"
-              exit 1
-            fi
-
+            
+            echo "Membangun versi UAT di BLUE (Port 3000)..."
+            docker compose up -d --build blue
+            
             echo "Build selesai. Silakan test UAT di port 3000."
           EOF
 
   # ==========================================
-  # JOB 2: BACKUP & DEPLOY KE PROD (Blue-Green, zero-downtime switch)
+  # JOB 2: BACKUP & DEPLOY KE PROD 
   # ==========================================
   deploy-prod:
-    name: Backup & Promote to Prod (Blue/Green switch)
+    name: Backup & Promote to Prod (Green - Port 3001)
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/prod'
     steps:
       - name: Log Status & Kondisi (PROD)
         run: |
@@ -81,100 +69,62 @@ jobs:
           echo "Branch saat ini : ${{ github.ref }}"
           echo "Target VPS IP   : ${{ secrets.VPS_IP }}"
           echo "------------------------------------------------"
-          echo "KONDISI TERPENUHI: Push dilakukan di branch 'prod'."
-          echo "Melanjutkan proses Backup & Deployment ke Production..."
+          if [ "${{ github.ref }}" == "refs/heads/prod" ]; then
+            echo "KONDISI TERPENUHI: Push dilakukan di branch 'prod'."
+            echo "Melanjutkan proses Backup & Deployment ke Production..."
+          else
+            echo "SKIPPED: Job ini di-skip karena push dilakukan di branch '${{ github.ref }}', BUKAN di 'prod'."
+            echo "Step backup dan deployment di bawah ini tidak akan dijalankan."
+          fi
 
       - uses: actions/checkout@v3
+        if: github.ref == 'refs/heads/prod'
         with:
           fetch-depth: 2
 
       - name: Backup Database & Code
+        if: github.ref == 'refs/heads/prod'
         run: |
           mkdir -p ./backups
-
+          
           # Menggunakan fallback yang aman jika commit history belum panjang
           PREV_HASH=$(git rev-parse --short HEAD~1 2>/dev/null || git rev-parse --short HEAD)
           PREV_DATE=$(git log -1 --format="%ad" --date=format:'%Y%m%d' HEAD~1 2>/dev/null || date +%Y%m%d)
-
+          
           SQL_FILE="gembelsql.v$PREV_DATE-$PREV_HASH.sql"
           SRC_FILE="gembelsrc.v$PREV_DATE-$PREV_HASH.tar"
-
+          
           # Menggunakan kutip tunggal (') agar password dengan simbol aman dari gangguan shell bash
           docker run --rm postgres:17 pg_dump '${{ secrets.SUPABASE_DB_URL }}' > ./backups/$SQL_FILE
           tar -cvf ./backups/$SRC_FILE --exclude=./backups --exclude=.git .
-
+          
           # Setup SSH
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.VPS_IP }} >> ~/.ssh/known_hosts
-
+          
           # Kirim Backup ke VPS
           ssh -i ~/.ssh/id_rsa ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }} "mkdir -p /home/irwanto/backups/"
           scp ./backups/$SQL_FILE ./backups/$SRC_FILE ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }}:/home/irwanto/backups/
 
-      - name: Build, Health-Check & Switch Nginx (Blue/Green)
+      - name: Build & Switch Nginx (Production / Green)
+        if: github.ref == 'refs/heads/prod'
         run: |
           ssh -i ~/.ssh/id_rsa ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }} << 'EOF'
-            set -e
-            cd /var/www/gembel.store
-
+            cd /var/www/gembelfun
+            
             # Tarik kode dari branch prod
             git pull origin prod
-
-            NGINX_CONF="/etc/nginx/sites-enabled/gembelstore"
-
-            # ---- 1. Deteksi slot mana yang LAGI AKTIF, langsung dari nginx ----
-            # (nginx config adalah satu-satunya source of truth soal slot aktif —
-            #  tidak ada file state terpisah yang bisa nyasar dari kenyataan)
-            CURRENT_PORT=$(grep -oE "proxy_pass http://(localhost|127\.0\.0\.1):[0-9]+" "$NGINX_CONF" | grep -oE "[0-9]+$" | head -n1)
-
-            if [ "$CURRENT_PORT" == "3001" ]; then
-              TARGET_SLOT="blue"
-              TARGET_PORT="3000"
-            else
-              # default/fallback: kalau port sekarang 3000 atau nginx belum pernah di-set,
-              # deploy ke green supaya slot lama (blue) tetap nyala buat rollback manual
-              TARGET_SLOT="green"
-              TARGET_PORT="3001"
-            fi
-
-            echo "Slot AKTIF sekarang : port $CURRENT_PORT"
-            echo "Deploy ke slot BARU : $TARGET_SLOT (port $TARGET_PORT)"
-
-            echo "Membangun versi Production di $TARGET_SLOT (Port $TARGET_PORT)..."
-            docker compose up -d --build "$TARGET_SLOT"
-
-            # ---- 2. Health check container baru SEBELUM switch traffic ----
-            echo "Menunggu container $TARGET_SLOT ready (health check)..."
-            READY=0
-            for i in $(seq 1 30); do
-              if curl -fsS --max-time 3 "http://127.0.0.1:$TARGET_PORT/" > /dev/null 2>&1; then
-                READY=1
-                echo "Slot $TARGET_SLOT healthy setelah percobaan ke-$i."
-                break
-              fi
-              echo "  Belum ready, percobaan $i/30..."
-              sleep 2
-            done
-
-            if [ "$READY" -ne 1 ]; then
-              echo "GAGAL: Container $TARGET_SLOT tidak healthy dalam 60 detik."
-              echo "Nginx TETAP mengarah ke slot lama (port $CURRENT_PORT) — tidak ada downtime."
-              echo "Cek log dengan: docker compose logs $TARGET_SLOT"
-              exit 1
-            fi
-
-            # ---- 3. Baru switch nginx setelah slot baru dipastikan sehat ----
-            echo "Meneruskan traffic Nginx ke $TARGET_SLOT (Port $TARGET_PORT)..."
-            sudo sed -i -E "s/proxy_pass http:\/\/(localhost|127\.0\.0\.1):[0-9]+/proxy_pass http:\/\/127.0.0.1:$TARGET_PORT/g" "$NGINX_CONF"
-
-            # Validasi syntax sebelum reload — kalau config rusak, jangan reload nginx
-            sudo nginx -t
-
+            
+            echo "Membangun versi Production di GREEN (Port 3001)..."
+            docker compose up -d --build green
+            
+            echo "Meneruskan traffic Nginx ke GREEN (Port 3001)..."
+            sudo sed -i -E "s/proxy_pass http:\/\/(localhost|127\.0\.0\.1):[0-9]+/proxy_pass http:\/\/127.0.0.1:3001/g" /etc/nginx/sites-enabled/gembelfun
+            
             # Terapkan perubahan dengan Zero Downtime
             sudo systemctl reload nginx
-
-            echo "Promotion sukses! Production sekarang menggunakan $TARGET_SLOT (Port $TARGET_PORT)."
-            echo "Slot lama (port $CURRENT_PORT) masih menyala idle — kalau perlu rollback manual, tinggal sed balik proxy_pass ke port itu + reload nginx."
+            
+            echo "Promotion sukses! Production sekarang menggunakan GREEN (Port 3001)."
           EOF

@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Flow — Gembel AI PIK</title>
+    <link rel="stylesheet" href="assets/progbar-style.css">
+</head>
+<body>
+    <a href="dashboard.html" id="pb-back-link" style="position:fixed;top:14px;left:14px;z-index:99;color:#64748b;text-decoration:none;font-size:12px;letter-spacing:1px;border:1px solid rgba(255,255,255,0.08);padding:6px 12px;border-radius:3px;background:rgba(0,0,0,0.4);">&larr; DASHBOARD</a>
+    <div id="guest-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:98;background:#3a2f00;color:#ffd97a;padding:9px 18px;font-size:12.5px;text-align:center;border-bottom:1px solid #6b5600;">
+        🔎 MODE DEMO — data cuma di browser ini, ilang kalau tab ditutup.
+        <a href="index.html" onclick="exitGuestDemo()" style="font-weight:700;text-decoration:underline;color:inherit;">Daftar gratis</a> buat nyimpen progress lo.
+    </div>
+    <div class="cyber-container">
+        <header class="cyber-header">
+            <div class="header-left">
+                <span class="status-indicator"></span>
+                <h1 class="brand-title">NEON FLOW // TIME-SYNC</h1>
+            </div>
+            <div class="header-right">
+                <div class="current-date" id="current-date">-- --- ----</div>
+                <div class="current-time" id="current-time">00:00:00 PM</div>
+            </div>
+        </header>
+
+        <div class="target-bar">
+            <span class="label">TARGET WAKTU:</span>
+            <span class="value" id="target-display">[BELUM AKTIF]</span>
+        </div>
+
+        <div class="data-actions">
+            <button class="data-btn" onclick="exportHistoryJSON()">⬇ Export JSON</button>
+            <button class="data-btn" onclick="document.getElementById('import-file').click()">⬆ Import JSON</button>
+            <input type="file" id="import-file" accept=".json,application/json" style="display:none;" onchange="importHistoryJSON(this.files[0]); this.value='';">
+        </div>
+
+        <main class="cyber-main">
+            <section class="report-section">
+                <h2 class="section-title">LAPORAN SESI (REPORTS DETAILED)</h2>
+                <div class="report-list" id="report-list">
+                    </div>
+            </section>
+
+            <section class="countdown-section">
+                <h2 class="section-title">SISA WAKTU (TIME REMAINING)</h2>
+                <div class="countdown-display" id="countdown-display">00h 00m 00s</div>
+            </section>
+        </main>
+
+        <footer class="cyber-footer">
+            <div class="progress-btn-container" id="action-button" title="Klik 1x: Hijau | Klik 2x: Biru | Klik 3x: Oranye | Klik 5x: Stop">
+                <div class="progress-status-overlay" id="progress-status-overlay">SYSTEM IDLE // AWAITING COMMAND</div>
+                <div class="progress-bar-base" id="progress-bar-base">
+                    </div>
+            </div>
+        </footer>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/dist/umd/supabase.min.js"></script>
+    <script src="assets/supabaseClient.js"></script>
+    <script src="assets/auth.js"></script>
+    <script>
+        // Terminal Greeting
+        console.log("%cSYSTEM BOOT // WELCOME TO GEMBEL AI PIK", "color: #00ffcc; font-size: 16px; font-weight: bold; background: #111; padding: 5px;");
+
+        // ===== PER-USER STORAGE + CLOUD SYNC =====
+        let UID = 'anon';
+        let IS_GUEST = false;
+        const K_HISTORY = () => `cyber_${UID}_history`;
+        const K_STATE   = () => `cyber_${UID}_state`;
+
+        let cloudTimer = null;
+        function saveCloud() {
+            if (IS_GUEST) return; // guest mode: local-only, never synced
+            clearTimeout(cloudTimer);
+            cloudTimer = setTimeout(async () => {
+                try {
+                    await supabase.from('user_progbar_data').upsert({
+                        user_id: UID,
+                        history: JSON.parse(localStorage.getItem(K_HISTORY()) || '[]'),
+                        current_state: JSON.parse(localStorage.getItem(K_STATE()) || 'null'),
+                    });
+                } catch (e) { console.warn('Cloud sync skip:', e.message); }
+            }, 2500);
+        }
+
+        async function loadCloud() {
+            if (IS_GUEST) return; // guest mode: nothing to pull from Supabase
+            try {
+                const { data } = await supabase.from('user_progbar_data')
+                    .select('*').eq('user_id', UID).maybeSingle();
+                if (data) {
+                    localStorage.setItem(K_HISTORY(), JSON.stringify(data.history || []));
+                    if (data.current_state) localStorage.setItem(K_STATE(), JSON.stringify(data.current_state));
+                    else localStorage.removeItem(K_STATE());
+                }
+            } catch (e) { console.warn('Cloud load skip (pakai data lokal):', e.message); }
+        }
+
+        // ===== EXPORT / IMPORT JSON (konsep sama kayak kalender) =====
+        function exportHistoryJSON() {
+            const data = localStorage.getItem(K_HISTORY()) || '[]';
+            const blob = new Blob([data], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `NeonFlow_History_${new Date().toISOString().slice(0, 10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function sessionSortKey(item) {
+            // id format: session-<ms> / import-<ms> / dummy-x
+            const ms = parseInt(String(item.id || '').split('-').pop(), 10);
+            if (!isNaN(ms) && ms > 1000000000000) return ms;
+            // fallback: pakai timestamp segmen pertama
+            const t = item.segments && item.segments[0] && Date.parse(item.segments[0].timestamp);
+            return isNaN(t) ? 0 : t;
+        }
+
+        function importHistoryJSON(file) {
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+                let imported;
+                try {
+                    imported = JSON.parse(reader.result);
+                } catch (e) {
+                    alert('File bukan JSON valid: ' + e.message);
+                    return;
+                }
+                if (!Array.isArray(imported)) { alert('Format salah: isi file harus berupa array sesi.'); return; }
+
+                // validasi minimal tiap item
+                const valid = imported.filter(it => it && it.id && Array.isArray(it.segments));
+                if (valid.length === 0) { alert('Nggak ada sesi valid di file ini.'); return; }
+
+                const existing = JSON.parse(localStorage.getItem(K_HISTORY()) || '[]');
+                const byId = {};
+                [...existing, ...valid].forEach(it => { byId[it.id] = it; }); // import menimpa id yang sama
+                const merged = Object.values(byId).sort((a, b) => sessionSortKey(b) - sessionSortKey(a));
+
+                localStorage.setItem(K_HISTORY(), JSON.stringify(merged));
+                saveCloud();
+                renderReports();
+                alert(`Import beres: ${valid.length} sesi dibaca, total sekarang ${merged.length} sesi.`);
+            };
+            reader.readAsText(file);
+        }
+
+        const TARGET_HOUR = 19; // 7 PM
+        const TARGET_MIN = 30;  // :30 PM
+
+        let state = {
+            active: false,
+            activeColor: null,
+            startTime: null,
+            targetTime: null,
+            segments: [],
+            clickCount: 0,
+            clickTimeout: null
+        };
+
+
+        function formatTime(date) {
+            return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+        }
+
+        function formatDate(date) {
+            return date.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
+        }
+
+        function calculateTargetTime(fromDoc) {
+            let target = new Date(fromDoc);
+            target.setHours(TARGET_HOUR, TARGET_MIN, 0, 0);
+            if (fromDoc >= target) {
+                target.setDate(target.getDate() + 1);
+            }
+            return target;
+        }
+
+        // BUGFIX #1: totalSeconds dulu bisa "kotor" (pecahan detik), sekarang selalu
+        // dibulatkan ke bawah HANYA di titik tampil (di sini), bukan di titik hitung.
+        // Ini penting karena pembulatan berulang di titik hitung (setiap tick) adalah
+        // penyebab utama waktu "hilang" sedikit demi sedikit sepanjang hari.
+        function formatDuration(totalSeconds) {
+            totalSeconds = Math.max(0, Math.floor(totalSeconds));
+            const h = Math.floor(totalSeconds / 3600);
+            const m = Math.floor((totalSeconds % 3600) / 60);
+            const s = totalSeconds % 60;
+            const pad = (num) => String(num).padStart(2, '0');
+            return `${pad(h)}h ${pad(m)}m ${pad(s)}s`;
+        }
+
+        // ============================================================
+        // BUGFIX #1 (inti): Sinkronisasi waktu berbasis timestamp absolut.
+        //
+        // Bug lama: `diffInSeconds = Math.floor((now - lastTimestamp) / 1000)`
+        // dipanggil SETIAP DETIK. Karena setInterval(...,1000) hampir tidak
+        // pernah tepat 1000ms (biasanya 1000-1050ms tergantung beban browser),
+        // sisa pecahan detik itu selalu dibuang oleh Math.floor. Dikalikan
+        // ribuan kali tick dalam 12 jam, akumulasi detik yang "hilang" ini
+        // bisa mencapai belasan menit -> progress bar tidak pernah 100%
+        // meskipun device tidak pernah lock sama sekali.
+        //
+        // Fix: jangan floor di titik hitung. Simpan duration sebagai angka
+        // desimal (presisi penuh), baru dibulatkan saat DITAMPILKAN
+        // (lihat formatDuration di atas & Math.floor saat finalisasi sesi).
+        //
+        // Selain itu ditambahkan "cap" ke targetTime, supaya kalau HP baru
+        // dibuka lama setelah waktu target lewat (misal lock lama lalu buka
+        // jam 19:45 padahal target 19:30), durasi tidak overshoot lewat 100%.
+        // ============================================================
+        function syncWithSystemTime() {
+            if (!state.active || state.segments.length === 0) return;
+
+            const rawNow = new Date();
+            const now = rawNow > state.targetTime ? state.targetTime : rawNow; // cap anti-overshoot
+            let lastSeg = state.segments[state.segments.length - 1];
+            let lastTimestamp = new Date(lastSeg.timestamp);
+
+            const diffInSeconds = (now - lastTimestamp) / 1000; // TIDAK di-floor -> presisi penuh
+
+            if (diffInSeconds > 0) {
+                lastSeg.duration += diffInSeconds;
+                lastSeg.timestamp = now.toISOString();
+
+                localStorage.setItem(K_STATE(), JSON.stringify(state));
+                renderActiveProgressBar();
+                renderReports();
+            }
+
+            // Kalau ternyata waktu asli sudah lewat target, langsung tutup sesi
+            // di kesempatan berikutnya (ditangani oleh updateClock / caller).
+            return rawNow >= state.targetTime;
+        }
+
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('current-date').innerText = formatDate(now);
+            document.getElementById('current-time').innerText = formatTime(now);
+
+            if (state.active) {
+                const timeDiff = state.targetTime - now;
+                if (timeDiff <= 0) {
+                    stopSession(true);
+                    return;
+                }
+                document.getElementById('countdown-display').innerText = formatDuration(Math.floor(timeDiff / 1000));
+                syncWithSystemTime();
+            } else {
+                document.getElementById('countdown-display').innerText = "00h 00m 00s";
+            }
+        }
+
+        document.getElementById('action-button').addEventListener('click', () => {
+            state.clickCount++;
+            clearTimeout(state.clickTimeout);
+
+            state.clickTimeout = setTimeout(() => {
+                executeAction(state.clickCount);
+                state.clickCount = 0;
+            }, 350);
+        });
+
+        function executeAction(clicks) {
+            const now = new Date();
+            if (clicks === 1) switchState('green', now);
+            else if (clicks === 2) switchState('blue', now);
+            else if (clicks === 3) switchState('orange', now);
+            else if (clicks === 5) stopSession(false);
+        }
+
+        function switchState(color, now) {
+            if (!state.active) {
+                state.active = true;
+                state.startTime = now;
+                state.targetTime = calculateTargetTime(now);
+                state.segments = [];
+                document.querySelector('.status-indicator').classList.add('active');
+                document.getElementById('target-display').innerText = `[${formatTime(state.targetTime)} - ${state.targetTime.getDate() === now.getDate() ? 'HARI INI' : 'BESOK'}]`;
+
+                // Sesi baru dimulai -> pastikan bar visual bersih dari sisa sesi sebelumnya
+                document.getElementById('progress-bar-base').innerHTML = '';
+
+            }
+
+            // Memastikan data tersinkron sebelum ganti warna (jika ada jeda eksekusi)
+            syncWithSystemTime();
+
+            state.activeColor = color;
+            state.segments.push({
+                color: color,
+                duration: 0,
+                timestamp: now.toISOString()
+            });
+
+            const overlayText = document.getElementById('progress-status-overlay');
+            overlayText.innerText = `PROCESSING SESSION: ${color.toUpperCase()} // SYSTEM ENGAGED`;
+
+            localStorage.setItem(K_STATE(), JSON.stringify(state));
+            saveCloud();
+
+            renderActiveProgressBar();
+            renderReports();
+        }
+
+        // ============================================================
+        // BUGFIX #2 (inti): Dulu progress-bar-base.innerHTML langsung
+        // dikosongkan ('') begitu sesi berhenti -- termasuk saat sesi
+        // berhenti OTOMATIS karena target waktu tercapai. Akibatnya, tepat
+        // di momen seharusnya terlihat 100%, bar malah langsung kosong
+        // total, sehingga terlihat seperti "tidak pernah penuh".
+        //
+        // Fix: render dulu tampilan FINAL (dibekukan di posisi terakhir /
+        // 100%) sebelum reset state. Bar baru dikosongkan nanti saat sesi
+        // BARU dimulai (lihat switchState di atas).
+        // ============================================================
+        function stopSession(isAutoStop) {
+            if (!state.active) return;
+
+            syncWithSystemTime(); // sinkronisasi & cap terakhir sebelum ditutup
+
+            const history = JSON.parse(localStorage.getItem(K_HISTORY())) || [];
+
+            // Bulatkan durasi tiap segmen HANYA saat finalisasi (bukan tiap tick)
+            const finalSegments = state.segments
+                .map(s => ({ color: s.color, duration: Math.floor(s.duration), timestamp: s.timestamp }))
+                .filter(s => s.duration > 0);
+
+            let totalActiveSecs = finalSegments.reduce((acc, seg) => acc + seg.duration, 0);
+            let totalPoolSecs = Math.floor((state.targetTime - state.startTime) / 1000);
+            const endMoment = new Date(Math.min(Date.now(), state.targetTime.getTime()));
+
+            history.unshift({
+                id: 'session-' + Date.now(),
+                date: formatDate(state.startTime),
+                startTime: state.startTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
+                endTime: endMoment.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
+                totalHours: formatDuration(totalActiveSecs),
+                totalSecondsPool: totalPoolSecs,
+                segments: finalSegments
+            });
+
+            localStorage.setItem(K_HISTORY(), JSON.stringify(history));
+            localStorage.removeItem(K_STATE());
+            saveCloud();
+            console.log("SYSTEM // Session stopped. Active state cleared.");
+
+            // Bekukan tampilan bar di posisi final SEBELUM state direset,
+            // supaya progress 100% (atau berapa pun capaian terakhir) benar-benar terlihat.
+            document.getElementById('progress-bar-base').innerHTML = buildProgressSegmentsHTML(finalSegments, totalPoolSecs);
+            document.getElementById('progress-status-overlay').innerText = isAutoStop
+                ? `SESSION COMPLETE // TARGET REACHED (${totalPoolSecs > 0 ? Math.min(100, Math.round((totalActiveSecs / totalPoolSecs) * 100)) : 100}%)`
+                : `SESSION STOPPED MANUALLY // ${totalPoolSecs > 0 ? Math.min(100, Math.round((totalActiveSecs / totalPoolSecs) * 100)) : 0}% LOGGED`;
+
+            state.active = false;
+            state.activeColor = null;
+            state.startTime = null;
+            state.targetTime = null;
+            state.segments = [];
+
+
+            document.querySelector('.status-indicator').classList.remove('active');
+            document.getElementById('target-display').innerText = '[BELUM AKTIF]';
+
+            renderReports();
+        }
+
+        function deleteReport(id) {
+            let history = JSON.parse(localStorage.getItem(K_HISTORY())) || [];
+            history = history.filter(item => item.id !== id);
+            localStorage.setItem(K_HISTORY(), JSON.stringify(history));
+            saveCloud();
+            renderReports();
+        }
+
+        // Helper terpisah dipakai baik untuk render "live" maupun render "final/freeze"
+        function buildProgressSegmentsHTML(segments, totalPool) {
+            let html = '';
+            segments.forEach(seg => {
+                if (seg.duration <= 0) return;
+                let pct = totalPool > 0 ? (seg.duration / totalPool) * 100 : 0;
+                if (pct > 100) pct = 100;
+                const segDiv = document.createElement('div');
+                segDiv.className = `seg-${seg.color}`;
+                segDiv.style.width = `${pct}%`;
+                html += segDiv.outerHTML;
+            });
+            return html;
+        }
+
+        function renderActiveProgressBar() {
+            if (!state.active) return;
+            const barBase = document.getElementById('progress-bar-base');
+            const totalPool = Math.floor((state.targetTime - state.startTime) / 1000);
+            barBase.innerHTML = buildProgressSegmentsHTML(state.segments, totalPool);
+        }
+
+        function renderReports() {
+            const reportList = document.getElementById('report-list');
+            reportList.innerHTML = '';
+
+            if (state.active) {
+                let totalActiveSecs = state.segments.reduce((acc, seg) => acc + seg.duration, 0);
+                let totalPool = Math.floor((state.targetTime - state.startTime) / 1000);
+
+                let segmentBreakdowns = state.segments.reduce((acc, seg) => {
+                    if (seg.duration > 0) acc[seg.color] = (acc[seg.color] || 0) + seg.duration;
+                    return acc;
+                }, {});
+
+                let breakdownText = Object.keys(segmentBreakdowns).map(c => {
+                    let code = c === 'green' ? 'G' : c === 'blue' ? 'B' : 'O';
+                    return `<span class="text-${c}">[${code}: ${formatDuration(segmentBreakdowns[c])}]</span>`;
+                }).join(' ');
+
+                const activeRow = document.createElement('div');
+                activeRow.className = 'report-row active-row';
+                activeRow.innerHTML = `
+                    <div class="row-meta">
+                        <span class="row-date">[SESI AKTIF] ${formatDate(state.startTime)}</span>
+                        <span class="row-totals">TOTAL: ${formatDuration(totalActiveSecs)} | MULAI: ${state.startTime.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit', hour12:true})}</span>
+                        <span class="row-segments">${breakdownText}</span>
+                    </div>
+                    <div class="row-bar-container">
+                        <div class="mini-progress-bar">${buildProgressSegmentsHTML(state.segments, totalPool)}</div>
+                    </div>`;
+                reportList.appendChild(activeRow);
+            }
+
+            const history = JSON.parse(localStorage.getItem(K_HISTORY())) || [];
+            history.forEach(item => {
+                const row = document.createElement('div');
+                row.className = 'report-row';
+
+                const validSegments = item.segments || [];
+
+                let segmentBreakdowns = validSegments.reduce((acc, seg) => {
+                    acc[seg.color] = (acc[seg.color] || 0) + seg.duration;
+                    return acc;
+                }, {});
+
+                let breakdownText = Object.keys(segmentBreakdowns).map(c => {
+                    let code = c === 'green' ? 'G' : c === 'blue' ? 'B' : 'O';
+                    return `<span class="text-${c}">[${code}: ${formatDuration(segmentBreakdowns[c])}]</span>`;
+                }).join(' ');
+
+                row.innerHTML = `
+                    <div class="row-meta">
+                        <span class="row-date">${item.date}</span>
+                        <span class="row-totals">TOTAL MASA KERJA: ${item.totalHours} | SEJAK: ${item.startTime} s/d ${item.endTime}</span>
+                        <span class="row-segments">${breakdownText}</span>
+                    </div>
+                    <button class="delete-btn" onclick="deleteReport('${item.id}')">&times;</button>
+                    <div class="row-bar-container">
+                        <div class="mini-progress-bar">${buildProgressSegmentsHTML(validSegments, item.totalSecondsPool)}</div>
+                    </div>`;
+                reportList.appendChild(row);
+            });
+        }
+
+        window.onload = async () => {
+            if (new URLSearchParams(location.search).get('demo') === '1') {
+                sessionStorage.setItem('gembel_guest_mode', '1');
+            }
+            const ctx = await requireAuthOrGuest('index.html');
+            if (!ctx) return;
+            UID = ctx.user.id;
+            IS_GUEST = ctx.isGuest;
+
+            if (IS_GUEST) {
+                document.getElementById('guest-banner').style.display = 'block';
+                document.getElementById('pb-back-link').href = 'index.html';
+                document.getElementById('pb-back-link').textContent = '\u2190 KELUAR DEMO';
+            }
+
+            await loadCloud();
+
+            const savedState = localStorage.getItem(K_STATE());
+            if (savedState) {
+                const parsedState = JSON.parse(savedState);
+                if (parsedState.active) {
+                    state = parsedState;
+                    state.startTime = new Date(state.startTime);
+                    state.targetTime = new Date(state.targetTime);
+
+                    document.querySelector('.status-indicator').classList.add('active');
+                    document.getElementById('target-display').innerText = `[${formatTime(state.targetTime)} - ${state.targetTime.getDate() === new Date().getDate() ? 'HARI INI' : 'BESOK'}]`;
+                    document.getElementById('progress-status-overlay').innerText = `PROCESSING SESSION: ${state.activeColor.toUpperCase()} // SYSTEM RESUMED`;
+
+                    console.log("SYSTEM // Sesi aktif dipulihkan dari LocalStorage.");
+                }
+            }
+
+            renderReports();
+
+            setInterval(() => {
+                updateClock();
+            }, 1000);
+
+            updateClock();
+        };
+
+        // Sinkronisasi saat layar terkunci / app dibuka lagi.
+        // Sync juga dilakukan saat 'hidden' (sesaat sebelum layar terkunci) sebagai
+        // checkpoint tambahan -- jaga-jaga kalau browser membekukan/mematikan
+        // proses JS sepenuhnya selama terkunci dan baru pulih lewat reload.
+        document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === 'visible') {
+                syncWithSystemTime();
+            } else if (document.visibilityState === 'hidden') {
+                syncWithSystemTime();
+                saveCloud();
+            }
+        });
+
+        // Pengaman tambahan untuk browser mobile yang memicu pagehide alih-alih
+        // visibilitychange saat layar dikunci.
+        window.addEventListener('pagehide', () => {
+            syncWithSystemTime();
+        });
+    </script>
+</body>
+</html>

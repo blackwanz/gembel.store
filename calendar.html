@@ -1,0 +1,2609 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <title>Kalender — Gembel AI PIK</title>
+    <style>
+        /* ============================================================
+           IRWANTO AI PIK — shared "blue calm" theme
+           Tokens match assets/calendar-style.css so this calendar feels
+           like the same continuous surface as the rest of the product
+           (landing → login → dashboard → calendar → admin).
+           ============================================================ */
+        :root {
+            --primary: #4f7cff;
+            --primary-hover: #3f68e0;
+            --primary-soft: #eaf0ff;
+            --primary-soft-strong: #d9e4ff;
+            --primary-text: #2a4fc4;
+            --surface: #ffffff;
+            --surface-alt: linear-gradient(180deg, #fbfcfe 0%, #f1f4f9 100%);
+            --surface-muted: linear-gradient(180deg, #f7f9fc 0%, #eef1f6 100%);
+            --surface-hover: #f3f6fb;
+            --page-bg: #eef1f7;
+            --text-main: #2d3348;
+            --text-muted: #6b7284;
+            --text-faint: #9aa1b3;
+            --border: #e2e6ee;
+            --border-strong: #cdd4e2;
+            --shadow-soft: 0 2px 10px rgba(65, 90, 160, 0.07);
+            --shadow-card: 0 1px 3px rgba(65, 90, 160, 0.08);
+            --shadow-lift: 0 12px 30px rgba(45, 65, 130, 0.12);
+            --success-bg: #e8f6ee;
+            --success-text: #1f8a4c;
+            --success-border: #bfe6cf;
+            --warning-bg: #fdf3e2;
+            --warning-text: #b8791a;
+            --warning-border: #f2dcae;
+            --danger: #e0566b;
+            --danger-bg: #fdecef;
+            --danger-border: #f6c7d0;
+            --radius-sm: 6px;
+            --radius-md: 10px;
+            --radius-lg: 16px;
+            --radius-xl: 22px;
+            --gap-sm: 8px;
+            --gap-md: 16px;
+            --gap-lg: 24px;
+            --transition: 0.2s ease;
+            --transition-slow: 0.35s ease;
+            --font-display: 'Sora', 'Segoe UI', sans-serif;
+            --font-body: 'Inter', 'Segoe UI', sans-serif;
+            --font-mono: 'JetBrains Mono', 'Consolas', monospace;
+        }
+        [data-theme="dark"] {
+            --primary: #6b8fff;
+            --primary-hover: #5a7df0;
+            --primary-soft: #1c2440;
+            --primary-soft-strong: #26315a;
+            --primary-text: #9db4ff;
+            --surface: #171a23;
+            --surface-alt: linear-gradient(180deg, #1a1e29 0%, #14171f 100%);
+            --surface-muted: linear-gradient(180deg, #191d27 0%, #14171f 100%);
+            --surface-hover: #1f2430;
+            --page-bg: #0f1117;
+            --text-main: #e5e9f2;
+            --text-muted: #9aa3b8;
+            --text-faint: #646d82;
+            --border: #262b38;
+            --border-strong: #343b4d;
+            --shadow-soft: 0 2px 10px rgba(0, 0, 0, 0.4);
+            --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.45);
+            --shadow-lift: 0 12px 30px rgba(0, 0, 0, 0.55);
+            --success-bg: #12291c;
+            --success-text: #4cd98a;
+            --success-border: #1e4530;
+            --warning-bg: #2c2212;
+            --warning-text: #e8b45a;
+            --warning-border: #4a3a1c;
+            --danger: #f0708a;
+            --danger-bg: #2e1a20;
+            --danger-border: #4a2833;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { height: 100%; }
+        body {
+            min-height: 100vh;
+            background: var(--page-bg);
+            color: var(--text-main);
+            font-family: var(--font-body);
+            -webkit-font-smoothing: antialiased;
+            transition: background var(--transition), color var(--transition);
+        }
+        a { color: inherit; text-decoration: none; }
+        button { font-family: inherit; cursor: pointer; border: none; background: none; }
+        button, input { font-family: inherit; }
+        input, textarea, select { font-family: inherit; }
+        input[type="checkbox"] { accent-color: var(--primary); width: 14px; height: 14px; }
+
+        /* ===== Topbar ===== */
+        .cal-topbar {
+            display: flex; align-items: center; justify-content: space-between; padding: 16px 24px;
+            border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.86); backdrop-filter: blur(8px);
+            position: sticky; top: 0; z-index: 50;
+        }
+        [data-theme="dark"] .cal-topbar { background: rgba(23,26,35,0.86); }
+        .cal-topbar .left, .cal-topbar .right { display: flex; align-items: center; gap: 14px; }
+        .cal-brand { font-family: var(--font-display); font-weight: 700; font-size: 15px; color: var(--text-main); letter-spacing: -0.01em; }
+        .cal-brand span { color: var(--primary); }
+        .cal-sync { font-size: 11.5px; color: var(--text-faint); display: inline-flex; align-items: center; gap: 6px; }
+        .cal-sync .dot { width: 6px; height: 6px; border-radius: 100px; background: var(--success-text); transition: background var(--transition); }
+        .cal-sync.saving .dot { background: var(--warning-text); }
+        .cal-sync.error .dot { background: var(--danger); }
+        .cal-back { font-size: 12.5px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); cursor: pointer; background: var(--surface); transition: var(--transition); }
+        .cal-back:hover { background: var(--surface-hover); }
+        .cal-user { font-size: 12.5px; color: var(--text-muted); font-weight: 600; }
+        #guest-banner { display: none; background: var(--warning-bg); color: var(--warning-text); padding: 10px 18px; font-size: 13.5px; text-align: center; border-bottom: 1px solid var(--warning-border); }
+        #guest-banner a { font-weight: 700; text-decoration: underline; }
+
+        /* status badge for the read-only Habbit (Aktivitas & Pengeluaran) sync */
+        .habbit-sync-badge {
+            font-size: 11.5px; color: var(--primary-text); background: var(--primary-soft);
+            border: 1px solid var(--primary-soft-strong); display: inline-flex; align-items: center; gap: 6px;
+            padding: 5px 10px; border-radius: 999px; cursor: pointer; transition: var(--transition);
+        }
+        .habbit-sync-badge:hover { background: var(--primary-soft-strong); }
+        .habbit-sync-badge.empty { color: var(--text-faint); background: var(--surface-muted); border-color: var(--border); }
+        .habbit-sync-badge .refresh-ico { display: inline-block; transition: transform .35s ease; }
+        .habbit-sync-badge.spinning .refresh-ico { transform: rotate(360deg); }
+
+        /* ===== App shell / header ===== */
+        .app-shell { max-width: 1440px; margin: 0 auto; }
+
+        /* Top-level mode switcher: Kalender (default) / Keuangan (finance detail) / Aktivitas (no money) */
+        .mode-tabs {
+            display: flex; gap: 6px; padding: 14px 24px 0;
+        }
+        .mode-tab {
+            border: 1px solid var(--border); background: var(--surface); color: var(--text-muted);
+            padding: 8px 16px; border-radius: var(--radius-md); font-size: 13px; font-weight: 700;
+            cursor: pointer; transition: var(--transition);
+        }
+        .mode-tab:hover:not(.active) { background: var(--surface-hover); color: var(--text-main); border-color: var(--border-strong); }
+        .mode-tab.active { background: var(--primary); color: #fff; border-color: var(--primary); box-shadow: var(--shadow-card); }
+
+        header { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px; flex-wrap: wrap; gap: 12px; }
+        .header-left { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+        .month-navigation { display: flex; align-items: center; gap: 10px; }
+        .month-navigation h1 { font-family: var(--font-display); font-size: 19px; margin: 0; min-width: 160px; text-align: center; font-weight: 700; letter-spacing: -0.01em; }
+        .nav-btn {
+            width: 32px; height: 32px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface);
+            cursor: pointer; color: var(--text-muted); font-size: 14px; transition: transform .12s ease, border-color var(--transition), background var(--transition);
+        }
+        .nav-btn:hover { background: var(--surface-hover); color: var(--text-main); border-color: var(--border-strong); }
+        .nav-btn:active { transform: scale(0.94); }
+        .editable-title { cursor: pointer; border-radius: 6px; }
+        .editable-title:hover { color: var(--primary); }
+        .date-jump-input, .year-jump-input {
+            font: inherit; font-family: var(--font-display); font-weight: 700; font-size: 19px; text-align: center;
+            background: var(--surface); border: 1px solid var(--primary); border-radius: var(--radius-sm);
+            color: var(--text-main); padding: 3px 6px; width: 160px;
+        }
+        .view-tabs { display: flex; gap: 4px; background: var(--surface-muted); border: 1px solid var(--border); padding: 4px; border-radius: var(--radius-md); }
+        .view-tab { border: none; background: transparent; padding: 7px 14px; border-radius: 7px; font-size: 13px; font-weight: 600; color: var(--text-muted); cursor: pointer; transition: var(--transition); }
+        .view-tab.active { background: var(--surface); color: var(--primary-text); box-shadow: var(--shadow-card); }
+        .view-tab:hover:not(.active) { color: var(--text-main); }
+        .header-right { display: flex; align-items: center; gap: 14px; }
+        .subtitle { font-size: 12.5px; color: var(--text-faint); font-style: italic; }
+        .theme-toggle-btn {
+            border: 1px solid var(--border); background: var(--surface); border-radius: 50%; width: 36px; height: 36px;
+            display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-main);
+            transition: border-color var(--transition), background var(--transition);
+        }
+        .theme-toggle-btn:hover { background: var(--surface-hover); border-color: var(--border-strong); }
+        .theme-toggle-btn .icon-moon { display: none; }
+        [data-theme="dark"] .theme-toggle-btn .icon-sun { display: none; }
+        [data-theme="dark"] .theme-toggle-btn .icon-moon { display: block; }
+
+        /* ===== Finance mode summary bar (today + monthly totals) ===== */
+        .finance-summary-bar { display: flex; gap: 12px; padding: 0 24px 18px; flex-wrap: wrap; }
+        .fsb-card {
+            flex: 1; min-width: 150px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md);
+            padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; box-shadow: var(--shadow-card);
+        }
+        .fsb-label { font-size: 11.5px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; letter-spacing: .03em; }
+        .fsb-amounts { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+        .fsb-amt { font-family: var(--font-mono); font-size: 15px; font-weight: 700; }
+        .fsb-amt.income { color: var(--success-text); }
+        .fsb-amt.expense { color: var(--danger); }
+        .fsb-net-card { border-color: var(--primary-soft-strong); background: var(--primary-soft); }
+        .fsb-net-amt { font-family: var(--font-display); font-size: 19px; font-weight: 700; color: var(--primary-text); }
+        .fsb-net-amt.negative { color: var(--danger); }
+
+        /* ===== Layout ===== */
+        .main-container { padding: 0 24px 32px; }
+        .calendar-section { min-width: 0; }
+
+        /* ===== Floating "My Goals" widget — drag anywhere, minimize to a bubble ===== */
+        .goals-float { position: fixed; z-index: 150; }
+        .goals-float.mode-hidden { display: none; }
+
+        .goals-bubble {
+            display: none; width: 54px; height: 54px; padding: 0; border-radius: 50%;
+            background: var(--primary); color: #fff; border: none; cursor: grab; position: relative;
+            align-items: center; justify-content: center; box-shadow: var(--shadow-lift);
+            transition: background var(--transition);
+        }
+        .goals-float.minimized .goals-bubble { display: flex; }
+        .goals-bubble.dragging { cursor: grabbing; }
+        .goals-bubble-badge {
+            position: absolute; top: -3px; right: -3px; min-width: 18px; height: 18px; padding: 0 4px;
+            border-radius: 999px; background: var(--danger); color: #fff; font-size: 10px; font-weight: 700;
+            display: flex; align-items: center; justify-content: center; border: 2px solid var(--page-bg);
+        }
+
+        .goals-panel {
+            display: flex; flex-direction: column; width: 340px; max-height: calc(100vh - 40px);
+            background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+            padding: 16px; box-shadow: var(--shadow-lift);
+            animation: panelPop var(--transition-slow) cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        @keyframes panelPop { from { transform: translateY(10px) scale(0.98); opacity: 0; } }
+        .goals-float.minimized .goals-panel { display: none; }
+        @media (max-width: 640px) { .goals-panel { width: calc(100vw - 32px); } }
+
+        .goals-header-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+        #goals-drag-handle { cursor: grab; user-select: none; }
+        #goals-drag-handle.dragging { cursor: grabbing; }
+        .goals-minimize-btn {
+            border: 1px solid var(--border); background: var(--surface-muted); color: var(--text-muted);
+            width: 22px; height: 22px; border-radius: 6px; cursor: pointer; font-size: 12px; line-height: 1;
+            display: flex; align-items: center; justify-content: center; flex-shrink: 0; padding: 0;
+            transition: var(--transition);
+        }
+        .goals-minimize-btn:hover { background: var(--surface-hover); color: var(--text-main); }
+
+        /* ===== Armed-date banner ===== */
+        .armed-date-banner {
+            display: none; align-items: center; justify-content: space-between; gap: 10px;
+            background: var(--primary-soft); border: 1px solid var(--primary-soft-strong); color: var(--primary-text);
+            padding: 9px 12px; border-radius: var(--radius-sm); margin-bottom: 10px; font-size: 12px; flex-shrink: 0;
+        }
+        .armed-date-banner button { border: none; background: transparent; color: var(--text-muted); font-size: 17px; cursor: pointer; line-height: 1; padding: 2px 6px; flex-shrink: 0; }
+        .armed-date-banner button:hover { color: var(--danger); }
+
+        /* ===== Calendar grid ===== */
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+        .day-name { text-align: center; font-size: 11px; font-weight: 700; color: var(--text-faint); letter-spacing: .04em; padding-bottom: 6px; }
+        .calendar-day {
+            background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md);
+            min-height: 104px; max-height: 160px; padding: 8px; display: flex; flex-direction: column; gap: 6px;
+            transition: border-color .12s ease, background .15s ease, box-shadow .15s ease;
+        }
+        .calendar-day.other-month { background: var(--surface-muted); }
+        .calendar-day.other-month .date-num { color: var(--text-faint); }
+        .calendar-day.today { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary) inset; }
+        .calendar-day.today .date-num { color: var(--primary-text); }
+        .calendar-day.armed-date { border-color: var(--primary); border-width: 2px; box-shadow: 0 0 0 2px var(--primary-soft-strong); }
+        .calendar-day.drag-over { border-color: var(--primary); background: var(--primary-soft); }
+        .calendar-day.just-added { animation: flashAdd .7s ease; }
+        @keyframes flashAdd { 0% { background: var(--primary-soft); border-color: var(--primary); } 100% { background: var(--surface); } }
+        .date-num { font-size: 12.5px; font-weight: 600; color: var(--text-muted); flex-shrink: 0; }
+        .dropped-goals-container { display: flex; flex-direction: column; gap: 4px; overflow-y: auto; flex: 1; min-height: 0; }
+
+        .week-mode .calendar-day { min-height: 320px; max-height: 420px; }
+        .day-mode .calendar-day { min-height: 420px; max-height: 620px; padding: 16px; }
+        .day-mode .date-num { font-size: 15px; }
+
+        /* ===== Finance mode day cell — compact +/- summary, read-only ===== */
+        .calendar-day.finance-day { justify-content: flex-start; }
+        .calendar-day.finance-day.has-finance { cursor: pointer; }
+        .calendar-day.finance-day.has-finance:hover { border-color: var(--border-strong); box-shadow: var(--shadow-card); }
+        .finance-day-body { display: flex; flex-direction: column; gap: 3px; flex: 1; justify-content: center; }
+        .finance-day-empty { color: var(--text-faint); font-size: 12px; text-align: center; }
+        .finance-line { font-family: var(--font-mono); font-size: 12.5px; font-weight: 700; line-height: 1.3; }
+        .finance-line.income { color: var(--success-text); }
+        .finance-line.expense { color: var(--danger); }
+
+        .dropped-goal {
+            display: flex; align-items: center; justify-content: space-between; gap: 6px; background: var(--primary-soft);
+            color: var(--text-main); border-radius: var(--radius-sm); padding: 4px 7px; font-size: 11.5px; line-height: 1.3;
+            cursor: grab; animation: rise 0.3s ease both;
+        }
+        @keyframes rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+        .dropped-goal.dragging { opacity: .35; }
+        .dropped-goal.hide-from-calendar { opacity: .55; }
+        .dropped-goal .chip-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .dropped-goal.has-value .chip-text { cursor: pointer; }
+        .dropped-goal.has-value .chip-text:hover { text-decoration: underline dashed; }
+        .chip-value { font-family: var(--font-mono); font-weight: 700; color: var(--primary-text); margin-left: 4px; font-size: 11px; }
+        .remove-cross { color: var(--text-faint); cursor: pointer; font-size: 13px; padding: 0 2px; line-height: 1; transition: color .12s ease; }
+        .remove-cross:hover { color: var(--danger); }
+
+        /* Read-only chips mirroring entries from the separate Habbit app.
+           Deliberately NOT styled like .dropped-goal (no solid fill, no grab
+           cursor, no × ) so it's visually obvious these came from elsewhere
+           and aren't editable/draggable from here. */
+        .habbit-chip {
+            display: flex; align-items: center; gap: 5px; background: var(--surface-muted);
+            border-left: 3px solid var(--text-faint); border-radius: var(--radius-sm);
+            padding: 4px 7px 4px 6px; font-size: 11px; line-height: 1.3; cursor: pointer;
+            animation: rise 0.3s ease both;
+        }
+        .habbit-chip .chip-icon { flex-shrink: 0; font-size: 10.5px; }
+        .habbit-chip .chip-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); }
+        .habbit-chip .chip-amt { font-family: var(--font-mono); font-weight: 700; font-size: 10.5px; flex-shrink: 0; color: var(--text-faint); }
+        .habbit-chip.type-income { border-left-color: var(--success-text); }
+        .habbit-chip.type-income .chip-amt { color: var(--success-text); }
+        .habbit-chip.type-expense { border-left-color: var(--danger); }
+        .habbit-chip.type-expense .chip-amt { color: var(--danger); }
+        .habbit-chip.type-activity { border-left-color: var(--primary); }
+
+        /* ===== Year view ===== */
+        .year-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; }
+        .mini-month { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px; box-shadow: var(--shadow-card); }
+        .mini-month-title { font-family: var(--font-display); font-weight: 700; font-size: 13px; margin-bottom: 8px; cursor: pointer; }
+        .mini-month-title:hover { color: var(--primary); }
+        .mini-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+        .mini-day-name { font-size: 9px; text-align: center; color: var(--text-faint); }
+        .mini-day { position: relative; text-align: center; font-size: 10.5px; padding: 4px 0; border-radius: 4px; cursor: pointer; color: var(--text-muted); }
+        .mini-day:hover { background: var(--surface-hover); }
+        .mini-day.other { visibility: hidden; }
+        .mini-day.today { background: var(--primary); color: #fff; font-weight: 700; }
+        .mini-day .dot { position: absolute; bottom: 1px; left: 50%; transform: translateX(-50%); width: 3px; height: 3px; border-radius: 100px; background: var(--success-text); }
+        .mini-day.today .dot { background: #fff; }
+
+        /* ===== Goals section ===== */
+        .goals-header-area { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-shrink: 0; }
+        .goals-header-area h2 { font-family: var(--font-display); font-size: 15px; margin: 0; letter-spacing: -0.01em; }
+        .focus-filter-box { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-muted); cursor: pointer; }
+
+        .goal-input-box { display: flex; gap: 6px; margin-bottom: 8px; flex-shrink: 0; }
+        .goal-input-box input {
+            flex: 1; min-width: 0; border: 1px solid var(--border); background: var(--surface-muted);
+            border-radius: var(--radius-sm); padding: 9px 11px; font-size: 13px; color: var(--text-main);
+            transition: border-color var(--transition);
+        }
+        .goal-input-box input:focus { outline: none; border-color: var(--primary); background: var(--surface); }
+        .goal-input-box button {
+            border: none; background: var(--primary); color: #fff; padding: 9px 16px; border-radius: var(--radius-sm);
+            font-size: 13px; font-weight: 600; cursor: pointer; flex-shrink: 0; box-shadow: var(--shadow-card);
+            transition: transform .12s ease, background var(--transition);
+        }
+        .goal-input-box button:hover { background: var(--primary-hover); }
+        .goal-input-box button:active { transform: scale(0.97); }
+
+        .goal-options-row { display: none; flex-direction: column; gap: 8px; margin-bottom: 8px; padding: 10px; background: var(--surface-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); flex-shrink: 0; }
+        .goal-options-row.active { display: flex; }
+        .track-toggle { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-muted); cursor: pointer; }
+        .track-icon { color: var(--text-faint); }
+        .format-toggle { display: none; gap: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 3px; }
+        .format-btn { flex: 1; border: none; background: transparent; padding: 5px 8px; border-radius: 6px; font-size: 11.5px; font-weight: 600; color: var(--text-muted); cursor: pointer; transition: var(--transition); }
+        .format-btn.active { background: var(--primary); color: #fff; }
+        .unit-input { border: 1px solid var(--border); background: var(--surface); border-radius: var(--radius-sm); padding: 6px 9px; font-size: 12.5px; color: var(--text-main); }
+
+        .goal-search-box { position: relative; margin-bottom: 4px; flex-shrink: 0; }
+        .goal-search-box input {
+            width: 100%; border: 1px solid var(--border); background: var(--surface-muted); border-radius: var(--radius-sm);
+            padding: 8px 10px 8px 28px; font-size: 12.5px; color: var(--text-main); transition: border-color var(--transition);
+        }
+        .goal-search-box input:focus { outline: none; border-color: var(--primary); background: var(--surface); }
+        .goal-search-box::before { content: "🔍"; position: absolute; left: 9px; top: 50%; transform: translateY(-50%); font-size: 11px; opacity: .6; pointer-events: none; }
+
+        .draggable-zone { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; min-height: 80px; }
+        .goal-card {
+            display: flex; align-items: center; justify-content: space-between; gap: 8px; background: var(--surface-muted);
+            border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 9px 10px; cursor: grab;
+            transition: border-color .12s ease, background .12s ease, box-shadow .12s ease;
+        }
+        .goal-card:hover { border-color: var(--primary); box-shadow: var(--shadow-card); }
+        .goal-card.dragging { opacity: .4; }
+        .goal-card.hidden-status-style { opacity: .5; }
+        .goal-text-wrap { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+        .goal-text { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .track-badge { font-size: 9.5px; color: var(--text-faint); }
+        .action-container { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+        .view-toggle-btn, .delete-btn {
+            border: none; background: transparent; cursor: pointer; font-size: 14px; color: var(--text-faint);
+            padding: 3px 5px; border-radius: 5px; display: inline-flex; align-items: center; justify-content: center;
+            transition: color .12s ease, background-color .12s ease;
+        }
+        .view-toggle-btn svg { display: block; }
+        .view-toggle-btn:hover { color: var(--text-main); background: var(--surface-hover); }
+        .delete-btn:hover { color: var(--danger); background: var(--danger-bg); }
+
+        /* ===== Backup panel ===== */
+        .backup-panel { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; font-size: 12px; flex-shrink: 0; }
+        .backup-panel summary { cursor: pointer; font-weight: 600; color: var(--text-muted); }
+        .backup-status { color: var(--text-faint); font-size: 11px; margin: 8px 0; }
+        .backup-row { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+        .backup-row button, .import-label {
+            border: 1px solid var(--border); background: var(--surface); padding: 7px 12px; border-radius: var(--radius-sm);
+            font-size: 11.5px; cursor: pointer; color: var(--text-main); transition: var(--transition);
+        }
+        .backup-row button:hover, .import-label:hover { background: var(--surface-hover); border-color: var(--border-strong); }
+        .restore-row { display: flex; flex-direction: column; gap: 5px; }
+        .restore-label { font-size: 11px; color: var(--text-faint); }
+        #restore-select { border: 1px solid var(--border); background: var(--surface); border-radius: var(--radius-sm); padding: 6px; font-size: 11.5px; color: var(--text-main); }
+
+        /* ===== Modals ===== */
+        .modal-overlay {
+            display: none; position: fixed; inset: 0; background: rgba(10, 14, 25, .55); align-items: center;
+            justify-content: center; z-index: 200; backdrop-filter: blur(4px);
+        }
+        .modal-box {
+            background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 22px;
+            width: 320px; max-width: 90vw; box-shadow: var(--shadow-lift);
+            animation: modalPop var(--transition-slow) cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        @keyframes modalPop { from { transform: translateY(24px) scale(0.96); opacity: 0; } }
+        .modal-box h3 { font-family: var(--font-display); margin: 0 0 14px; font-size: 15.5px; letter-spacing: -0.01em; }
+        .modal-desc { font-size: 12.5px; color: var(--text-muted); margin: -6px 0 14px; }
+
+        /* ===== Finance day-detail modal ===== */
+        .finance-detail-box { width: 380px; }
+        .finance-detail-list { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; margin-bottom: 14px; }
+        .finance-detail-row {
+            display: flex; align-items: center; gap: 8px; background: var(--surface-muted); border-radius: var(--radius-sm);
+            padding: 8px 10px; font-size: 12.5px;
+        }
+        .finance-detail-row .fd-icon { flex-shrink: 0; }
+        .finance-detail-row .fd-main { flex: 1; min-width: 0; }
+        .finance-detail-row .fd-label { font-weight: 600; color: var(--text-main); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .finance-detail-row .fd-meta { font-size: 11px; color: var(--text-faint); margin-top: 1px; }
+        .finance-detail-row .fd-amt { font-family: var(--font-mono); font-weight: 700; flex-shrink: 0; }
+        .finance-detail-row .fd-amt.income { color: var(--success-text); }
+        .finance-detail-row .fd-amt.expense { color: var(--danger); }
+        .finance-detail-total {
+            display: flex; align-items: center; justify-content: space-between; font-family: var(--font-display);
+            font-weight: 700; font-size: 14.5px; padding-top: 12px; border-top: 1px solid var(--border); margin-bottom: 4px;
+        }
+        .finance-detail-total .fd-total-amt.positive { color: var(--success-text); }
+        .finance-detail-total .fd-total-amt.negative { color: var(--danger); }
+        .modal-input-row { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+        .modal-input-row input[type="number"] {
+            flex: 1; width: 0; border: 1px solid var(--border); background: var(--surface-muted); border-radius: var(--radius-sm);
+            padding: 10px 11px; font-size: 14px; color: var(--text-main); text-align: center; transition: border-color var(--transition);
+        }
+        .modal-input-row input[type="number"]:focus { outline: none; border-color: var(--primary); background: var(--surface); }
+        .modal-unit { font-size: 12.5px; color: var(--text-muted); white-space: nowrap; }
+        .modal-checkbox-row { display: flex; align-items: flex-start; gap: 8px; font-size: 12.5px; color: var(--text-muted); margin-bottom: 16px; cursor: pointer; }
+        .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+        .modal-actions button {
+            border: 1px solid var(--border); background: var(--surface); padding: 9px 18px; border-radius: var(--radius-sm);
+            font-size: 13px; font-weight: 600; cursor: pointer; color: var(--text-main);
+            transition: transform .12s ease, background var(--transition), border-color var(--transition);
+        }
+        .modal-actions button:hover { background: var(--surface-hover); border-color: var(--border-strong); }
+        .modal-actions button:active { transform: scale(0.97); }
+        #vm-save { background: var(--primary); border-color: var(--primary); color: #fff; box-shadow: var(--shadow-card); }
+        #vm-save:hover { background: var(--primary-hover); }
+        .danger-btn { background: var(--danger-bg) !important; border-color: var(--danger-border) !important; color: var(--danger) !important; }
+        .danger-btn:hover { background: var(--danger-border) !important; }
+
+        /* ===== Toast ===== */
+        .toast {
+            position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(10px);
+            background: var(--text-main); color: var(--surface); padding: 10px 18px; border-radius: var(--radius-md);
+            font-size: 12.5px; font-weight: 600; opacity: 0; pointer-events: none;
+            transition: opacity .2s ease, transform .2s ease; z-index: 300; box-shadow: var(--shadow-lift);
+            max-width: 90vw; text-align: center;
+        }
+        .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+        /* ===== Achievement badge toast (streak milestones) ===== */
+        .badge-toast-wrap {
+            position: fixed; bottom: 24px; right: 24px; z-index: 400;
+            display: flex; flex-direction: column; align-items: flex-end;
+            pointer-events: none; max-width: calc(100vw - 32px);
+        }
+        .badge-toast {
+            display: flex; align-items: center; gap: 12px; pointer-events: auto;
+            background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+            padding: 14px 18px 14px 14px; box-shadow: var(--shadow-lift);
+            width: 320px; max-width: 100%; position: relative; overflow: hidden;
+            opacity: 0; transform: translateX(24px) scale(0.96);
+            transition: opacity .4s cubic-bezier(0.22, 1, 0.36, 1), transform .4s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        .badge-toast.show { opacity: 1; transform: translateX(0) scale(1); }
+        .badge-toast.hide { opacity: 0; transform: translateX(24px) scale(0.97); }
+        .badge-icon {
+            width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0;
+            display: flex; align-items: center; justify-content: center; font-size: 19px;
+            box-shadow: 0 2px 8px rgba(45, 65, 130, 0.18);
+        }
+        .badge-toast.tier-starter .badge-icon { background: linear-gradient(135deg, #d9e4ff, #a9c0ff); }
+        .badge-toast.tier-bronze .badge-icon { background: linear-gradient(135deg, #e8b085, #c97b3f); }
+        .badge-toast.tier-silver .badge-icon { background: linear-gradient(135deg, #dfe4ec, #a9b2c2); }
+        .badge-toast.tier-gold .badge-icon { background: linear-gradient(135deg, #ffe08a, #f0b429); }
+        .badge-toast.tier-platinum .badge-icon { background: linear-gradient(135deg, #b9e8ff, #4fc3f7); }
+        .badge-toast.tier-diamond .badge-icon { background: linear-gradient(135deg, #d9c8ff, #8a63f0); }
+        .badge-body { flex: 1; min-width: 0; }
+        .badge-eyebrow { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--primary-text); margin-bottom: 2px; }
+        .badge-title { font-family: var(--font-display); font-size: 13.5px; font-weight: 700; color: var(--text-main); margin-bottom: 2px; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .badge-sub { font-size: 11.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .badge-progress-bar { position: absolute; bottom: 0; left: 0; height: 3px; background: var(--primary); width: 100%; transform-origin: left; }
+        .badge-progress-bar.shrink { transition: width 4.2s linear; width: 0%; }
+
+        /* ===== Trophy-shelf streak indicator on goal cards ===== */
+        .streak-indicator {
+            font-size: 10px; font-weight: 700; color: var(--warning-text); background: var(--warning-bg);
+            border: 1px solid var(--warning-border); border-radius: 999px; padding: 1px 7px;
+            display: inline-flex; align-items: center; gap: 3px; white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="cal-topbar">
+        <div class="left">
+            <div class="cal-brand">GEMBEL <span>AI PIK</span></div>
+            <a class="cal-back" href="dashboard.html" id="cal-back-link">← Dashboard</a>
+        </div>
+        <div class="right">
+            <span class="habbit-sync-badge" id="habbit-sync-badge" title="Data dari Habbit (Aktivitas & Pengeluaran) — klik buat refresh manual">
+                <span class="refresh-ico">🔄</span><span id="habbit-sync-text">Habbit: belum kebaca</span>
+            </span>
+            <span class="cal-sync" id="cal-sync-indicator"><span class="dot"></span><span id="cal-sync-text">Tersimpan</span></span>
+            <span class="cal-user" id="cal-user-name"></span>
+            <button class="cal-back" onclick="logout()" id="cal-logout-btn" style="cursor:pointer;">Keluar</button>
+        </div>
+    </div>
+
+    <div id="guest-banner">
+        🔎 Mode Demo — lo lagi nyoba tanpa akun. Data cuma kesimpen di browser ini dan bakal ilang kalau tab ditutup.
+        <a href="index.html" onclick="exitGuestDemo()">Daftar gratis</a> buat nyimpen progress lo beneran.
+    </div>
+
+    <div class="app-shell">
+        <div class="mode-tabs" id="mode-tabs">
+            <button class="mode-tab active" data-mode="calendar">📅 Kalender</button>
+            <button class="mode-tab" data-mode="finance">💰 Keuangan</button>
+            <button class="mode-tab" data-mode="activity">⏱️ Aktivitas</button>
+        </div>
+
+        <header>
+            <div class="header-left">
+                <div class="month-navigation">
+                    <button class="nav-btn" id="prev-btn" aria-label="Sebelumnya">&lt;</button>
+                    <h1 id="month-year-title">June 2026</h1>
+                    <button class="nav-btn" id="next-btn" aria-label="Berikutnya">&gt;</button>
+                </div>
+                <div class="view-tabs">
+                    <button class="view-tab" data-view="day">Day</button>
+                    <button class="view-tab" data-view="week">Week</button>
+                    <button class="view-tab active" data-view="month">Month</button>
+                    <button class="view-tab" data-view="year">Year</button>
+                </div>
+            </div>
+            <div class="header-right">
+                <div class="subtitle">Mastery Every Day.</div>
+                <button id="theme-toggle-btn" class="theme-toggle-btn" type="button" title="Ganti mode gelap/terang" aria-label="Ganti mode gelap/terang">
+                    <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="4"/>
+                        <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+                    </svg>
+                    <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 1020.354 15.354z"/>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Finance mode only: today's +/- and this month's running total -->
+        <div class="finance-summary-bar" id="finance-summary-bar" style="display:none;">
+            <div class="fsb-card">
+                <span class="fsb-label">Hari ini</span>
+                <div class="fsb-amounts">
+                    <span class="fsb-amt income" id="fsb-today-income">+Rp0</span>
+                    <span class="fsb-amt expense" id="fsb-today-expense">-Rp0</span>
+                </div>
+            </div>
+            <div class="fsb-card">
+                <span class="fsb-label" id="fsb-month-label">Bulan ini</span>
+                <div class="fsb-amounts">
+                    <span class="fsb-amt income" id="fsb-month-income">+Rp0</span>
+                    <span class="fsb-amt expense" id="fsb-month-expense">-Rp0</span>
+                </div>
+            </div>
+            <div class="fsb-card fsb-net-card">
+                <span class="fsb-label">Total bulanan</span>
+                <span class="fsb-net-amt" id="fsb-month-net">+Rp0</span>
+            </div>
+        </div>
+
+        <div class="main-container">
+            <div class="calendar-section">
+                <div id="calendar-area"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Floating "My Goals" widget — drag it anywhere by its header, minimize to a bubble -->
+    <div class="goals-float" id="goals-float">
+        <button class="goals-bubble" id="goals-bubble" title="Buka My Goals" aria-label="Buka My Goals">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 11l3 3L22 4"/>
+                <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
+            </svg>
+            <span class="goals-bubble-badge" id="goals-bubble-badge">0</span>
+        </button>
+
+        <div class="goals-panel" id="goals-panel">
+            <div class="goals-header-area" id="goals-drag-handle">
+                <h2>My Goals</h2>
+                <div class="goals-header-actions">
+                    <label class="focus-filter-box">
+                        <input type="checkbox" id="show-hidden-checkbox">
+                        Lihat yang di-hide
+                    </label>
+                    <button class="goals-minimize-btn" id="goals-minimize-btn" title="Minimize" aria-label="Minimize">&#8212;</button>
+                </div>
+            </div>
+            <div class="armed-date-banner" id="selected-date-banner">
+                <span>📅 <strong id="selected-date-text"></strong></span>
+                <button id="selected-date-clear" title="Batal pilih">×</button>
+            </div>
+            <div class="goal-input-box">
+                <input type="text" id="goal-input" placeholder="Ketik goal baru di sini..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                <button id="add-goal-btn">Tambah</button>
+            </div>
+            <div class="goal-options-row" id="goal-options-row">
+                <label class="track-toggle">
+                    <svg class="track-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <rect x="3" y="13" width="4.5" height="8" rx="1.2" fill="currentColor"/>
+                        <rect x="10" y="8" width="4.5" height="13" rx="1.2" fill="currentColor"/>
+                        <rect x="17" y="3" width="4.5" height="18" rx="1.2" fill="currentColor"/>
+                    </svg>
+                    <input type="checkbox" id="goal-track-value">
+                    Lacak angka
+                </label>
+                <div class="format-toggle" id="goal-format-toggle">
+                    <button type="button" class="format-btn active" data-format="counter">🔢 Counter</button>
+                    <button type="button" class="format-btn" data-format="hours">⏱️ Jam</button>
+                </div>
+                <input type="text" id="goal-unit-input" class="unit-input" placeholder="satuan (reps/km)" style="display:none;">
+            </div>
+
+            <div class="goal-search-box">
+                <input type="text" id="goal-search-input" placeholder="Cari goal..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+            </div>
+
+            <div class="draggable-zone" id="goals-pool"></div>
+
+            <details class="backup-panel">
+                <summary>Backup &amp; Restore</summary>
+                <div class="backup-status" id="backup-status-text">Memuat status backup...</div>
+                <div class="backup-row">
+                    <button id="export-backup-btn">⬇️ Unduh backup</button>
+                    <label class="import-label" for="import-backup-input">⬆️ Pulihkan dari file</label>
+                    <input type="file" id="import-backup-input" accept="application/json" style="display:none;">
+                </div>
+                <div class="restore-row">
+                    <span class="restore-label">Atau pulihkan dari snapshot otomatis harian (tersimpan di browser ini):</span>
+                    <select id="restore-select">
+                        <option value="">Pilih snapshot tersimpan…</option>
+                    </select>
+                </div>
+            </details>
+        </div>
+    </div>
+
+    <!-- Modal for entering/editing a goal's numeric value -->
+    <div id="value-modal-overlay" class="modal-overlay">
+        <div class="modal-box">
+            <h3 id="vm-title">Goal</h3>
+            <div class="modal-input-row" id="vm-counter-row">
+                <input type="number" id="vm-input" step="any" inputmode="decimal">
+                <span id="vm-unit" class="modal-unit"></span>
+            </div>
+            <div class="modal-input-row" id="vm-hours-row" style="display:none;">
+                <input type="number" id="vm-hours" min="0" step="1" inputmode="numeric" placeholder="0">
+                <span class="modal-unit">jam</span>
+                <input type="number" id="vm-minutes" min="0" max="59" step="1" inputmode="numeric" placeholder="0">
+                <span class="modal-unit">menit</span>
+            </div>
+            <div class="modal-actions">
+                <button id="vm-cancel">Batal</button>
+                <button id="vm-save">Simpan</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for confirming goal deletion -->
+    <div id="delete-modal-overlay" class="modal-overlay">
+        <div class="modal-box">
+            <h3 id="dm-title">Hapus goal ini?</h3>
+            <p class="modal-desc">Tindakan ini nggak bisa dibatalkan.</p>
+            <label class="modal-checkbox-row">
+                <input type="checkbox" id="dm-delete-history">
+                Hapus juga semua histori progress goal ini di kalender
+            </label>
+            <div class="modal-actions">
+                <button id="dm-cancel">Batal</button>
+                <button id="dm-confirm" class="danger-btn">Ya, hapus</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Finance mode: per-day transaction detail (read-only, mirrors Habbit) -->
+    <div id="finance-detail-modal-overlay" class="modal-overlay">
+        <div class="modal-box finance-detail-box">
+            <h3 id="fdm-title">Transaksi</h3>
+            <div class="finance-detail-list" id="fdm-list"></div>
+            <div class="finance-detail-total" id="fdm-total"></div>
+            <div class="modal-actions">
+                <button id="fdm-close">Tutup</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="app-toast"></div>
+
+    <!-- Achievement milestone badges — queued so simultaneous streaks each get their own moment instead of stacking -->
+    <div class="badge-toast-wrap" id="badge-toast-wrap"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/dist/umd/supabase.min.js"></script>
+    <script src="assets/supabaseClient.js"></script>
+    <script src="assets/auth.js"></script>
+    <script>
+        // ============ STATE ============
+        let viewMode = 'month';
+        let activeMode = 'calendar'; // top-level mode: 'calendar' (default, unchanged) | 'finance' (Habbit money detail) | 'activity' (calendar with finance chips hidden)
+        let focusDate = new Date(); // anchor date for whichever view is active
+        let selectedDateId = null;  // date currently "armed" — double-click a date, then double-click a goal to log it there
+        let currentNewGoalFormat = 'counter'; // format picked in the "add goal" form
+
+        const monthNames = [
+            "January", "February", "March", "April", "May", "June",
+            "July", "August", "September", "October", "November", "December"
+        ];
+        const dayNamesShort = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+        const dayNamesFull = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+        // ============ CLOUD ACCOUNT / PER-USER STORAGE KEYS ============
+        // Every key is namespaced with the logged-in user's id so two accounts
+        // sharing one browser never see each other's data, and everything is
+        // mirrored to Supabase so goals/progress travel across devices. This
+        // localStorage copy still exists underneath as an instant local cache /
+        // offline buffer / backup-export source — it's just no longer the
+        // source of truth.
+        let CURRENT_USER = null;
+        let IS_GUEST = false;
+        let LS_PREFIX = '';
+        let LS_GOALS = '', LS_PROGRESS = '', LS_THEME = '', LS_TEXTBACKUP = '';
+        let LS_PANEL_STATE = '', LS_ACHIEVED_MILESTONES = '', BACKUP_PREFIX = '';
+
+        function initUserScopedKeys(userId) {
+            LS_PREFIX = 'gembelcal_' + userId + '_';
+            LS_GOALS = LS_PREFIX + 'goals';
+            LS_PROGRESS = LS_PREFIX + 'progress';
+            LS_THEME = LS_PREFIX + 'theme';
+            LS_TEXTBACKUP = LS_PREFIX + 'text_backup';
+            LS_PANEL_STATE = LS_PREFIX + 'panel_state';
+            LS_ACHIEVED_MILESTONES = LS_PREFIX + 'achieved_milestones';
+            BACKUP_PREFIX = LS_PREFIX + 'backup_';
+        }
+
+        function setSyncIndicator(state) {
+            const wrap = document.getElementById('cal-sync-indicator');
+            const txt = document.getElementById('cal-sync-text');
+            if (!wrap || !txt) return;
+            wrap.classList.remove('saving', 'error');
+            if (state === 'saving') {
+                wrap.classList.add('saving');
+                txt.textContent = 'Menyimpan…';
+            } else if (state === 'error') {
+                wrap.classList.add('error');
+                txt.textContent = 'Gagal simpan (offline?)';
+            } else {
+                const now = new Date();
+                txt.textContent = `Tersimpan · ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+            }
+        }
+
+        // Pull the latest cloud copy down into this browser before the app
+        // boots, so goals/progress made on another device show up here too.
+        // Writes into the SAME localStorage keys loadLocalDatabase() reads
+        // from below, so nothing else in the app needs to change.
+        async function pullCloudData(userId) {
+            if (IS_GUEST) return; // guest mode: local-only, nothing to pull
+            try {
+                const [{ data: goalRows, error: gErr }, { data: entryRows, error: eErr }, { data: settingsRow, error: sErr }] = await Promise.all([
+                    supabase.from('calendar_goals').select('*').eq('user_id', userId).order('sort_order'),
+                    supabase.from('calendar_goal_entries').select('*').eq('user_id', userId),
+                    supabase.from('calendar_settings').select('*').eq('user_id', userId).maybeSingle(),
+                ]);
+                if (gErr || eErr || sErr) { console.error('cloud pull failed', gErr || eErr || sErr); return; }
+
+                const cloudGoals = (goalRows || []).map(r => ({
+                    id: r.id, text: r.text, hidden: r.hidden, trackValue: r.track_value, format: r.format, unit: r.unit,
+                }));
+                const cloudProgress = {};
+                (entryRows || []).forEach(r => {
+                    const [y, m, d] = r.entry_date.split('-').map(Number);
+                    const dateId = dateIdFor(y, m - 1, d);
+                    if (!cloudProgress[dateId]) cloudProgress[dateId] = [];
+                    cloudProgress[dateId].push({ id: r.goal_id, value: r.value, entryId: r.id });
+                });
+
+                localStorage.setItem(LS_GOALS, JSON.stringify(cloudGoals));
+                localStorage.setItem(LS_PROGRESS, JSON.stringify(cloudProgress));
+                localStorage.setItem(LS_THEME, (settingsRow && settingsRow.theme) || 'light');
+            } catch (e) {
+                console.error('cloud pull exception', e);
+            }
+        }
+
+        // Full reconcile on every save: upsert whatever's currently in memory,
+        // delete whatever's no longer there. Simpler and safer than tracking
+        // per-mutation diffs across ~10 call sites, and cheap enough at the
+        // personal-use data volumes this app is built for.
+        let cloudSyncTimer = null;
+        function queueCloudSync() {
+            setSyncIndicator('saving');
+            clearTimeout(cloudSyncTimer);
+            cloudSyncTimer = setTimeout(pushCloudData, 800);
+        }
+        async function pushCloudData() {
+            if (!CURRENT_USER || IS_GUEST) { setSyncIndicator('ok'); return; } // guest mode never touches Supabase
+            const theme = document.documentElement.getAttribute('data-theme') || 'light';
+
+            const goalRows = goals.map((g, i) => ({
+                id: g.id, user_id: CURRENT_USER.id, text: g.text, hidden: !!g.hidden,
+                track_value: !!g.trackValue, format: g.format || 'counter', unit: g.unit || '', sort_order: i,
+            }));
+            const entryRows = [];
+            for (const dateId in progress) {
+                const d = parseDateId(dateId);
+                const entryDate = isoDate(d);
+                (progress[dateId] || []).forEach(e => {
+                    entryRows.push({ id: e.entryId, goal_id: e.id, user_id: CURRENT_USER.id, entry_date: entryDate, value: e.value });
+                });
+            }
+
+            try {
+                if (goalRows.length) {
+                    const { error } = await supabase.from('calendar_goals').upsert(goalRows);
+                    if (error) throw error;
+                }
+                let delGoals = supabase.from('calendar_goals').delete().eq('user_id', CURRENT_USER.id);
+                if (goalRows.length) delGoals = delGoals.not('id', 'in', `(${goalRows.map(g => `"${g.id}"`).join(',')})`);
+                const { error: delGoalsErr } = await delGoals;
+                if (delGoalsErr) throw delGoalsErr;
+
+                if (entryRows.length) {
+                    const { error } = await supabase.from('calendar_goal_entries').upsert(entryRows);
+                    if (error) throw error;
+                }
+                let delEntries = supabase.from('calendar_goal_entries').delete().eq('user_id', CURRENT_USER.id);
+                if (entryRows.length) delEntries = delEntries.not('id', 'in', `(${entryRows.map(e => `"${e.id}"`).join(',')})`);
+                const { error: delEntriesErr } = await delEntries;
+                if (delEntriesErr) throw delEntriesErr;
+
+                const { error: settingsErr } = await supabase.from('calendar_settings').upsert({ user_id: CURRENT_USER.id, theme });
+                if (settingsErr) throw settingsErr;
+
+                setSyncIndicator('ok');
+            } catch (e) {
+                console.error('cloud push failed', e);
+                setSyncIndicator('error');
+            }
+        }
+
+        // ============ THEME (light / dark) ============
+        function applyTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem(LS_THEME, theme);
+            queueCloudSync();
+        }
+        function initTheme() {
+            applyTheme(localStorage.getItem(LS_THEME) || 'light');
+        }
+
+        // ============ DATABASE ============
+        let goals = [];
+        let progress = {};
+        let textBackupDb = {};
+
+        function loadLocalDatabase() {
+            goals = JSON.parse(localStorage.getItem(LS_GOALS));
+            if (!goals || goals.length === 0) {
+                goals = [
+                    { id: 'g1', text: 'Badminton Drilling 2 Jam', hidden: false, trackValue: false, format: 'counter', unit: '' },
+                    { id: 'g2', text: 'Trading Journal QwerTrade', hidden: false, trackValue: false, format: 'counter', unit: '' },
+                    { id: 'g3', text: 'Fix Bug React / Node.js', hidden: false, trackValue: false, format: 'counter', unit: '' },
+                    { id: 'g4', text: 'Push Up', hidden: false, trackValue: true, format: 'counter', unit: 'reps' },
+                    { id: 'g5', text: 'Deep Work', hidden: false, trackValue: true, format: 'hours', unit: 'jam' }
+                ];
+                localStorage.setItem(LS_GOALS, JSON.stringify(goals));
+            }
+
+            progress = JSON.parse(localStorage.getItem(LS_PROGRESS)) || {};
+
+            textBackupDb = JSON.parse(localStorage.getItem(LS_TEXTBACKUP)) || {
+                'g1': 'Badminton Drilling 2 Jam',
+                'g2': 'Trading Journal QwerTrade',
+                'g3': 'Fix Bug React / Node.js',
+                'g4': 'Push Up',
+                'g5': 'Deep Work'
+            };
+        }
+
+        // ============ HABBIT SYNC (read-only) ============
+        // "Habbit" (Aktivitas & Pengeluaran) is a SEPARATE app with its own
+        // Supabase table (habbit_entries). We never write to it — we only
+        // SELECT finished entries for this same user and mirror them onto the
+        // matching calendar date as read-only chips. Real cross-device sync
+        // now (not just same-browser), via a Realtime subscription set up in
+        // DOMContentLoaded below.
+        let habbitData = { running: [], history: [] };
+
+        async function loadHabbitData() {
+            if (!CURRENT_USER || IS_GUEST) return { running: [], history: [] };
+            try {
+                const { data, error } = await supabase
+                    .from('habbit_entries')
+                    .select('*')
+                    .eq('user_id', CURRENT_USER.id)
+                    .eq('status', 'finished');
+                if (error) { console.warn('Data Habbit gak kebaca / rusak, diabaikan.', error); return { running: [], history: [] }; }
+                return { running: [], history: data || [] };
+            } catch (e) {
+                console.warn('Data Habbit gak kebaca / rusak, diabaikan.', e);
+                return { running: [], history: [] };
+            }
+        }
+
+        // Habbit dates look like "2026-08-04" (toDateOnly in habbit_2.html);
+        // this app's dateId looks like "date-2026-8-4" (dateIdFor above) — note
+        // the month is zero-padded on Habbit's side but NOT in our dateId, so a
+        // straight string swap won't line up and this has to go through actual
+        // number parsing.
+        function habbitDateToDateId(habbitDateStr) {
+            if (!habbitDateStr) return null;
+            const parts = String(habbitDateStr).split('-').map(Number);
+            const y = parts[0], m = parts[1], d = parts[2];
+            if (!y || !m || !d) return null;
+            return dateIdFor(y, m - 1, d);
+        }
+
+        // Only finished `history` entries are shown — an activity still sitting
+        // in `running` has no settled end time yet, so there's nothing stable
+        // to pin to a calendar chip until it's stopped on the Habbit side.
+        function getHabbitEntriesForDate(dateId) {
+            return habbitData.history.filter(row => habbitDateToDateId(row.start_date) === dateId);
+        }
+
+        // Sums a single date's finance entries into { income, expense, net }.
+        // Only entries with finance_flag=true count — pure activity entries
+        // (finance_flag=false) are ignored here, same rule as Aktivitas mode
+        // but inverted (Finance mode wants ONLY the money).
+        function getFinanceSummaryForDate(dateId) {
+            const entries = getHabbitEntriesForDate(dateId).filter(e => e.finance_flag);
+            let income = 0, expense = 0;
+            entries.forEach(e => {
+                const amt = Number(e.nominal) || 0;
+                if (e.finance_type === 'income') income += amt;
+                else expense += amt;
+            });
+            return { income, expense, net: income - expense, entries };
+        }
+
+        function getFinanceSummaryForToday() {
+            const t = new Date();
+            return getFinanceSummaryForDate(dateIdFor(t.getFullYear(), t.getMonth(), t.getDate()));
+        }
+
+        // Sums every day in the given month into one { income, expense, net }.
+        // Straightforward day-by-day accumulation — Habbit datasets are small
+        // (personal-use scale), so there's no need for a fancier index here.
+        function getFinanceSummaryForMonth(year, month0) {
+            const totalDays = new Date(year, month0 + 1, 0).getDate();
+            let income = 0, expense = 0, count = 0;
+            for (let d = 1; d <= totalDays; d++) {
+                const day = getFinanceSummaryForDate(dateIdFor(year, month0, d));
+                income += day.income;
+                expense += day.expense;
+                count += day.entries.length;
+            }
+            return { income, expense, net: income - expense, count };
+        }
+
+        // Finance mode's per-day drill-down: lists every transaction on this
+        // date plus a bold net total. Purely a read-out of Habbit's own data —
+        // same as the chips, there's nothing editable here.
+        function openFinanceDetailModal(dateId) {
+            const summary = getFinanceSummaryForDate(dateId);
+            document.getElementById('fdm-title').innerText = formatDateIdForDisplay(dateId);
+
+            const list = document.getElementById('fdm-list');
+            list.innerHTML = summary.entries.map(e => {
+                const isIncome = e.finance_type === 'income';
+                const icon = isIncome ? '💰' : '💸';
+                const label = e.activity || e.finance_tag || (isIncome ? 'Pemasukan' : 'Pengeluaran');
+                const metaParts = [fmtHabbitClock(e.time_start)];
+                if (e.finance_tag) metaParts.push(e.finance_tag);
+                return `
+                    <div class="finance-detail-row">
+                        <span class="fd-icon">${icon}</span>
+                        <div class="fd-main">
+                            <div class="fd-label">${escapeHtml(label)}</div>
+                            <div class="fd-meta">${escapeHtml(metaParts.join(' · '))}</div>
+                        </div>
+                        <span class="fd-amt ${isIncome ? 'income' : 'expense'}">${isIncome ? '+' : '-'}${fmtHabbitRupiah(e.nominal)}</span>
+                    </div>
+                `;
+            }).join('');
+
+            const totalEl = document.getElementById('fdm-total');
+            const netPositive = summary.net >= 0;
+            totalEl.innerHTML = `
+                <span>Total (${summary.entries.length} entri)</span>
+                <span class="fd-total-amt ${netPositive ? 'positive' : 'negative'}">${netPositive ? '+' : '-'}${fmtHabbitRupiah(Math.abs(summary.net))}</span>
+            `;
+
+            document.getElementById('finance-detail-modal-overlay').style.display = 'flex';
+        }
+
+        function closeFinanceDetailModal() {
+            document.getElementById('finance-detail-modal-overlay').style.display = 'none';
+        }
+
+        // Mirrors habbit_2.html's own fmtRupiah/fmtDurationSecs formatting so
+        // numbers look identical between the two apps.
+        function fmtHabbitRupiah(n) {
+            const num = Number(n) || 0;
+            return 'Rp' + Math.abs(num).toLocaleString('id-ID');
+        }
+        function fmtHabbitDuration(totalSeconds) {
+            const s = Math.max(0, Math.floor(totalSeconds || 0));
+            const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+            const p = n => String(n).padStart(2, '0');
+            return h > 0 ? `${h}:${p(m)}:${p(sec)}` : `${p(m)}:${p(sec)}`;
+        }
+        function fmtHabbitClock(hhmmss) {
+            return hhmmss ? String(hhmmss).slice(0, 5) : '…';
+        }
+
+        // Read-only chips mirroring Habbit's finished entries onto this date.
+        // Deliberately NOT `.dropped-goal` and NOT draggable/removable — editing
+        // or deleting these belongs in Habbit itself, since that's the actual
+        // owner of this data. Clicking one just shows more detail in a toast
+        // (chip space is too tight to show everything at once).
+        function renderHabbitChipsInto(container, dateId) {
+            const entries = getHabbitEntriesForDate(dateId);
+            entries.forEach(entry => {
+                // Aktivitas mode is the "no money" view — skip finance entries
+                // entirely so income/expense never shows up there. Goal chips
+                // and non-finance Habbit activity entries are unaffected.
+                if (activeMode === 'activity' && entry.finance_flag) return;
+
+                let typeClass, icon, labelText, amtText, detailText;
+
+                if (entry.finance_flag) {
+                    const isIncome = entry.finance_type === 'income';
+                    typeClass = isIncome ? 'type-income' : 'type-expense';
+                    icon = isIncome ? '💰' : '💸';
+                    labelText = entry.activity || entry.finance_tag || (isIncome ? 'Pemasukan' : 'Pengeluaran');
+                    amtText = (isIncome ? '+' : '-') + fmtHabbitRupiah(entry.nominal);
+                    detailText = `${icon} ${entry.activity} — ${amtText} (${isIncome ? 'Pemasukan' : 'Pengeluaran'}${entry.finance_tag ? ' · ' + entry.finance_tag : ''}) · ${fmtHabbitClock(entry.time_start)}`;
+                } else {
+                    typeClass = 'type-activity';
+                    icon = '⏱️';
+                    labelText = entry.activity;
+                    amtText = fmtHabbitDuration(entry.total_second);
+                    const qtyText = (entry.qty != null && entry.qty !== '') ? ` · ${entry.qty} ${entry.qty_unit || ''}` : '';
+                    detailText = `${icon} ${entry.activity} — ${amtText} · ${fmtHabbitClock(entry.time_start)}–${fmtHabbitClock(entry.time_end)}${qtyText}`;
+                }
+
+                const chip = document.createElement('div');
+                chip.className = `habbit-chip ${typeClass}`;
+                chip.title = 'Data dari Habbit (baca aja di sini) — klik buat lihat detail';
+                chip.innerHTML = `
+                    <span class="chip-icon">${icon}</span>
+                    <span class="chip-text">${escapeHtml(labelText)}</span>
+                    <span class="chip-amt">${escapeHtml(amtText)}</span>
+                `;
+                chip.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    showToast(detailText);
+                });
+                container.appendChild(chip);
+            });
+        }
+
+        function updateHabbitSyncBadge() {
+            const badge = document.getElementById('habbit-sync-badge');
+            const text = document.getElementById('habbit-sync-text');
+            if (!badge || !text) return;
+            const count = habbitData.history.length;
+            if (count > 0) {
+                badge.classList.remove('empty');
+                text.textContent = `Habbit: ${count} entri`;
+            } else {
+                badge.classList.add('empty');
+                text.textContent = 'Habbit: belum kebaca';
+            }
+        }
+
+        // Re-reads Habbit's Supabase table and re-renders so any new entries
+        // show up. Called on load, on a live Realtime event (see
+        // DOMContentLoaded below), on window focus (belt-and-suspenders in
+        // case a Realtime event was missed), and manually via the badge click.
+        async function refreshHabbitSync() {
+            habbitData = await loadHabbitData();
+            updateHabbitSyncBadge();
+            renderCalendar();
+        }
+
+        let valueModalResolve = null;
+
+        // ============ MIGRATIONS ============
+        function migrateGoals() {
+            goals.forEach(g => {
+                if (g.trackValue === undefined) g.trackValue = false;
+                if (g.unit === undefined) g.unit = '';
+                if (g.format === undefined) g.format = (g.unit === 'jam') ? 'hours' : 'counter';
+            });
+        }
+
+        function makeEntryId() {
+            return 'e_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+        }
+
+        // Progress entries used to be plain goalId strings; normalize to {id, value}.
+        // Every entry also needs its OWN unique entryId (separate from the goalId it
+        // points at) so the same goal can be logged more than once on the same date —
+        // each logged instance can then be edited/removed/reordered independently.
+        function migrateProgressEntries() {
+            let migrated = false;
+            for (const dId in progress) {
+                progress[dId] = (progress[dId] || []).map(e => {
+                    if (typeof e === 'string') { migrated = true; e = { id: e, value: null }; }
+                    if (!e.entryId) { migrated = true; e.entryId = makeEntryId(); }
+                    return e;
+                });
+            }
+            if (migrated) localStorage.setItem(LS_PROGRESS, JSON.stringify(progress));
+        }
+
+        function persistAll() {
+            try {
+                localStorage.setItem(LS_GOALS, JSON.stringify(goals));
+                localStorage.setItem(LS_PROGRESS, JSON.stringify(progress));
+                localStorage.setItem(LS_TEXTBACKUP, JSON.stringify(textBackupDb));
+                queueCloudSync();
+            } catch (e) {
+                console.error('save failed', e);
+                setSyncIndicator('error');
+            }
+        }
+
+        // ============ SMALL HELPERS ============
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str == null ? '' : String(str);
+            return div.innerHTML;
+        }
+
+        function formatGoalValue(goal, value) {
+            if (value === null || value === undefined) return '—';
+            if (goal.format === 'hours') {
+                const totalMinutes = Math.round(value * 60);
+                const h = Math.floor(totalMinutes / 60);
+                const m = totalMinutes % 60;
+                if (h && m) return `${h}j ${m}m`;
+                if (h) return `${h}j`;
+                return `${m}m`;
+            }
+            return `${value}${goal.unit ? ' ' + goal.unit : ''}`;
+        }
+
+        // Plain line-icon eyes (not emoji) so they can actually sit muted at rest
+        // and only pick up color on hover, same treatment as the × delete icon.
+        const EYE_OPEN_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+        const EYE_OFF_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0112 20c-7 0-11-8-11-8a21.8 21.8 0 015.06-6.06M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a21.7 21.7 0 01-3.22 4.6M14.12 14.12a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+
+        let toastTimer = null;
+        function showToast(msg) {
+            const el = document.getElementById('app-toast');
+            el.textContent = msg;
+            el.classList.add('show');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => el.classList.remove('show'), 1900);
+        }
+
+        // ============ DATE HELPERS ============
+        function pad(n) { return n < 10 ? '0' + n : '' + n; }
+        function dateIdFor(y, m0, d) { return `date-${y}-${m0 + 1}-${d}`; }
+        function parseDateId(id) {
+            const parts = id.split('-');
+            return new Date(parseInt(parts[1]), parseInt(parts[2]) - 1, parseInt(parts[3]));
+        }
+        function isSameDay(a, b) {
+            return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+        }
+        function getWeekRange(date) {
+            const start = new Date(date);
+            start.setDate(date.getDate() - date.getDay());
+            start.setHours(0, 0, 0, 0);
+            const end = new Date(start);
+            end.setDate(start.getDate() + 6);
+            return { start, end };
+        }
+        function todayStr() {
+            const d = new Date();
+            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+        }
+        function startOfDay(d) {
+            const c = new Date(d);
+            c.setHours(0, 0, 0, 0);
+            return c;
+        }
+        function daysBetween(a, b) {
+            // whole calendar days between two dates, ignoring time-of-day
+            const MS_PER_DAY = 24 * 60 * 60 * 1000;
+            return Math.round((startOfDay(a) - startOfDay(b)) / MS_PER_DAY);
+        }
+
+        // ============ ACHIEVEMENTS / STREAKS ============
+        // Milestones are checked in increasing order; beyond the last fixed
+        // entry (100) they keep going every 100 days (200, 300, ...) via
+        // getNextMilestone() below, so the ladder never "runs out" without
+        // needing new tiers hardcoded by hand.
+        const STREAK_MILESTONES = [
+            { days: 3, tier: 'starter', icon: '🔥', label: 'Streak Baru', sub: 'Baru mulai, tapi udah niat 🔥' },
+            { days: 7, tier: 'bronze', icon: '🥉', label: 'Bronze Streak', sub: 'Seminggu penuh, gaskeun!' },
+            { days: 14, tier: 'silver', icon: '🥈', label: 'Silver Streak', sub: 'Dua minggu, mantep' },
+            { days: 30, tier: 'gold', icon: '🏆', label: 'Gold Streak', sub: 'Sebulan gak putus. Mantep.' },
+            { days: 50, tier: 'platinum', icon: '💠', label: 'Platinum Streak', sub: '50 hari, gila sih' },
+            { days: 100, tier: 'diamond', icon: '💎', label: 'Diamond Streak', sub: '100 hari. Legend.' }
+        ];
+        function milestoneForDays(days) {
+            // exact-match lookup used right after a streak changes, to detect
+            // "did we just land on a milestone number".
+            const fixed = STREAK_MILESTONES.find(m => m.days === days);
+            if (fixed) return fixed;
+            if (days > 100 && days % 100 === 0) {
+                return { days, tier: 'diamond', icon: '💎', label: 'Diamond Streak', sub: `${days} hari. Legend banget.` };
+            }
+            return null;
+        }
+
+        let achievedMilestones = {}; // { goalId: [3, 7, 14, ...] } — dedupe flag, NOT the source of truth for streak length
+        function loadAchievedMilestones() {
+            try { achievedMilestones = JSON.parse(localStorage.getItem(LS_ACHIEVED_MILESTONES)) || {}; }
+            catch (e) { achievedMilestones = {}; }
+        }
+        function saveAchievedMilestones() {
+            try { localStorage.setItem(LS_ACHIEVED_MILESTONES, JSON.stringify(achievedMilestones)); } catch (e) {}
+        }
+
+        // All dates (as Date objects, ascending) that have at least one logged
+        // entry for this goal. Recomputed from `progress` every time it's
+        // needed — never cached — so retroactively adding/editing/removing a
+        // past date always keeps streaks accurate with zero extra bookkeeping.
+        function getDatesForGoal(goalId) {
+            const dates = [];
+            for (const dId in progress) {
+                const entries = progress[dId] || [];
+                if (entries.some(e => e.id === goalId)) dates.push(parseDateId(dId));
+            }
+            dates.sort((a, b) => a - b);
+            return dates;
+        }
+
+        // Current run of consecutive days, counted backward from today. If
+        // today has no entry yet, yesterday still counts as "not broken" (a
+        // 1-day grace window — you just haven't logged today YET); missing
+        // BOTH today and yesterday means the streak is over (0).
+        function getCurrentStreak(goalId) {
+            const dates = getDatesForGoal(goalId);
+            if (!dates.length) return 0;
+            const uniqueDays = new Set(dates.map(d => startOfDay(d).getTime()));
+            const today = startOfDay(new Date());
+
+            let cursor;
+            if (uniqueDays.has(today.getTime())) {
+                cursor = today;
+            } else {
+                const yesterday = new Date(today);
+                yesterday.setDate(yesterday.getDate() - 1);
+                if (uniqueDays.has(yesterday.getTime())) cursor = yesterday;
+                else return 0; // missed today AND yesterday — streak's broken
+            }
+
+            let streak = 0;
+            while (uniqueDays.has(cursor.getTime())) {
+                streak++;
+                cursor = new Date(cursor);
+                cursor.setDate(cursor.getDate() - 1);
+            }
+            return streak;
+        }
+
+        // Longest run of consecutive days anywhere in this goal's history —
+        // kept separate from the current (possibly-broken) streak so a past
+        // record is never "lost" just because today's streak reset.
+        function getLongestStreak(goalId) {
+            const dates = getDatesForGoal(goalId);
+            if (!dates.length) return 0;
+            let longest = 1, run = 1;
+            for (let i = 1; i < dates.length; i++) {
+                if (daysBetween(dates[i], dates[i - 1]) === 1) {
+                    run++;
+                } else if (daysBetween(dates[i], dates[i - 1]) > 1) {
+                    run = 1;
+                }
+                // daysBetween === 0 (dup date, shouldn't happen since dates are
+                // per-unique-day already, but guard anyway) leaves run unchanged
+                if (run > longest) longest = run;
+            }
+            return longest;
+        }
+
+        function getNextMilestoneDays(currentDays) {
+            const upcoming = STREAK_MILESTONES.find(m => m.days > currentDays);
+            if (upcoming) return upcoming.days;
+            // past the fixed ladder — next multiple of 100
+            return (Math.floor(currentDays / 100) + 1) * 100;
+        }
+
+        // Call this right after a goal's progress changes. Compares the fresh
+        // current streak against what's already been celebrated for this goal
+        // and returns any newly-crossed milestone (or null). Marking it
+        // "achieved" happens immediately so a page reload never re-fires the
+        // same badge twice.
+        function checkNewMilestone(goalId) {
+            const streak = getCurrentStreak(goalId);
+            const milestone = milestoneForDays(streak);
+            if (!milestone) return null;
+            const already = achievedMilestones[goalId] || [];
+            if (already.includes(milestone.days)) return null; // already celebrated this one
+            achievedMilestones[goalId] = [...already, milestone.days];
+            saveAchievedMilestones();
+            return milestone;
+        }
+
+        // ============ BADGE POPUP (queued, one at a time) ============
+        // If several goals cross a milestone in the same action, they're
+        // queued and shown one after another with a short stagger — each
+        // achievement gets its own visible moment instead of piling up.
+        const badgeQueue = [];
+        let badgeShowing = false;
+
+        function queueBadge(milestone, goalText) {
+            badgeQueue.push({ milestone, goalText });
+            if (!badgeShowing) processBadgeQueue();
+        }
+
+        function processBadgeQueue() {
+            if (!badgeQueue.length) { badgeShowing = false; return; }
+            badgeShowing = true;
+            const { milestone, goalText } = badgeQueue.shift();
+            renderBadgeToast(milestone, goalText, () => {
+                setTimeout(processBadgeQueue, 350); // small gap so back-to-back badges don't feel like one blur
+            });
+        }
+
+        function renderBadgeToast(milestone, goalText, onDone) {
+            const wrap = document.getElementById('badge-toast-wrap');
+            const el = document.createElement('div');
+            el.className = `badge-toast tier-${milestone.tier}`;
+            el.innerHTML = `
+                <div class="badge-icon">${milestone.icon}</div>
+                <div class="badge-body">
+                    <div class="badge-eyebrow">${escapeHtml(milestone.label)}</div>
+                    <div class="badge-title">${escapeHtml(goalText)} — ${milestone.days} hari beruntun</div>
+                    <div class="badge-sub">${escapeHtml(milestone.sub)}</div>
+                </div>
+                <div class="badge-progress-bar"></div>
+            `;
+            wrap.appendChild(el);
+
+            requestAnimationFrame(() => {
+                el.classList.add('show');
+                const bar = el.querySelector('.badge-progress-bar');
+                requestAnimationFrame(() => bar.classList.add('shrink'));
+            });
+
+            const AUTO_DISMISS_MS = 4500;
+            let dismissed = false;
+            const dismiss = () => {
+                if (dismissed) return;
+                dismissed = true;
+                el.classList.remove('show');
+                el.classList.add('hide');
+                setTimeout(() => { el.remove(); onDone(); }, 420);
+            };
+            setTimeout(dismiss, AUTO_DISMISS_MS);
+            el.addEventListener('click', dismiss); // let an eager user clear it early without blocking anything
+        }
+
+        // Runs the milestone check for one goal and, if a new milestone was
+        // just crossed, queues its badge. Safe to call after every progress
+        // change — it's a no-op unless a milestone was ACTUALLY just reached.
+        function checkAndShowMilestone(goalId) {
+            const milestone = checkNewMilestone(goalId);
+            if (!milestone) return;
+            const goal = goals.find(g => g.id === goalId);
+            const goalText = goal ? goal.text : (textBackupDb[goalId] || 'Goal');
+            queueBadge(milestone, goalText);
+            refreshStreakIndicators();
+        }
+
+        // ============ INIT ============
+        document.addEventListener('DOMContentLoaded', async () => {
+            // AUTH GUARD — bounce to login unless there's a real session OR an
+            // active guest/demo session (started via ?demo=1).
+            if (new URLSearchParams(location.search).get('demo') === '1') {
+                sessionStorage.setItem('gembel_guest_mode', '1');
+            }
+            const authCtx = await requireAuthOrGuest('index.html');
+            if (!authCtx) return; // requireAuthOrGuest already redirected
+            CURRENT_USER = authCtx.user;
+            IS_GUEST = authCtx.isGuest;
+
+            if (IS_GUEST) {
+                document.getElementById('guest-banner').style.display = 'block';
+                document.getElementById('cal-user-name').textContent = 'Demo (belum daftar)';
+                document.getElementById('cal-logout-btn').textContent = 'Keluar Demo';
+                document.getElementById('cal-logout-btn').setAttribute('onclick', "exitGuestDemo(); window.location.href='index.html';");
+                document.getElementById('cal-back-link').href = 'index.html';
+                document.getElementById('cal-sync-indicator').style.display = 'none';
+            } else {
+                const displayName = authCtx.profile?.full_name || authCtx.user.email;
+                const nameEl = document.getElementById('cal-user-name');
+                if (nameEl) nameEl.textContent = displayName;
+            }
+
+            // Namespace all storage keys to this user, pull the latest cloud
+            // copy down for real users (writes into the localStorage keys
+            // loadLocalDatabase() reads below), then load it into memory.
+            initUserScopedKeys(CURRENT_USER.id);
+            setSyncIndicator('saving');
+            await pullCloudData(CURRENT_USER.id);
+            loadLocalDatabase();
+            setSyncIndicator('ok');
+
+            // Theme is applied AFTER the cloud pull/local load above, not
+            // before — applyTheme() queues a cloud sync, and that sync must
+            // never fire against empty/default goals+progress before the
+            // real data has even been loaded into memory.
+            initTheme();
+            document.getElementById('theme-toggle-btn').addEventListener('click', () => {
+                const current = document.documentElement.getAttribute('data-theme') || 'light';
+                applyTheme(current === 'dark' ? 'light' : 'dark');
+            });
+
+            migrateProgressEntries();
+            migrateGoals();
+            loadAchievedMilestones();
+            habbitData = await loadHabbitData(); // read once before the first paint so Habbit chips show up immediately, not just after the first refresh
+            updateHabbitSyncBadge();
+
+            autoDailyBackup();
+            refreshBackupStatusUI();
+
+            renderCalendar();
+            loadGoals();
+
+            document.getElementById('add-goal-btn').addEventListener('click', addGoal);
+            document.getElementById('goal-input').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') addGoal();
+            });
+
+            document.getElementById('goal-track-value').addEventListener('change', (e) => {
+                const checked = e.target.checked;
+                document.getElementById('goal-format-toggle').style.display = checked ? 'flex' : 'none';
+                document.getElementById('goal-unit-input').style.display = (checked && currentNewGoalFormat === 'counter') ? 'block' : 'none';
+                syncOptionsRowVisibility();
+            });
+            document.querySelectorAll('.format-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    currentNewGoalFormat = btn.dataset.format;
+                    document.querySelectorAll('.format-btn').forEach(b => b.classList.toggle('active', b === btn));
+                    document.getElementById('goal-unit-input').style.display = (currentNewGoalFormat === 'counter') ? 'block' : 'none';
+                });
+            });
+
+            const goalInputEl = document.getElementById('goal-input');
+            goalInputEl.addEventListener('focus', syncOptionsRowVisibility);
+            goalInputEl.addEventListener('input', syncOptionsRowVisibility);
+            goalInputEl.addEventListener('blur', () => setTimeout(syncOptionsRowVisibility, 150));
+
+            document.getElementById('goal-search-input').addEventListener('input', loadGoals);
+            document.getElementById('show-hidden-checkbox').addEventListener('change', loadGoals);
+
+            document.getElementById('selected-date-clear').addEventListener('click', () => {
+                selectedDateId = null;
+                updateArmedDateUI();
+            });
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && selectedDateId) {
+                    selectedDateId = null;
+                    updateArmedDateUI();
+                }
+                if (e.key === 'Escape' && document.getElementById('finance-detail-modal-overlay').style.display === 'flex') {
+                    closeFinanceDetailModal();
+                }
+            });
+
+            document.getElementById('dm-cancel').addEventListener('click', () => closeDeleteModal(null));
+            document.getElementById('dm-confirm').addEventListener('click', () => {
+                closeDeleteModal({ confirmed: true, deleteHistory: document.getElementById('dm-delete-history').checked });
+            });
+            document.getElementById('delete-modal-overlay').addEventListener('click', (e) => {
+                if (e.target.id === 'delete-modal-overlay') closeDeleteModal(null);
+            });
+
+            document.getElementById('fdm-close').addEventListener('click', closeFinanceDetailModal);
+            document.getElementById('finance-detail-modal-overlay').addEventListener('click', (e) => {
+                if (e.target.id === 'finance-detail-modal-overlay') closeFinanceDetailModal();
+            });
+
+            document.getElementById('prev-btn').addEventListener('click', () => changeStep(-1));
+            document.getElementById('next-btn').addEventListener('click', () => changeStep(1));
+
+            document.querySelectorAll('.view-tab').forEach(btn => {
+                btn.addEventListener('click', () => setViewMode(btn.dataset.view));
+            });
+
+            document.querySelectorAll('.mode-tab').forEach(btn => {
+                btn.addEventListener('click', () => setActiveMode(btn.dataset.mode));
+            });
+
+            document.getElementById('export-backup-btn').addEventListener('click', exportBackupFile);
+            document.getElementById('import-backup-input').addEventListener('change', (e) => {
+                if (e.target.files[0]) importBackupFile(e.target.files[0]);
+                e.target.value = '';
+            });
+            document.getElementById('restore-select').addEventListener('change', (e) => {
+                if (e.target.value) {
+                    restoreFromSnapshot(e.target.value);
+                    e.target.value = '';
+                }
+            });
+
+            document.getElementById('vm-cancel').addEventListener('click', () => closeValueModal(null));
+            document.getElementById('vm-save').addEventListener('click', () => {
+                const format = document.getElementById('value-modal-overlay').dataset.format;
+                if (format === 'hours') {
+                    const h = parseFloat(document.getElementById('vm-hours').value) || 0;
+                    const m = parseFloat(document.getElementById('vm-minutes').value) || 0;
+                    closeValueModal(h + (m / 60));
+                } else {
+                    const raw = document.getElementById('vm-input').value;
+                    closeValueModal(raw === '' ? 0 : parseFloat(raw));
+                }
+            });
+            document.getElementById('vm-input').addEventListener('keypress', (e) => { if (e.key === 'Enter') document.getElementById('vm-save').click(); });
+            document.getElementById('vm-hours').addEventListener('keypress', (e) => { if (e.key === 'Enter') document.getElementById('vm-save').click(); });
+            document.getElementById('vm-minutes').addEventListener('keypress', (e) => { if (e.key === 'Enter') document.getElementById('vm-save').click(); });
+            document.getElementById('value-modal-overlay').addEventListener('click', (e) => {
+                if (e.target.id === 'value-modal-overlay') closeValueModal(null);
+            });
+
+            initReorderZone();
+            initGoalsFloat();
+
+            // ---- Habbit live sync ----
+            // Supabase Realtime subscription on this user's own habbit_entries
+            // rows — this is what makes it feel "live" when both apps are open
+            // side by side (or even on different devices now): log something
+            // in Habbit, this tab picks it up automatically, no manual refresh.
+            if (!IS_GUEST) {
+                supabase
+                    .channel('habbit_entries_sync_' + CURRENT_USER.id)
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'habbit_entries', filter: `user_id=eq.${CURRENT_USER.id}` }, refreshHabbitSync)
+                    .subscribe();
+            }
+            // Fallback in case a Realtime event is missed (e.g. this tab was
+            // backgrounded/discarded) — re-check whenever this tab regains focus.
+            window.addEventListener('focus', refreshHabbitSync);
+            document.getElementById('habbit-sync-badge').addEventListener('click', () => {
+                const badge = document.getElementById('habbit-sync-badge');
+                badge.classList.add('spinning');
+                refreshHabbitSync();
+                setTimeout(() => badge.classList.remove('spinning'), 400);
+            });
+        });
+
+        // ============ FLOATING "MY GOALS" WIDGET ============
+        // Free-floating, draggable panel that can be minimized to a small
+        // draggable bubble (click the bubble — without dragging it — to expand
+        // back out). Position + minimized state persist across reloads.
+        let goalsFloatMinimized = false;
+        let goalsFloatPos = { x: 24, y: 96 };
+
+        function updateGoalsBubbleBadge() {
+            const badge = document.getElementById('goals-bubble-badge');
+            if (!badge) return;
+            const activeCount = goals.filter(g => !g.hidden).length;
+            badge.textContent = activeCount;
+            badge.style.display = activeCount > 0 ? 'flex' : 'none';
+        }
+
+        function initGoalsFloat() {
+            const floatEl = document.getElementById('goals-float');
+            const bubble = document.getElementById('goals-bubble');
+            const handle = document.getElementById('goals-drag-handle');
+            const minimizeBtn = document.getElementById('goals-minimize-btn');
+
+            let saved = null;
+            try { saved = JSON.parse(localStorage.getItem(LS_PANEL_STATE)); } catch (e) {}
+            // Default to the minimized bubble (not the full panel) so a first-time
+            // load never sits on top of the calendar — the calendar is full-width
+            // now that goals floats independently of it. Bottom-right corner is a
+            // safe resting spot; the user drags it wherever they like from there.
+            goalsFloatMinimized = saved ? !!saved.minimized : true;
+            goalsFloatPos = (saved && typeof saved.x === 'number' && typeof saved.y === 'number')
+                ? { x: saved.x, y: saved.y }
+                : { x: window.innerWidth - 78, y: window.innerHeight - 78 };
+
+            function savePanelState() {
+                try {
+                    localStorage.setItem(LS_PANEL_STATE, JSON.stringify({
+                        minimized: goalsFloatMinimized, x: goalsFloatPos.x, y: goalsFloatPos.y
+                    }));
+                } catch (e) {}
+            }
+
+            // IMPORTANT: this only computes where to DISPLAY the widget right now —
+            // it must never overwrite goalsFloatPos itself. Zoom/resize can shrink
+            // the viewport temporarily (so the widget is clamped on-screen), but the
+            // user's actual saved spot has to survive that so zooming back out (or
+            // resizing back up) returns the widget exactly where they left it,
+            // instead of it creeping toward a corner a little more on every zoom
+            // in/out cycle.
+            function applyPosition() {
+                const w = floatEl.offsetWidth || (goalsFloatMinimized ? 54 : 340);
+                const h = floatEl.offsetHeight || (goalsFloatMinimized ? 54 : 400);
+                const displayX = Math.max(4, Math.min(window.innerWidth - w - 4, goalsFloatPos.x));
+                const displayY = Math.max(4, Math.min(window.innerHeight - h - 4, goalsFloatPos.y));
+                floatEl.style.left = displayX + 'px';
+                floatEl.style.top = displayY + 'px';
+            }
+
+            function applyState() {
+                floatEl.classList.toggle('minimized', goalsFloatMinimized);
+                requestAnimationFrame(applyPosition);
+            }
+
+            function setupDrag(el, onClick) {
+                let dragging = false, moved = false, startX = 0, startY = 0, origX = 0, origY = 0;
+                el.addEventListener('mousedown', (e) => {
+                    // Let controls nested INSIDE the handle (the hide checkbox, the
+                    // minimize button) work normally. The bubble is itself a
+                    // <button>, so only bail when the matched control isn't `el`.
+                    const interactive = e.target.closest('input, label, button');
+                    if (interactive && interactive !== el) return;
+                    dragging = true; moved = false;
+                    startX = e.clientX; startY = e.clientY;
+                    origX = goalsFloatPos.x; origY = goalsFloatPos.y;
+                    el.classList.add('dragging');
+                    e.preventDefault();
+                });
+                window.addEventListener('mousemove', (e) => {
+                    if (!dragging) return;
+                    const dx = e.clientX - startX, dy = e.clientY - startY;
+                    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) moved = true;
+                    const w = floatEl.offsetWidth, h = floatEl.offsetHeight;
+                    goalsFloatPos.x = Math.max(4, Math.min(window.innerWidth - w - 4, origX + dx));
+                    goalsFloatPos.y = Math.max(4, Math.min(window.innerHeight - h - 4, origY + dy));
+                    floatEl.style.left = goalsFloatPos.x + 'px';
+                    floatEl.style.top = goalsFloatPos.y + 'px';
+                });
+                window.addEventListener('mouseup', () => {
+                    if (!dragging) return;
+                    dragging = false;
+                    el.classList.remove('dragging');
+                    savePanelState();
+                    if (!moved && onClick) onClick();
+                });
+            }
+
+            setupDrag(bubble, () => {
+                goalsFloatMinimized = false;
+                applyState();
+                savePanelState();
+            });
+            setupDrag(handle);
+
+            minimizeBtn.addEventListener('click', () => {
+                goalsFloatMinimized = true;
+                applyState();
+                savePanelState();
+            });
+
+            window.addEventListener('resize', () => requestAnimationFrame(applyPosition));
+
+            applyState();
+            updateGoalsBubbleBadge();
+        }
+
+        // ============ OPTIONS ROW VISIBILITY ============
+        function syncOptionsRowVisibility() {
+            const input = document.getElementById('goal-input');
+            const row = document.getElementById('goal-options-row');
+            const isTrackChecked = document.getElementById('goal-track-value').checked;
+            const shouldShow = document.activeElement === input || input.value.trim() !== '' || isTrackChecked;
+            row.classList.toggle('active', shouldShow);
+        }
+
+        // ============ VIEW SWITCHING ============
+        function setViewMode(mode) {
+            viewMode = mode;
+            document.querySelectorAll('.view-tab').forEach(btn => btn.classList.toggle('active', btn.dataset.view === mode));
+            renderCalendar();
+        }
+
+        // ============ TOP-LEVEL MODE SWITCHING (Kalender / Keuangan / Aktivitas) ============
+        function setActiveMode(mode) {
+            activeMode = mode;
+            document.querySelectorAll('.mode-tab').forEach(btn => btn.classList.toggle('active', btn.dataset.mode === mode));
+
+            // The "My Goals" widget only makes sense where you can drag/log goals
+            // (Kalender + Aktivitas). Keuangan is a read-only money view, so the
+            // widget just gets in the way there — hide it, but leave its own
+            // drag/minimize/position state machine completely untouched so it's
+            // exactly as the user left it when they switch back.
+            document.getElementById('goals-float').classList.toggle('mode-hidden', mode === 'finance');
+
+            renderCalendar();
+        }
+
+        function changeStep(direction) {
+            if (viewMode === 'month') focusDate.setMonth(focusDate.getMonth() + direction);
+            else if (viewMode === 'week') focusDate.setDate(focusDate.getDate() + 7 * direction);
+            else if (viewMode === 'day') focusDate.setDate(focusDate.getDate() + direction);
+            else if (viewMode === 'year') focusDate.setFullYear(focusDate.getFullYear() + direction);
+            renderCalendar();
+        }
+
+        function isoDate(d) {
+            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+        }
+
+        function updateHeaderTitle() {
+            const title = document.getElementById('month-year-title');
+            title.onclick = null;
+
+            if (viewMode === 'year') {
+                renderYearJumpInput(title);
+                return;
+            }
+
+            let text = '';
+            if (viewMode === 'month') {
+                text = `${monthNames[focusDate.getMonth()]} ${focusDate.getFullYear()}`;
+            } else if (viewMode === 'day') {
+                text = `${dayNamesFull[focusDate.getDay()]}, ${monthNames[focusDate.getMonth()]} ${focusDate.getDate()}, ${focusDate.getFullYear()}`;
+            } else if (viewMode === 'week') {
+                const { start, end } = getWeekRange(focusDate);
+                if (start.getMonth() === end.getMonth()) {
+                    text = `${monthNames[start.getMonth()].substring(0, 3)} ${start.getDate()}–${end.getDate()}, ${start.getFullYear()}`;
+                } else {
+                    text = `${monthNames[start.getMonth()].substring(0, 3)} ${start.getDate()} – ${monthNames[end.getMonth()].substring(0, 3)} ${end.getDate()}, ${end.getFullYear()}`;
+                }
+            }
+
+            title.innerText = text;
+            title.classList.add('editable-title');
+            title.title = 'Klik untuk lompat ke tanggal tertentu';
+            title.onclick = () => renderDateJumpInput(title);
+        }
+
+        function renderDateJumpInput(title) {
+            title.innerHTML = `<input type="date" id="date-jump-input" class="date-jump-input" value="${isoDate(focusDate)}">`;
+            const input = document.getElementById('date-jump-input');
+            input.addEventListener('click', (e) => e.stopPropagation());
+            const commitAndRevert = () => {
+                if (input.value) {
+                    const [y, m, d] = input.value.split('-').map(Number);
+                    focusDate = new Date(y, m - 1, d);
+                }
+                renderCalendar();
+            };
+            input.addEventListener('change', commitAndRevert);
+            input.addEventListener('blur', commitAndRevert);
+            setTimeout(() => {
+                input.focus();
+                if (input.showPicker) { try { input.showPicker(); } catch (e) {} }
+            }, 20);
+        }
+
+        function renderYearJumpInput(title) {
+            title.innerHTML = `<input type="number" id="year-jump-input" class="year-jump-input" value="${focusDate.getFullYear()}" inputmode="numeric">`;
+            const yearInput = document.getElementById('year-jump-input');
+            const commitAndRevert = () => {
+                const val = parseInt(yearInput.value, 10);
+                if (!isNaN(val) && val > 0) focusDate.setFullYear(val);
+                renderCalendar();
+            };
+            yearInput.addEventListener('click', (e) => e.stopPropagation());
+            yearInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') yearInput.blur(); });
+            yearInput.addEventListener('blur', commitAndRevert);
+        }
+
+        function renderCalendar() {
+            updateHeaderTitle();
+            updateFinanceSummaryBar();
+            const area = document.getElementById('calendar-area');
+            area.innerHTML = '';
+            if (viewMode === 'month') renderMonthView(area);
+            else if (viewMode === 'week') renderWeekView(area);
+            else if (viewMode === 'day') renderDayView(area);
+            else if (viewMode === 'year') renderYearView(area);
+        }
+
+        // Finance mode's summary bar: today's +/- plus this month's running
+        // total. Hooked into renderCalendar() itself (rather than individual
+        // callers like setActiveMode/changeStep) so it can never drift out of
+        // sync no matter which navigation path triggered the re-render — it
+        // always reflects the current activeMode + focusDate.
+        function updateFinanceSummaryBar() {
+            const bar = document.getElementById('finance-summary-bar');
+            if (activeMode !== 'finance') {
+                bar.style.display = 'none';
+                return;
+            }
+            bar.style.display = 'flex';
+
+            const today = getFinanceSummaryForToday();
+            document.getElementById('fsb-today-income').innerText = `+${fmtHabbitRupiah(today.income)}`;
+            document.getElementById('fsb-today-expense').innerText = `-${fmtHabbitRupiah(today.expense)}`;
+
+            const y = focusDate.getFullYear(), m0 = focusDate.getMonth();
+            const month = getFinanceSummaryForMonth(y, m0);
+            document.getElementById('fsb-month-label').innerText = `${monthNames[m0]} ${y}`;
+            document.getElementById('fsb-month-income').innerText = `+${fmtHabbitRupiah(month.income)}`;
+            document.getElementById('fsb-month-expense').innerText = `-${fmtHabbitRupiah(month.expense)}`;
+
+            const netEl = document.getElementById('fsb-month-net');
+            const netPositive = month.net >= 0;
+            netEl.innerText = `${netPositive ? '+' : '-'}${fmtHabbitRupiah(Math.abs(month.net))}`;
+            netEl.classList.toggle('negative', !netPositive);
+        }
+
+        // ============ MONTH VIEW ============
+        function buildMonthSlots(year, month0) {
+            const firstDayIndex = new Date(year, month0, 1).getDay();
+            const totalDays = new Date(year, month0 + 1, 0).getDate();
+            const prevTotalDays = new Date(year, month0, 0).getDate();
+            const slots = [];
+
+            for (let i = firstDayIndex; i > 0; i--) {
+                const dayNum = prevTotalDays - i + 1;
+                let prevM = month0 - 1, prevY = year;
+                if (prevM < 0) { prevM = 11; prevY--; }
+                slots.push({
+                    id: dateIdFor(prevY, prevM, dayNum), day: dayNum, isCurrent: false,
+                    label: dayNum === 1 ? `${monthNames[prevM].substring(0, 3)} 1` : null
+                });
+            }
+
+            const today = new Date();
+            for (let i = 1; i <= totalDays; i++) {
+                const isToday = today.getFullYear() === year && today.getMonth() === month0 && today.getDate() === i;
+                slots.push({
+                    id: dateIdFor(year, month0, i), day: i, isCurrent: true, isToday: isToday,
+                    label: i === 1 ? `${monthNames[month0].substring(0, 3)} 1` : null
+                });
+            }
+
+            const remaining = 42 - slots.length;
+            for (let i = 1; i <= remaining; i++) {
+                let nextM = month0 + 1, nextY = year;
+                if (nextM > 11) { nextM = 0; nextY++; }
+                slots.push({
+                    id: dateIdFor(nextY, nextM, i), day: i, isCurrent: false,
+                    label: i === 1 ? `${monthNames[nextM].substring(0, 3)} 1` : null
+                });
+            }
+            return slots;
+        }
+
+        function renderMonthView(container) {
+            const grid = document.createElement('div');
+            grid.className = 'calendar-grid month-mode';
+            dayNamesShort.forEach(n => {
+                const el = document.createElement('div');
+                el.className = 'day-name';
+                el.innerText = n;
+                grid.appendChild(el);
+            });
+            const slots = buildMonthSlots(focusDate.getFullYear(), focusDate.getMonth());
+            slots.forEach(item => grid.appendChild(createDayCell(item)));
+            container.appendChild(grid);
+        }
+
+        // ============ WEEK VIEW ============
+        function renderWeekView(container) {
+            const grid = document.createElement('div');
+            grid.className = 'calendar-grid week-mode';
+            dayNamesShort.forEach(n => {
+                const el = document.createElement('div');
+                el.className = 'day-name';
+                el.innerText = n;
+                grid.appendChild(el);
+            });
+            const { start } = getWeekRange(focusDate);
+            const today = new Date();
+            for (let i = 0; i < 7; i++) {
+                const d = new Date(start);
+                d.setDate(start.getDate() + i);
+                const item = {
+                    id: dateIdFor(d.getFullYear(), d.getMonth(), d.getDate()),
+                    day: d.getDate(),
+                    isCurrent: true,
+                    isToday: isSameDay(d, today),
+                    label: (d.getDate() === 1 || i === 0) ? `${monthNames[d.getMonth()].substring(0, 3)} ${d.getDate()}` : null
+                };
+                grid.appendChild(createDayCell(item, 'week-cell'));
+            }
+            container.appendChild(grid);
+        }
+
+        // ============ DAY VIEW ============
+        function renderDayView(container) {
+            const grid = document.createElement('div');
+            grid.className = 'calendar-grid day-mode';
+            const d = focusDate;
+            const item = {
+                id: dateIdFor(d.getFullYear(), d.getMonth(), d.getDate()),
+                day: d.getDate(),
+                isCurrent: true,
+                isToday: isSameDay(d, new Date()),
+                label: `${dayNamesFull[d.getDay()]}, ${d.getDate()} ${monthNames[d.getMonth()]}`
+            };
+            grid.appendChild(createDayCell(item, 'day-cell'));
+            container.appendChild(grid);
+        }
+
+        // ============ YEAR VIEW ============
+        function buildMiniMonthDays(year, month0) {
+            const firstDayIndex = new Date(year, month0, 1).getDay();
+            const totalDays = new Date(year, month0 + 1, 0).getDate();
+            const slots = [];
+            for (let i = 0; i < firstDayIndex; i++) slots.push(null);
+            for (let d = 1; d <= totalDays; d++) slots.push(d);
+            return slots;
+        }
+
+        function renderYearView(container) {
+            const grid = document.createElement('div');
+            grid.className = 'year-grid';
+            const year = focusDate.getFullYear();
+            const today = new Date();
+
+            for (let m = 0; m < 12; m++) {
+                const box = document.createElement('div');
+                box.className = 'mini-month';
+
+                const title = document.createElement('div');
+                title.className = 'mini-month-title';
+                title.innerText = monthNames[m];
+                title.addEventListener('click', () => {
+                    focusDate = new Date(year, m, 1);
+                    setViewMode('month');
+                });
+                box.appendChild(title);
+
+                const mg = document.createElement('div');
+                mg.className = 'mini-grid';
+                ['S', 'M', 'T', 'W', 'T', 'F', 'S'].forEach(dn => {
+                    const el = document.createElement('div');
+                    el.className = 'mini-day-name';
+                    el.innerText = dn;
+                    mg.appendChild(el);
+                });
+
+                buildMiniMonthDays(year, m).forEach(d => {
+                    const el = document.createElement('div');
+                    if (d === null) {
+                        el.className = 'mini-day other';
+                        mg.appendChild(el);
+                        return;
+                    }
+                    el.className = 'mini-day';
+                    const isToday = today.getFullYear() === year && today.getMonth() === m && today.getDate() === d;
+                    if (isToday) el.classList.add('today');
+                    el.innerText = d;
+
+                    const dId = dateIdFor(year, m, d);
+                    if (progress[dId] && progress[dId].length) {
+                        const dot = document.createElement('span');
+                        dot.className = 'dot';
+                        el.appendChild(dot);
+                    }
+                    el.addEventListener('click', () => {
+                        focusDate = new Date(year, m, d);
+                        setViewMode('day');
+                    });
+                    mg.appendChild(el);
+                });
+
+                box.appendChild(mg);
+                grid.appendChild(box);
+            }
+            container.appendChild(grid);
+        }
+
+        // ============ SHARED DAY CELL ============
+        function createDayCell(item, extraClass) {
+            // Finance mode is a read-only money view with completely different
+            // interactions (no drag/drop, no goal-arming, click opens a detail
+            // modal instead) — kept as a fully separate render path rather than
+            // threading `if (activeMode === 'finance')` through every branch
+            // below, so the existing Kalender/Aktivitas behavior can't regress.
+            if (activeMode === 'finance') return createFinanceDayCell(item, extraClass);
+
+            const dayDiv = document.createElement('div');
+            dayDiv.className = 'calendar-day' + (extraClass ? ' ' + extraClass : '');
+            dayDiv.setAttribute('data-id', item.id);
+
+            if (!item.isCurrent) dayDiv.classList.add('other-month');
+            if (item.isToday) dayDiv.classList.add('today');
+
+            const dateNum = document.createElement('span');
+            dateNum.className = 'date-num';
+            dateNum.innerText = item.label ? item.label : item.day;
+            dayDiv.appendChild(dateNum);
+
+            const dropZone = document.createElement('div');
+            dropZone.className = 'dropped-goals-container';
+            dayDiv.appendChild(dropZone);
+            renderDroppedGoalsInto(dropZone, item.id);
+            initChipReorderZone(dropZone, item.id);
+            renderHabbitChipsInto(dropZone, item.id);
+
+            dayDiv.addEventListener('dragover', (e) => {
+                if (e.dataTransfer.types.includes('text/plain')) {
+                    e.preventDefault();
+                    dayDiv.classList.add('drag-over');
+                }
+            });
+            dayDiv.addEventListener('dragleave', () => dayDiv.classList.remove('drag-over'));
+            dayDiv.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dayDiv.classList.remove('drag-over');
+                const goalId = e.dataTransfer.getData('text/plain');
+                if (goalId) handleDrop(item.id, goalId);
+            });
+
+            // Double-click a date to "arm" it, then double-click a goal on the
+            // right to log it here instantly — much faster than drag & drop when
+            // you're logging several goals onto the same day.
+            dayDiv.addEventListener('dblclick', (e) => {
+                if (e.target.closest('.dropped-goal') || e.target.closest('.habbit-chip')) return; // don't hijack a dblclick meant for a chip
+                selectedDateId = (selectedDateId === item.id) ? null : item.id;
+                updateArmedDateUI();
+            });
+
+            return dayDiv;
+        }
+
+        // ============ FINANCE MODE DAY CELL ============
+        // Compact 2-line +/- summary per day. No chips, no drag/drop, no
+        // goal-arming — clicking a day with money in it opens the Finance
+        // detail modal (Task #39) listing each transaction instead.
+        function createFinanceDayCell(item, extraClass) {
+            const dayDiv = document.createElement('div');
+            dayDiv.className = 'calendar-day finance-day' + (extraClass ? ' ' + extraClass : '');
+            dayDiv.setAttribute('data-id', item.id);
+
+            if (!item.isCurrent) dayDiv.classList.add('other-month');
+            if (item.isToday) dayDiv.classList.add('today');
+
+            const dateNum = document.createElement('span');
+            dateNum.className = 'date-num';
+            dateNum.innerText = item.label ? item.label : item.day;
+            dayDiv.appendChild(dateNum);
+
+            const summary = getFinanceSummaryForDate(item.id);
+            const body = document.createElement('div');
+            body.className = 'finance-day-body';
+
+            if (summary.income === 0 && summary.expense === 0) {
+                body.innerHTML = `<span class="finance-day-empty">—</span>`;
+            } else {
+                dayDiv.classList.add('has-finance');
+                body.innerHTML = `
+                    ${summary.income > 0 ? `<span class="finance-line income">+${fmtHabbitRupiah(summary.income)}</span>` : ''}
+                    ${summary.expense > 0 ? `<span class="finance-line expense">-${fmtHabbitRupiah(summary.expense)}</span>` : ''}
+                `;
+                dayDiv.title = `Klik buat lihat detail transaksi (${summary.entries.length} entri)`;
+                dayDiv.addEventListener('click', () => openFinanceDetailModal(item.id));
+            }
+            dayDiv.appendChild(body);
+
+            return dayDiv;
+        }
+
+        // ============ GOALS POOL ============
+        function loadGoals() {
+            const pool = document.getElementById('goals-pool');
+            const scrollTop = pool.scrollTop;
+            pool.innerHTML = '';
+
+            const showHiddenChecked = document.getElementById('show-hidden-checkbox').checked;
+            const searchTerm = document.getElementById('goal-search-input').value.trim().toLowerCase();
+            let visibleGoals = goals.filter(g => showHiddenChecked || !g.hidden);
+            if (searchTerm) visibleGoals = visibleGoals.filter(g => g.text.toLowerCase().includes(searchTerm));
+
+            if (visibleGoals.length === 0) {
+                const msg = searchTerm ? 'Gak ada goal yang cocok sama pencarian lo.' : 'Tidak ada goal aktif.';
+                pool.innerHTML = `<div style="text-align:center; color:var(--text-faint); margin-top:20px; font-size:13px;">${msg}</div>`;
+                return;
+            }
+
+            visibleGoals.forEach((goal) => {
+                const card = document.createElement('div');
+                card.classList.add('goal-card');
+                card.setAttribute('draggable', 'true');
+                card.setAttribute('id', `card-${goal.id}`);
+                card.setAttribute('data-id', goal.id);
+
+                if (goal.hidden) card.classList.add('hidden-status-style');
+
+                const eyeIcon = goal.hidden ? EYE_OFF_SVG : EYE_OPEN_SVG;
+                const eyeTitle = goal.hidden ? 'Tampilkan lagi' : 'Sembunyikan';
+                const badge = goal.trackValue
+                    ? (goal.format === 'hours'
+                        ? `<div class="track-badge">⏱️ format jam</div>`
+                        : `<div class="track-badge">🔢 dilacak${goal.unit ? ' · ' + escapeHtml(goal.unit) : ''}</div>`)
+                    : '';
+
+                // Trophy-shelf: a small always-visible streak indicator so the
+                // achievement stays "on the shelf" after its badge popup fades,
+                // instead of vanishing the moment the toast is gone.
+                const streakLen = getCurrentStreak(goal.id);
+                const streakBadge = streakLen > 0
+                    ? `<span class="streak-indicator" data-streak-for="${goal.id}" title="Streak saat ini: ${streakLen} hari">${streakLen}🔥</span>`
+                    : `<span class="streak-indicator" data-streak-for="${goal.id}" style="display:none;"></span>`;
+
+                card.innerHTML = `
+                    <div class="goal-text-wrap">
+                        <span class="goal-text">${escapeHtml(goal.text)}</span>
+                        ${badge}
+                    </div>
+                    <div class="action-container">
+                        ${streakBadge}
+                        <button class="view-toggle-btn" title="${eyeTitle}" onclick="toggleGoalVisibility('${goal.id}', event)">${eyeIcon}</button>
+                        <button class="delete-btn" title="Hapus" onclick="deleteGoalPool('${goal.id}', event)">×</button>
+                    </div>
+                `;
+
+                card.addEventListener('dblclick', (e) => {
+                    if (e.target.closest('.action-container')) return;
+                    if (!selectedDateId) {
+                        showToast('Pilih tanggal dulu di kalender.');
+                        return;
+                    }
+                    handleDrop(selectedDateId, goal.id, { viaDoubleClick: true });
+                });
+
+                card.addEventListener('dragstart', (e) => {
+                    card.classList.add('dragging');
+                    e.dataTransfer.setData('text/plain', goal.id);
+                });
+                card.addEventListener('dragend', () => card.classList.remove('dragging'));
+
+                pool.appendChild(card);
+            });
+
+            pool.scrollTop = scrollTop;
+            updateGoalsBubbleBadge();
+        }
+
+        // Lightweight update for existing streak-indicator spans, used right
+        // after a milestone badge fires so the trophy-shelf number ticks up
+        // immediately without a full loadGoals() re-render (which would reset
+        // scroll position and any in-progress search).
+        function refreshStreakIndicators() {
+            document.querySelectorAll('.streak-indicator[data-streak-for]').forEach(el => {
+                const goalId = el.getAttribute('data-streak-for');
+                const streakLen = getCurrentStreak(goalId);
+                if (streakLen > 0) {
+                    el.textContent = `${streakLen}🔥`;
+                    el.title = `Streak saat ini: ${streakLen} hari`;
+                    el.style.display = '';
+                } else {
+                    el.style.display = 'none';
+                }
+            });
+        }
+
+        // ---- arm a date for double-click-add ----
+        function formatDateIdForDisplay(dateId) {
+            const d = parseDateId(dateId);
+            return `${dayNamesFull[d.getDay()]}, ${monthNames[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+        }
+
+        function updateArmedDateUI() {
+            document.querySelectorAll('.calendar-day').forEach(c => {
+                c.classList.toggle('armed-date', c.getAttribute('data-id') === selectedDateId);
+            });
+            const banner = document.getElementById('selected-date-banner');
+            if (selectedDateId) {
+                banner.style.display = 'flex';
+                document.getElementById('selected-date-text').textContent = formatDateIdForDisplay(selectedDateId);
+            } else {
+                banner.style.display = 'none';
+            }
+        }
+
+        window.toggleGoalVisibility = function (goalId, event) {
+            event.stopPropagation();
+            const targetGoal = goals.find(g => g.id === goalId);
+            if (targetGoal) {
+                targetGoal.hidden = !targetGoal.hidden;
+                persistAll();
+                loadGoals();
+                renderCalendar();
+            }
+        };
+
+        function initReorderZone() {
+            const pool = document.getElementById('goals-pool');
+            pool.addEventListener('dragover', (e) => {
+                if (!e.dataTransfer.types.includes('text/plain')) return; // ignore chip-reorder drags passing over
+                e.preventDefault();
+                const draggingCard = document.querySelector('.goal-card.dragging');
+                if (!draggingCard) return;
+                const afterElement = getDragAfterElement(pool, e.clientY, '.goal-card');
+                if (afterElement == null) pool.appendChild(draggingCard);
+                else pool.insertBefore(draggingCard, afterElement);
+            });
+
+            pool.addEventListener('drop', (e) => {
+                if (!e.dataTransfer.types.includes('text/plain')) return;
+                const currentCards = Array.from(pool.querySelectorAll('.goal-card'));
+                const hiddenGoals = goals.filter(g => g.hidden);
+                const newOrderedGoals = [];
+                currentCards.forEach(card => {
+                    const id = card.getAttribute('data-id');
+                    const targetGoal = goals.find(g => g.id === id);
+                    if (targetGoal) newOrderedGoals.push(targetGoal);
+                });
+                goals = [...newOrderedGoals, ...hiddenGoals.filter(hg => !newOrderedGoals.includes(hg))];
+                persistAll();
+            });
+        }
+
+        function getDragAfterElement(container, y, selector) {
+            const draggableElements = [...container.querySelectorAll(selector + ':not(.dragging)')];
+            return draggableElements.reduce((closest, child) => {
+                const box = child.getBoundingClientRect();
+                const offset = y - box.top - box.height / 2;
+                if (offset < 0 && offset > closest.offset) return { offset: offset, element: child };
+                return closest;
+            }, { offset: Number.NEGATIVE_INFINITY }).element;
+        }
+
+        function addGoal() {
+            const input = document.getElementById('goal-input');
+            const text = input.value.trim();
+            if (!text) return;
+
+            const trackValue = document.getElementById('goal-track-value').checked;
+            const format = trackValue ? currentNewGoalFormat : 'counter';
+            const unit = format === 'hours' ? 'jam' : document.getElementById('goal-unit-input').value.trim();
+
+            // Setiap goal baru SELALU dapat id unik sendiri, walau teksnya sama persis
+            // dengan goal lain (aktif ataupun yang sudah pernah dihapus). Ini yang
+            // mencegah dua goal "identitas kembar" saling pengaruh saat salah satunya dihapus.
+            const newId = 'g_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+            const newGoal = { id: newId, text: text, hidden: false, trackValue: trackValue, format: format, unit: unit };
+
+            goals.push(newGoal);
+            textBackupDb[newId] = text;
+
+            persistAll();
+            input.value = '';
+            document.getElementById('goal-track-value').checked = false;
+            document.getElementById('goal-unit-input').value = '';
+            document.getElementById('goal-unit-input').style.display = 'none';
+            document.getElementById('goal-format-toggle').style.display = 'none';
+            currentNewGoalFormat = 'counter';
+            document.querySelectorAll('.format-btn').forEach(b => b.classList.toggle('active', b.dataset.format === 'counter'));
+            loadGoals();
+            renderCalendar();
+            syncOptionsRowVisibility();
+        }
+
+        let deleteModalResolve = null;
+        function showDeleteModal(goalText) {
+            document.getElementById('dm-title').innerText = `Hapus "${goalText}"?`;
+            document.getElementById('dm-delete-history').checked = false;
+            document.getElementById('delete-modal-overlay').style.display = 'flex';
+            return new Promise(resolve => { deleteModalResolve = resolve; });
+        }
+        function closeDeleteModal(result) {
+            document.getElementById('delete-modal-overlay').style.display = 'none';
+            if (deleteModalResolve) { deleteModalResolve(result); deleteModalResolve = null; }
+        }
+
+        window.deleteGoalPool = async function (goalId, event) {
+            if (event) event.stopPropagation();
+            const targetGoal = goals.find(g => g.id === goalId);
+            if (!targetGoal) return;
+
+            const result = await showDeleteModal(targetGoal.text);
+            if (!result || !result.confirmed) return;
+
+            goals = goals.filter(g => g.id !== goalId);
+
+            if (result.deleteHistory) {
+                for (const dateId in progress) {
+                    progress[dateId] = progress[dateId].filter(e => e.id !== goalId);
+                }
+                delete textBackupDb[goalId];
+            }
+            persistAll();
+            loadGoals();
+            renderCalendar();
+        };
+
+        // ============ PROGRESS / DROPPED GOALS ============
+        function getLastValueForGoal(goalId, excludeDateId) {
+            let candidates = [];
+            for (const dId in progress) {
+                if (dId === excludeDateId) continue;
+                (progress[dId] || []).forEach(e => {
+                    if (e.id === goalId && e.value !== null && e.value !== undefined) {
+                        candidates.push({ date: parseDateId(dId), value: e.value });
+                    }
+                });
+            }
+            if (!candidates.length) return null;
+            candidates.sort((a, b) => b.date - a.date);
+            return candidates[0].value;
+        }
+
+        async function handleDrop(dateId, goalId, options) {
+            options = options || {};
+            const goal = goals.find(g => g.id === goalId);
+            if (!progress[dateId]) progress[dateId] = [];
+
+            // Same goal can be logged multiple times on the same date — each press
+            // adds a fresh entry with its own entryId, so they can each be edited or
+            // removed independently later without touching the other entries.
+            if (goal && goal.trackValue) {
+                const lastVal = getLastValueForGoal(goalId, dateId);
+                const val = await showValueModal(goal.text, lastVal, goal.unit, goal.format);
+                if (val === null) return; // cancelled
+                progress[dateId].push({ id: goalId, value: val, entryId: makeEntryId() });
+            } else {
+                progress[dateId].push({ id: goalId, value: null, entryId: makeEntryId() });
+            }
+            persistAll();
+            renderCalendar();
+            if (options.viaDoubleClick) flashDayCell(dateId);
+
+            // Milestone check runs off getCurrentStreak(), which is always
+            // measured backward from TODAY — so backfilling an old date only
+            // fires a badge if it happens to close a gap that reconnects to
+            // today's streak. Purely historical backfill (no connection to
+            // today) naturally produces no popup, with no extra guard needed.
+            checkAndShowMilestone(goalId);
+        }
+
+        function flashDayCell(dateId) {
+            requestAnimationFrame(() => {
+                const cell = document.querySelector(`.calendar-day[data-id="${dateId}"]`);
+                if (!cell) return;
+                cell.classList.add('just-added');
+                setTimeout(() => cell.classList.remove('just-added'), 700);
+            });
+        }
+
+        async function editDroppedValue(dateId, entryId) {
+            const entry = (progress[dateId] || []).find(e => e.entryId === entryId);
+            if (!entry) return;
+            const goal = goals.find(g => g.id === entry.id);
+            if (!goal || !goal.trackValue) return;
+            const val = await showValueModal(goal.text, entry.value, goal.unit, goal.format);
+            if (val === null) return;
+            entry.value = val;
+            persistAll();
+            renderCalendar();
+        }
+
+        window.removeGoalFromDate = function (dateId, entryId, event) {
+            if (event) event.stopPropagation();
+            if (progress[dateId]) {
+                progress[dateId] = progress[dateId].filter(e => e.entryId !== entryId);
+                persistAll();
+                renderCalendar();
+            }
+        };
+
+        function renderDroppedGoalsInto(container, dateId) {
+            container.innerHTML = '';
+            // Order here is independent per date — drag a chip up/down to reorder
+            // it within THIS day only. It does not follow, and does not touch,
+            // the My Goals pool order on the right.
+            const entries = progress[dateId] || [];
+
+            entries.forEach(entry => {
+                const goal = goals.find(g => g.id === entry.id);
+                const text = goal ? goal.text : textBackupDb[entry.id];
+                if (!text) return;
+
+                const chip = document.createElement('div');
+                chip.className = 'dropped-goal';
+                chip.setAttribute('draggable', 'true');
+                // Keyed by entryId (not goalId) — the same goal can appear as several
+                // separate chips on one date now, so goalId alone can't identify a
+                // specific chip anymore.
+                chip.setAttribute('data-entry-id', entry.entryId);
+                if (goal && goal.hidden) chip.classList.add('hide-from-calendar');
+                if (goal && goal.trackValue) chip.classList.add('has-value');
+
+                const valueLabel = (goal && goal.trackValue)
+                    ? `<span class="chip-value">${formatGoalValue(goal, entry.value)}</span>`
+                    : '';
+
+                const textSpan = document.createElement('span');
+                textSpan.className = 'chip-text';
+                textSpan.innerHTML = `${escapeHtml(text)}${valueLabel}`;
+                if (goal && goal.trackValue) {
+                    textSpan.title = 'Klik untuk ubah angka';
+                    textSpan.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        editDroppedValue(dateId, entry.entryId);
+                    });
+                }
+
+                const removeSpan = document.createElement('span');
+                removeSpan.className = 'remove-cross';
+                removeSpan.innerText = '×';
+                removeSpan.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    removeGoalFromDate(dateId, entry.entryId, e);
+                });
+
+                chip.appendChild(textSpan);
+                chip.appendChild(removeSpan);
+
+                chip.addEventListener('dragstart', (e) => {
+                    e.stopPropagation(); // don't let this be read as a "new goal from pool" drag
+                    chip.classList.add('dragging');
+                    e.dataTransfer.setData('text/x-chip-reorder', entry.entryId);
+                    e.dataTransfer.effectAllowed = 'move';
+                });
+                chip.addEventListener('dragend', () => chip.classList.remove('dragging'));
+
+                container.appendChild(chip);
+            });
+        }
+
+        // Drag a chip within a single date's chip list to reorder it there —
+        // scoped to that one date, kept out of the pool's own drag-reorder above.
+        function initChipReorderZone(container, dateId) {
+            container.addEventListener('dragover', (e) => {
+                if (!e.dataTransfer.types.includes('text/x-chip-reorder')) return;
+                e.preventDefault();
+                e.stopPropagation();
+                const draggingChip = container.querySelector('.dropped-goal.dragging');
+                if (!draggingChip) return;
+                const afterElement = getDragAfterElement(container, e.clientY, '.dropped-goal');
+                if (afterElement == null) container.appendChild(draggingChip);
+                else container.insertBefore(draggingChip, afterElement);
+            });
+            container.addEventListener('drop', (e) => {
+                if (!e.dataTransfer.types.includes('text/x-chip-reorder')) return;
+                e.preventDefault();
+                e.stopPropagation();
+                const newOrderIds = Array.from(container.querySelectorAll('.dropped-goal')).map(c => c.getAttribute('data-entry-id'));
+                const oldEntries = progress[dateId] || [];
+                const newEntries = newOrderIds.map(eid => oldEntries.find(en => en.entryId === eid)).filter(Boolean);
+                progress[dateId] = newEntries;
+                persistAll();
+            });
+        }
+
+        // ============ VALUE MODAL ============
+        function showValueModal(goalText, defaultValue, unit, format) {
+            document.getElementById('vm-title').innerText = goalText;
+            const isHours = format === 'hours';
+            document.getElementById('value-modal-overlay').dataset.format = format || 'counter';
+            document.getElementById('vm-counter-row').style.display = isHours ? 'none' : 'flex';
+            document.getElementById('vm-hours-row').style.display = isHours ? 'flex' : 'none';
+
+            if (isHours) {
+                const hasVal = defaultValue !== null && defaultValue !== undefined;
+                const totalMinutes = hasVal ? Math.round(defaultValue * 60) : 0;
+                document.getElementById('vm-hours').value = hasVal ? Math.floor(totalMinutes / 60) : '';
+                document.getElementById('vm-minutes').value = hasVal ? (totalMinutes % 60) : '';
+                setTimeout(() => { const hEl = document.getElementById('vm-hours'); hEl.focus(); hEl.select(); }, 30);
+            } else {
+                const input = document.getElementById('vm-input');
+                input.value = (defaultValue !== null && defaultValue !== undefined) ? defaultValue : '';
+                document.getElementById('vm-unit').innerText = unit || '';
+                setTimeout(() => { input.focus(); input.select(); }, 30);
+            }
+
+            document.getElementById('value-modal-overlay').style.display = 'flex';
+            return new Promise(resolve => { valueModalResolve = resolve; });
+        }
+
+        function closeValueModal(result) {
+            document.getElementById('value-modal-overlay').style.display = 'none';
+            if (valueModalResolve) { valueModalResolve(result); valueModalResolve = null; }
+        }
+
+        // ============ BACKUP SYSTEM ============
+        function autoDailyBackup() {
+            const key = BACKUP_PREFIX + todayStr();
+            if (!localStorage.getItem(key)) {
+                const snapshot = JSON.stringify({ goals, progress, textBackupDb, savedAt: new Date().toISOString() });
+                localStorage.setItem(key, snapshot);
+                pruneOldBackups();
+            }
+        }
+
+        function pruneOldBackups(keepDays) {
+            keepDays = keepDays || 30;
+            const keys = Object.keys(localStorage).filter(k => k.startsWith(BACKUP_PREFIX)).sort();
+            while (keys.length > keepDays) localStorage.removeItem(keys.shift());
+        }
+
+        function listBackupSnapshots() {
+            return Object.keys(localStorage).filter(k => k.startsWith(BACKUP_PREFIX)).sort().reverse();
+        }
+
+        function refreshBackupStatusUI() {
+            const snapshots = listBackupSnapshots();
+            const statusEl = document.getElementById('backup-status-text');
+            if (snapshots.length) {
+                const lastDate = snapshots[0].replace(BACKUP_PREFIX, '');
+                statusEl.innerText = `Backup otomatis terakhir: ${lastDate} · ${snapshots.length} snapshot tersimpan`;
+            } else {
+                statusEl.innerText = 'Belum ada backup otomatis.';
+            }
+
+            const sel = document.getElementById('restore-select');
+            sel.innerHTML = '<option value="">Pilih snapshot tersimpan…</option>';
+            snapshots.forEach(key => {
+                const opt = document.createElement('option');
+                opt.value = key;
+                opt.innerText = key.replace(BACKUP_PREFIX, '');
+                sel.appendChild(opt);
+            });
+        }
+
+        function exportBackupFile() {
+            const data = { goals, progress, textBackupDb, exportedAt: new Date().toISOString(), app: 'gembel-ai-pik-calendar' };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `tracker-backup-${todayStr()}.json`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        }
+
+        function importBackupFile(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    if (!data.goals || !data.progress) throw new Error('invalid');
+                    if (!confirm('Ini akan mengganti data yang ada dengan isi file backup. Lanjutkan?')) return;
+                    goals = data.goals;
+                    progress = data.progress;
+                    textBackupDb = data.textBackupDb || {};
+                    migrateGoals();
+                    migrateProgressEntries();
+                    persistAll();
+                    loadGoals();
+                    renderCalendar();
+                    refreshBackupStatusUI();
+                    alert('Backup berhasil dipulihkan.');
+                } catch (err) {
+                    alert('File backup tidak valid.');
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function restoreFromSnapshot(key) {
+            const raw = localStorage.getItem(key);
+            if (!raw) return;
+            if (!confirm(`Pulihkan data dari snapshot ${key.replace(BACKUP_PREFIX, '')}? Data saat ini akan diganti.`)) return;
+            try {
+                const data = JSON.parse(raw);
+                goals = data.goals;
+                progress = data.progress;
+                textBackupDb = data.textBackupDb || {};
+                migrateGoals();
+                migrateProgressEntries();
+                persistAll();
+                loadGoals();
+                renderCalendar();
+                alert('Data berhasil dipulihkan dari snapshot.');
+            } catch (err) {
+                alert('Snapshot rusak atau tidak valid.');
+            }
+        }
+    </script>
+</body>
+</html>
