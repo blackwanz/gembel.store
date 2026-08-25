@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Save File — Gembel AI PIK</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/app-theme.css">
+<style>
+  .drop-zone {
+    border: 1.5px dashed var(--border-strong); border-radius: var(--radius-lg); padding: 32px 20px;
+    text-align: center; cursor: pointer; transition: border-color .15s, background .15s;
+  }
+  .drop-zone:hover, .drop-zone.dragover { border-color: var(--primary); background: var(--primary-soft); }
+  .drop-zone .dz-icon { font-size: 28px; margin-bottom: 8px; }
+  .drop-zone .dz-title { font-size: 14px; font-weight: 600; color: var(--text-main); }
+  .drop-zone .dz-sub { font-size: 12px; color: var(--text-faint); margin-top: 4px; }
+  #file-input { display: none; }
+  .upload-row { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+  .upload-row .file-name { flex: 1; min-width: 0; font-size: 12.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .progress-track { background: var(--surface-muted); border: 1px solid var(--border); border-radius: 100px; height: 8px; overflow: hidden; margin-top: 10px; display: none; }
+  .progress-track.show { display: block; }
+  .progress-fill { height: 100%; background: var(--primary); width: 0%; transition: width .2s ease; }
+  .file-row-name { font-weight: 600; font-size: 13px; color: var(--text-main); word-break: break-word; }
+  .file-row-meta { font-size: 11.5px; color: var(--text-faint); margin-top: 2px; }
+  .file-actions { display: flex; gap: 8px; white-space: nowrap; }
+  .empty-state { padding: 40px 20px; text-align: center; color: var(--text-faint); font-size: 13px; }
+  .toast {
+    position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(10px);
+    background: var(--text-main); color: var(--surface); padding: 10px 18px; border-radius: var(--radius-md);
+    font-size: 12.5px; font-weight: 600; opacity: 0; pointer-events: none;
+    transition: opacity .2s ease, transform .2s ease; z-index: 300; box-shadow: var(--shadow-lift);
+    max-width: 90vw; text-align: center;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.err { background: var(--danger); }
+</style>
+</head>
+<body>
+
+<div class="dash-top">
+  <div style="display:flex;align-items:center;gap:28px;">
+    <div class="logo display" style="font-size:16px;"><span class="g">GEMBEL</span> <span class="e">AI PIK</span></div>
+    <a class="btn btn-ghost btn-sm" href="../dashboard.html">← Dashboard</a>
+  </div>
+  <div style="display:flex;align-items:center;gap:14px;">
+    <div class="user-chip">
+      <div class="avatar" id="chip-avatar">··</div>
+      <div>
+        <div class="name" id="chip-name">…</div>
+        <div class="role" id="chip-role">MEMBER</div>
+      </div>
+    </div>
+    <button class="theme-toggle" onclick="toggleTheme()" title="Ganti tema">🌙</button>
+    <button class="btn btn-ghost btn-sm" onclick="logout()">Keluar</button>
+  </div>
+</div>
+
+<div class="dash-body">
+  <div class="dash-head">
+    <div>
+      <h1>Save File</h1>
+      <p>Upload file apa aja (maks 50MB), semua member yang login bisa lihat & download. Lo cuma bisa hapus file punya lo sendiri.</p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h2>Upload file baru</h2></div>
+    <div style="padding:20px;">
+      <div class="drop-zone" id="drop-zone">
+        <div class="dz-icon">📤</div>
+        <div class="dz-title">Klik atau drag file ke sini</div>
+        <div class="dz-sub">Maksimal 50MB per file</div>
+      </div>
+      <input type="file" id="file-input">
+      <div class="upload-row" id="upload-row" style="display:none;">
+        <span class="file-name" id="upload-file-name"></span>
+        <button class="btn btn-primary btn-sm" id="upload-btn">⬆️ Upload</button>
+        <button class="btn btn-ghost btn-sm" id="upload-cancel-btn">Batal</button>
+      </div>
+      <div class="progress-track" id="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Semua file</h2>
+      <span class="count" id="files-count"></span>
+    </div>
+    <table class="data-table">
+      <thead>
+        <tr><th>Nama file</th><th>Diupload oleh</th><th>Ukuran</th><th>Tanggal</th><th></th></tr>
+      </thead>
+      <tbody id="files-tbody"></tbody>
+    </table>
+    <div class="empty-state" id="files-empty" style="display:none;">Belum ada file yang diupload.</div>
+  </div>
+</div>
+
+<div class="toast" id="app-toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/dist/umd/supabase.min.js"></script>
+<script src="../assets/supabaseClient.js"></script>
+<script src="../assets/auth.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  const BUCKET = 'save-files';
+  const MAX_SIZE = 50 * 1024 * 1024; // 50MB, mirrors the bucket's own file_size_limit (0004_save_files.sql) -- this is just the fast client-side check, the server enforces it regardless
+
+  let CURRENT_USER = null;
+  let CURRENT_PROFILE = null;
+  let pendingFile = null;
+  let profilesCache = {}; // user_id -> display name, refetched on every list load
+
+  let toastTimer = null;
+  function showToast(msg, isErr) {
+    const el = document.getElementById('app-toast');
+    el.textContent = msg;
+    el.classList.toggle('err', !!isErr);
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 2400);
+  }
+
+  function fmtSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  function fmtDate(iso) {
+    const d = new Date(iso);
+    return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) + ' ' +
+      d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  // Storage keys are namespaced per uploader and stripped down to safe
+  // characters -- avoids path surprises from spaces/unicode/slashes in the
+  // original filename while keeping it recognizable.
+  function safeStoragePath(userId, fileName) {
+    const cleaned = fileName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-120);
+    const unique = Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    return `${userId}/${unique}_${cleaned}`;
+  }
+
+  function resetUploadUI() {
+    pendingFile = null;
+    document.getElementById('file-input').value = '';
+    document.getElementById('upload-row').style.display = 'none';
+    document.getElementById('progress-track').classList.remove('show');
+    document.getElementById('progress-fill').style.width = '0%';
+  }
+
+  function onFilePicked(file) {
+    if (!file) return;
+    if (file.size > MAX_SIZE) {
+      showToast(`File ketgedean (${fmtSize(file.size)}). Maks 50MB.`, true);
+      resetUploadUI();
+      return;
+    }
+    pendingFile = file;
+    document.getElementById('upload-file-name').textContent = `${file.name} (${fmtSize(file.size)})`;
+    document.getElementById('upload-row').style.display = 'flex';
+  }
+
+  async function doUpload() {
+    if (!pendingFile || !CURRENT_USER) return;
+    const file = pendingFile;
+    const btn = document.getElementById('upload-btn');
+    btn.disabled = true;
+    const track = document.getElementById('progress-track');
+    const fill = document.getElementById('progress-fill');
+    track.classList.add('show');
+    fill.style.width = '15%'; // supabase-js v2 storage upload has no native progress callback -- this is just an indeterminate "it's going" cue, not a real percentage
+
+    const path = safeStoragePath(CURRENT_USER.id, file.name);
+    try {
+      const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, file, {
+        contentType: file.type || 'application/octet-stream',
+        upsert: false,
+      });
+      if (upErr) throw upErr;
+      fill.style.width = '70%';
+
+      const { error: metaErr } = await supabase.from('save_files').insert({
+        user_id: CURRENT_USER.id,
+        storage_path: path,
+        file_name: file.name,
+        size_bytes: file.size,
+        content_type: file.type || null,
+      });
+      if (metaErr) {
+        // metadata insert failed after the file itself made it to storage --
+        // clean up the orphaned object rather than leaving a file with no
+        // listing/owner record.
+        await supabase.storage.from(BUCKET).remove([path]);
+        throw metaErr;
+      }
+
+      fill.style.width = '100%';
+      showToast('File berhasil diupload.');
+      resetUploadUI();
+      await loadFiles();
+    } catch (e) {
+      console.error('upload failed', e);
+      showToast('Upload gagal: ' + (e.message || 'error gak diketahui'), true);
+    } finally {
+      btn.disabled = false;
+      setTimeout(() => track.classList.remove('show'), 500);
+    }
+  }
+
+  async function downloadFile(row) {
+    // Signed URL with download:true forces Content-Disposition: attachment,
+    // so opening it never renders the file inline in the browser (matters
+    // since uploads have no type restriction -- an .html/.svg file must
+    // never execute, only save to disk).
+    const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(row.storage_path, 60, { download: row.file_name });
+    if (error || !data) { showToast('Gagal bikin link download.', true); return; }
+    const a = document.createElement('a');
+    a.href = data.signedUrl;
+    a.download = row.file_name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
+  async function deleteFile(row) {
+    if (!confirm(`Hapus "${row.file_name}"? Gak bisa dibatalin.`)) return;
+    try {
+      const { error: rmErr } = await supabase.storage.from(BUCKET).remove([row.storage_path]);
+      if (rmErr) throw rmErr;
+      const { error: delErr } = await supabase.from('save_files').delete().eq('id', row.id);
+      if (delErr) throw delErr;
+      showToast('File dihapus.');
+      await loadFiles();
+    } catch (e) {
+      console.error('delete failed', e);
+      showToast('Gagal hapus file.', true);
+    }
+  }
+
+  async function loadProfilesFor(userIds) {
+    const missing = userIds.filter(id => !(id in profilesCache));
+    if (!missing.length) return;
+    const { data, error } = await supabase.from('profiles').select('id, full_name, email').in('id', missing);
+    if (error) { console.error('profiles fetch failed', error); return; }
+    (data || []).forEach(p => { profilesCache[p.id] = p.full_name || p.email || 'Member'; });
+  }
+
+  function renderRow(row) {
+    const tr = document.createElement('tr');
+    const isOwner = row.user_id === CURRENT_USER.id;
+    const uploaderName = profilesCache[row.user_id] || 'Member';
+    tr.innerHTML = `
+      <td><div class="file-row-name">${escapeHtml(row.file_name)}</div></td>
+      <td>${escapeHtml(uploaderName)}</td>
+      <td>${fmtSize(row.size_bytes)}</td>
+      <td>${fmtDate(row.created_at)}</td>
+      <td>
+        <div class="file-actions">
+          <button class="btn btn-soft btn-sm" data-action="download">⬇️ Download</button>
+          ${isOwner ? '<button class="btn btn-danger btn-sm" data-action="delete">🗑️</button>' : ''}
+        </div>
+      </td>
+    `;
+    tr.querySelector('[data-action="download"]').addEventListener('click', () => downloadFile(row));
+    const delBtn = tr.querySelector('[data-action="delete"]');
+    if (delBtn) delBtn.addEventListener('click', () => deleteFile(row));
+    return tr;
+  }
+
+  async function loadFiles() {
+    const { data, error } = await supabase.from('save_files').select('*').order('created_at', { ascending: false });
+    if (error) { console.error('load files failed', error); showToast('Gagal load daftar file.', true); return; }
+
+    const rows = data || [];
+    document.getElementById('files-count').textContent = rows.length ? `${rows.length} file` : '';
+    document.getElementById('files-empty').style.display = rows.length ? 'none' : 'block';
+
+    await loadProfilesFor([...new Set(rows.map(r => r.user_id))]);
+
+    const tbody = document.getElementById('files-tbody');
+    tbody.innerHTML = '';
+    rows.forEach(row => tbody.appendChild(renderRow(row)));
+  }
+
+  function wireEvents() {
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => onFilePicked(fileInput.files[0]));
+
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      if (e.dataTransfer.files[0]) onFilePicked(e.dataTransfer.files[0]);
+    });
+
+    document.getElementById('upload-btn').addEventListener('click', doUpload);
+    document.getElementById('upload-cancel-btn').addEventListener('click', resetUploadUI);
+  }
+
+  (async () => {
+    const ctx = await requireAuth('../index.html');
+    if (!ctx) return;
+    CURRENT_USER = ctx.user;
+    CURRENT_PROFILE = ctx.profile;
+
+    const displayName = CURRENT_PROFILE?.full_name || CURRENT_USER.email;
+    document.getElementById('chip-name').textContent = displayName;
+    document.getElementById('chip-avatar').textContent = initials(displayName);
+    document.getElementById('chip-role').textContent = (CURRENT_PROFILE?.role || 'member').toUpperCase();
+
+    wireEvents();
+    await loadFiles();
+
+    // Live updates when anyone uploads/deletes a file, so the shared list
+    // stays in sync across everyone's open tab without a manual refresh.
+    supabase
+      .channel('save_files_sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'save_files' }, () => loadFiles())
+      .subscribe();
+  })();
+})();
+</script>
+</body>
+</html>

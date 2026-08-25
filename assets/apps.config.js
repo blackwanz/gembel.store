@@ -35,4 +35,12 @@ window.GEMBEL_APPS = [
     url: 'progbar.html',
     enabled: true,
   },
+  {
+    id: 'save-files',
+    name: 'Save File',
+    desc: 'Upload file apa aja (maks 50MB) — semua member yang login bisa lihat & download, lo cuma bisa hapus punya lo sendiri.',
+    icon: '📤',
+    url: 'save%20file/index.html',
+    enabled: true,
+  },
 ];
