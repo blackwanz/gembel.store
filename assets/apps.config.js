@@ -36,6 +36,14 @@ window.GEMBEL_APPS = [
     enabled: true,
   },
   {
+    id: 'focus',
+    name: 'Focus Dashboard',
+    desc: 'Kanban tugas, timeline harian, goals jangka panjang, dan focus timer — semuanya dalam satu workspace.',
+    icon: '🎯',
+    url: 'focus.html',
+    enabled: true,
+  },
+  {
     id: 'save-files',
     name: 'Save File',
     desc: 'Upload file apa aja (maks 50MB) — semua member yang login bisa lihat & download, lo cuma bisa hapus punya lo sendiri.',
