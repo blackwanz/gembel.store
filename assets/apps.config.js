@@ -44,6 +44,14 @@ window.GEMBEL_APPS = [
     enabled: true,
   },
   {
+    id: 'ketik-buku',
+    name: 'Ketik Buku',
+    desc: 'Latihan mengetik pake buku/PDF/teks yang lo import sendiri — perpustakaan pribadi, kosakata tersimpan, statistik WPM & akurasi.',
+    icon: '📖',
+    url: 'ketik-buku.html',
+    enabled: true,
+  },
+  {
     id: 'save-files',
     name: 'Save File',
     desc: 'Upload file apa aja (maks 50MB) — semua member yang login bisa lihat & download, lo cuma bisa hapus punya lo sendiri.',
