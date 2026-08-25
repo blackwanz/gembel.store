@@ -87,6 +87,9 @@
         <h2>Semua User</h2>
         <span class="count" id="users-count"></span>
       </div>
+      <div style="padding:12px 20px 0;">
+        <input type="text" id="users-search" oninput="filterUsers()" placeholder="Cari nama atau email…" style="width:100%;max-width:320px;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text-main);">
+      </div>
       <div style="overflow-x:auto;">
         <table class="data-table">
           <thead>
@@ -141,6 +144,13 @@
         </table>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- User detail lookup (reuses the payment modal's overlay/card look) -->
+<div class="pay-overlay" id="user-detail-overlay" style="display:none;" onclick="if(event.target===this) closeUserDetail()">
+  <div class="pay-card" style="max-width:420px;">
+    <div class="pay-body" id="user-detail-body"></div>
   </div>
 </div>
 
@@ -305,9 +315,12 @@ async function editLinks(id) {
   alert('Tersimpan.');
 }
 
-function renderUsers() {
+function renderUsers(searchQuery) {
   const tbody = document.getElementById('users-tbody');
-  const users = Object.values(ALL_PROFILES).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  let users = Object.values(ALL_PROFILES).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  if (searchQuery) {
+    users = users.filter(p => (p.full_name || '').toLowerCase().includes(searchQuery) || (p.email || '').toLowerCase().includes(searchQuery));
+  }
   document.getElementById('users-count').textContent = users.length + ' user';
 
   tbody.innerHTML = users.map(p => `
@@ -321,14 +334,50 @@ function renderUsers() {
       <td>${escapeHtml(p.email)}</td>
       <td><span class="role-badge ${p.role}">${p.role === 'admin' ? 'ADMIN' : 'USER'}</span> ${isElite(p) ? '<span class="plan-badge elite">ELITE</span>' : '<span class="plan-badge free">FREE</span>'}</td>
       <td style="color:var(--text-faint);font-size:12px;">${new Date(p.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
-      <td>
+      <td style="white-space:nowrap;">
+        <button class="btn btn-ghost btn-sm" onclick="openUserDetail('${p.id}')">Detail</button>
         ${p.id === CURRENT_USER.id
-          ? '<span style="color:var(--text-faint);font-size:12px;">akun lo</span>'
+          ? ''
           : `<button class="btn btn-ghost btn-sm" onclick="toggleRole('${p.id}', '${p.role}')">${p.role === 'admin' ? 'Cabut admin' : 'Jadikan admin'}</button>`}
       </td>
     </tr>
   `).join('');
 }
+
+function filterUsers() {
+  const q = document.getElementById('users-search').value.trim().toLowerCase();
+  renderUsers(q);
+}
+
+function openUserDetail(id) {
+  const p = ALL_PROFILES[id];
+  if (!p) return;
+  const elite = isElite(p);
+  document.getElementById('user-detail-body').innerHTML = `
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;">
+      <div class="avatar${p.role === 'admin' ? ' admin' : ''}" style="width:48px;height:48px;font-size:17px;flex-shrink:0;">${escapeHtml(initials(p.full_name || p.email))}</div>
+      <div style="min-width:0;">
+        <h3 style="margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(p.full_name || '(belum diisi)')}</h3>
+        <div style="font-size:12.5px;color:var(--text-faint);">${escapeHtml(p.email)}</div>
+      </div>
+    </div>
+    <table class="data-table" style="margin-bottom:16px;">
+      <tr><td style="color:var(--text-faint);width:110px;">Role</td><td><span class="role-badge ${p.role}">${p.role === 'admin' ? 'ADMIN' : 'USER'}</span></td></tr>
+      <tr><td style="color:var(--text-faint);">Plan</td><td>${elite ? '<span class="plan-badge elite">ELITE ⭐</span>' + (p.plan_until ? ' s/d ' + new Date(p.plan_until).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '') : '<span class="plan-badge free">FREE</span>'}</td></tr>
+      <tr><td style="color:var(--text-faint);">No. HP</td><td>${escapeHtml(p.phone || '—')}</td></tr>
+      <tr><td style="color:var(--text-faint);">Wallet</td><td>${p.wallet_type && p.wallet_type !== 'nothing' ? escapeHtml(p.wallet_type) + ': ' + escapeHtml(p.wallet_number || '—') : '—'}</td></tr>
+      <tr><td style="color:var(--text-faint);">Bio</td><td>${escapeHtml(p.bio || '—')}</td></tr>
+      <tr><td style="color:var(--text-faint);">Daftar sejak</td><td>${new Date(p.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</td></tr>
+    </table>
+    <button class="btn btn-ghost btn-block" onclick="closeUserDetail()">Tutup</button>
+  `;
+  document.getElementById('user-detail-overlay').style.display = 'flex';
+}
+
+function closeUserDetail() {
+  document.getElementById('user-detail-overlay').style.display = 'none';
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeUserDetail(); });
 
 async function toggleRole(id, currentRole) {
   const newRole = currentRole === 'admin' ? 'user' : 'admin';

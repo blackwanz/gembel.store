@@ -77,11 +77,18 @@
       </div>
     </div>
     <div class="panel" style="max-width:440px;">
+      <div style="display:flex;align-items:center;gap:16px;padding:22px 20px;border-bottom:1px solid var(--border);">
+        <div class="avatar" id="profile-hero-avatar" style="width:56px;height:56px;font-size:19px;flex-shrink:0;">··</div>
+        <div style="min-width:0;">
+          <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:17px;color:var(--text-main);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="profile-hero-name">…</div>
+          <div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap;" id="profile-hero-badges"></div>
+        </div>
+      </div>
       <div class="panel-head"><h2>Detail akun</h2></div>
       <table class="data-table">
         <tr><td style="color:var(--text-faint);width:120px;">Email</td><td id="profil-email">—</td></tr>
-        <tr><td style="color:var(--text-faint);">Role</td><td id="profil-role">—</td></tr>
-        <tr><td style="color:var(--text-faint);">Plan</td><td id="profil-plan">—</td></tr>
+        <tr><td style="color:var(--text-faint);">No. HP</td><td id="profil-phone">—</td></tr>
+        <tr><td style="color:var(--text-faint);">Wallet</td><td id="profil-wallet">—</td></tr>
         <tr><td style="color:var(--text-faint);">Member sejak</td><td id="profil-since">—</td></tr>
       </table>
     </div>
@@ -275,10 +282,20 @@ function fillProfile() {
   document.getElementById('wallet-number-field').style.display = w === 'nothing' ? 'none' : 'block';
   document.getElementById('edit-wallet-number').value = CURRENT_PROFILE?.wallet_number || '';
   document.getElementById('edit-bio').value = CURRENT_PROFILE?.bio || '';
-  document.getElementById('profil-role').textContent = CURRENT_PROFILE?.role === 'admin' ? 'Admin' : 'Member';
-  document.getElementById('profil-plan').textContent = elite
-    ? 'Elite ⭐' + (CURRENT_PROFILE?.plan_until ? ' (aktif s/d ' + new Date(CURRENT_PROFILE.plan_until).toLocaleDateString('id-ID', {day:'numeric',month:'short',year:'numeric'}) + ')' : '')
-    : 'Free';
+
+  // profile hero card
+  document.getElementById('profile-hero-avatar').textContent = initials(name);
+  document.getElementById('profile-hero-avatar').classList.toggle('admin', CURRENT_PROFILE?.role === 'admin');
+  document.getElementById('profile-hero-name').textContent = name;
+  const planBadge = CURRENT_PROFILE?.role === 'admin'
+    ? '<span class="role-badge admin">👑 ADMIN</span>'
+    : (elite ? '<span class="plan-badge elite">ELITE ⭐</span>' : '<span class="plan-badge free">FREE</span>');
+  document.getElementById('profile-hero-badges').innerHTML = planBadge;
+
+  document.getElementById('profil-phone').textContent = CURRENT_PROFILE?.phone || '—';
+  document.getElementById('profil-wallet').textContent = w === 'nothing'
+    ? '—'
+    : `${w === 'gopay' ? 'GoPay' : 'Bitcoin'}: ${escapeHtml(CURRENT_PROFILE?.wallet_number || '—')}`;
   document.getElementById('profil-since').textContent = CURRENT_PROFILE?.created_at
     ? new Date(CURRENT_PROFILE.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
     : '—';
