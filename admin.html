@@ -157,6 +157,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/dist/umd/supabase.min.js"></script>
 <script src="assets/supabaseClient.js"></script>
 <script src="assets/auth.js"></script>
+<script src="assets/popup.js"></script>
 <script>
 let CURRENT_USER = null;
 let CURRENT_PROFILE = null;
@@ -223,9 +224,9 @@ function renderPayments() {
 }
 
 async function setPayment(id, status) {
-  if (status === 'confirmed' && !confirm('Konfirmasi pembayaran ini? User langsung jadi Elite 30 hari.')) return;
+  if (status === 'confirmed' && !(await gembelConfirm('Konfirmasi pembayaran ini? User langsung jadi Elite 30 hari.'))) return;
   const { error } = await supabase.from('payment_requests').update({ status }).eq('id', id);
-  if (error) { alert('Gagal: ' + error.message); return; }
+  if (error) { await gembelAlert('Gagal: ' + error.message); return; }
   await loadAll();
 }
 
@@ -290,7 +291,7 @@ function renderRequests() {
 
 async function updateStatus(id, status) {
   const { error } = await supabase.from('app_requests').update({ status }).eq('id', id);
-  if (error) { alert('Gagal update: ' + error.message); return; }
+  if (error) { await gembelAlert('Gagal update: ' + error.message); return; }
   const r = ALL_REQUESTS.find(x => x.id === id);
   if (r) r.status = status;
   updateOverviewStats();
@@ -298,11 +299,11 @@ async function updateStatus(id, status) {
 
 async function editLinks(id) {
   const r = ALL_REQUESTS.find(x => x.id === id);
-  const appUrl = prompt('Link app (browser), kosongin kalau belum ada:', r.app_url || '');
+  const appUrl = await gembelPrompt('Link app (browser), kosongin kalau belum ada:', r.app_url || '');
   if (appUrl === null) return;
-  const apkUrl = prompt('Link APK, kosongin kalau belum ada:', r.apk_url || '');
+  const apkUrl = await gembelPrompt('Link APK, kosongin kalau belum ada:', r.apk_url || '');
   if (apkUrl === null) return;
-  const note = prompt('Catatan buat user (opsional):', r.admin_note || '');
+  const note = await gembelPrompt('Catatan buat user (opsional):', r.admin_note || '');
   if (note === null) return;
 
   const { error } = await supabase.from('app_requests').update({
@@ -310,9 +311,9 @@ async function editLinks(id) {
     apk_url: apkUrl.trim() || null,
     admin_note: note.trim() || null,
   }).eq('id', id);
-  if (error) { alert('Gagal update: ' + error.message); return; }
+  if (error) { await gembelAlert('Gagal update: ' + error.message); return; }
   Object.assign(r, { app_url: appUrl.trim() || null, apk_url: apkUrl.trim() || null, admin_note: note.trim() || null });
-  alert('Tersimpan.');
+  await gembelAlert('Tersimpan.');
 }
 
 function renderUsers(searchQuery) {
@@ -381,9 +382,9 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeUserDet
 
 async function toggleRole(id, currentRole) {
   const newRole = currentRole === 'admin' ? 'user' : 'admin';
-  if (!confirm(`Ubah role user ini jadi "${newRole}"?`)) return;
+  if (!(await gembelConfirm(`Ubah role user ini jadi "${newRole}"?`))) return;
   const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', id);
-  if (error) { alert('Gagal update: ' + error.message); return; }
+  if (error) { await gembelAlert('Gagal update: ' + error.message); return; }
   ALL_PROFILES[id].role = newRole;
   renderUsers();
 }
@@ -415,7 +416,7 @@ async function saveLeaderboardPoint(userId) {
 
   if (points <= 0) {
     const { error } = await supabase.from('leaderboard_points').delete().eq('user_id', userId).eq('period_month', periodMonth);
-    if (error) { alert('Gagal hapus: ' + error.message); return; }
+    if (error) { await gembelAlert('Gagal hapus: ' + error.message); return; }
     delete ALL_LEADERBOARD[userId];
     input.value = '';
     return;
@@ -424,7 +425,7 @@ async function saveLeaderboardPoint(userId) {
   const { error } = await supabase.from('leaderboard_points').upsert({
     user_id: userId, period_month: periodMonth, points, updated_by: CURRENT_USER.id, updated_at: new Date().toISOString(),
   }, { onConflict: 'user_id,period_month' });
-  if (error) { alert('Gagal simpan: ' + error.message); return; }
+  if (error) { await gembelAlert('Gagal simpan: ' + error.message); return; }
   ALL_LEADERBOARD[userId] = { points };
 }
 

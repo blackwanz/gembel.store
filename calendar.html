@@ -718,6 +718,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/dist/umd/supabase.min.js"></script>
     <script src="assets/supabaseClient.js"></script>
     <script src="assets/auth.js"></script>
+    <script src="assets/popup.js"></script>
     <script>
         // ============ STATE ============
         let viewMode = 'month';
@@ -2563,11 +2564,11 @@
 
         function importBackupFile(file) {
             const reader = new FileReader();
-            reader.onload = (e) => {
+            reader.onload = async (e) => {
                 try {
                     const data = JSON.parse(e.target.result);
                     if (!data.goals || !data.progress) throw new Error('invalid');
-                    if (!confirm('Ini akan mengganti data yang ada dengan isi file backup. Lanjutkan?')) return;
+                    if (!(await gembelConfirm('Ini akan mengganti data yang ada dengan isi file backup. Lanjutkan?'))) return;
                     goals = data.goals;
                     progress = data.progress;
                     textBackupDb = data.textBackupDb || {};
@@ -2577,18 +2578,18 @@
                     loadGoals();
                     renderCalendar();
                     refreshBackupStatusUI();
-                    alert('Backup berhasil dipulihkan.');
+                    await gembelAlert('Backup berhasil dipulihkan.');
                 } catch (err) {
-                    alert('File backup tidak valid.');
+                    await gembelAlert('File backup tidak valid.');
                 }
             };
             reader.readAsText(file);
         }
 
-        function restoreFromSnapshot(key) {
+        async function restoreFromSnapshot(key) {
             const raw = localStorage.getItem(key);
             if (!raw) return;
-            if (!confirm(`Pulihkan data dari snapshot ${key.replace(BACKUP_PREFIX, '')}? Data saat ini akan diganti.`)) return;
+            if (!(await gembelConfirm(`Pulihkan data dari snapshot ${key.replace(BACKUP_PREFIX, '')}? Data saat ini akan diganti.`))) return;
             try {
                 const data = JSON.parse(raw);
                 goals = data.goals;
@@ -2599,9 +2600,9 @@
                 persistAll();
                 loadGoals();
                 renderCalendar();
-                alert('Data berhasil dipulihkan dari snapshot.');
+                await gembelAlert('Data berhasil dipulihkan dari snapshot.');
             } catch (err) {
-                alert('Snapshot rusak atau tidak valid.');
+                await gembelAlert('Snapshot rusak atau tidak valid.');
             }
         }
     </script>

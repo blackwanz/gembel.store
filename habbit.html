@@ -29,6 +29,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/dist/umd/supabase.min.js"></script>
 <script src="assets/supabaseClient.js"></script>
 <script src="assets/auth.js"></script>
+<script src="assets/popup.js"></script>
 <style>
 :root{
   --bg:#0a0e16;
@@ -1912,11 +1913,11 @@ input:focus{border-color:var(--accent);}
   }
   function importBackup(file) {
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const data = JSON.parse(e.target.result);
         if (!Array.isArray(data.running) || !Array.isArray(data.history)) throw new Error('invalid');
-        if (!confirm('Ini akan mengganti SEMUA data yang ada sekarang dengan isi file backup. Lanjutkan?')) return;
+        if (!(await gembelConfirm('Ini akan mengganti SEMUA data yang ada sekarang dengan isi file backup. Lanjutkan?'))) return;
         db = { running: data.running, history: data.history };
         saveDB();
         loadAll();
@@ -1927,8 +1928,8 @@ input:focus{border-color:var(--accent);}
     };
     reader.readAsText(file);
   }
-  function resetAllData() {
-    if (!confirm('Hapus SEMUA aktivitas & riwayat di browser ini? Tindakan ini tidak bisa dibatalkan (kecuali kamu punya backup).')) return;
+  async function resetAllData() {
+    if (!(await gembelConfirm('Hapus SEMUA aktivitas & riwayat di browser ini? Tindakan ini tidak bisa dibatalkan (kecuali kamu punya backup).'))) return;
     db = { running: [], history: [] };
     saveDB();
     loadAll();
@@ -2342,14 +2343,14 @@ input:focus{border-color:var(--accent);}
   function importUniversalExcel(file) {
     if (typeof XLSX === 'undefined') { showToast('Gagal load library Excel, cek koneksi internet.', 'err'); return; }
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
         if (!wb.SheetNames || wb.SheetNames.length === 0) throw new Error('empty workbook');
 
         const parsed = parseUniversalExcelWorkbook(wb);
 
-        if (!confirm('Ini akan mengganti SEMUA data (riwayat, target, gaji, budget planner, target nabung) dengan isi file Excel ini. Lanjutkan?')) return;
+        if (!(await gembelConfirm('Ini akan mengganti SEMUA data (riwayat, target, gaji, budget planner, target nabung) dengan isi file Excel ini. Lanjutkan?'))) return;
 
         db = parsed.db;
         targets = parsed.targets;

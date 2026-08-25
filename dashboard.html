@@ -139,6 +139,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/dist/umd/supabase.min.js"></script>
 <script src="assets/supabaseClient.js"></script>
 <script src="assets/auth.js"></script>
+<script src="assets/popup.js"></script>
 <script src="assets/apps.config.js"></script>
 <script>
 let CURRENT_USER = null;
@@ -252,7 +253,7 @@ async function submitRequest() {
   btn.textContent = 'Kirim prompt →';
 
   if (error) {
-    alert('Gagal kirim: ' + error.message);
+    await gembelAlert('Gagal kirim: ' + error.message);
     return;
   }
   titleEl.value = '';
@@ -313,7 +314,7 @@ async function saveProfile() {
     bio: document.getElementById('edit-bio').value.trim() || null,
   }).eq('id', CURRENT_USER.id);
   btn.disabled = false; btn.textContent = 'Simpan profil';
-  if (error) { alert('Gagal simpan: ' + error.message); return; }
+  if (error) { await gembelAlert('Gagal simpan: ' + error.message); return; }
   CURRENT_PROFILE = await getProfile(CURRENT_USER.id);
   fillProfile();
   btn.textContent = 'Tersimpan ✓';

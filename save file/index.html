@@ -104,6 +104,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/dist/umd/supabase.min.js"></script>
 <script src="../assets/supabaseClient.js"></script>
 <script src="../assets/auth.js"></script>
+<script src="../assets/popup.js"></script>
 <script>
 (function () {
   'use strict';
@@ -230,7 +231,7 @@
   }
 
   async function deleteFile(row) {
-    if (!confirm(`Hapus "${row.file_name}"? Gak bisa dibatalin.`)) return;
+    if (!(await gembelConfirm(`Hapus "${row.file_name}"? Gak bisa dibatalin.`))) return;
     try {
       const { error: rmErr } = await supabase.storage.from(BUCKET).remove([row.storage_path]);
       if (rmErr) throw rmErr;
