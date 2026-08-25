@@ -5,10 +5,10 @@ const transporter = nodemailer.createTransport({
   port: 587,
   secure: false,
   auth: {
-    // Gunakan email login Brevo kamu yang kemarin
-    user: 'b0bf36001@smtp-brevo.com', 
-    // GANTI dengan string Master SMTP Key panjang yang kamu generate dari Brevo (contoh: xsmtpsib-...)
-    pass: 'xsmtpsib-b26f5bea0090b49b2280a6d307eb7d0bc29747d7704e67ca7416b2a17899653d-jZ1p9BQFSeua1gfL' 
+    // Read from environment, never hardcoded -- set BREVO_SMTP_USER/BREVO_SMTP_KEY
+    // locally (e.g. via a .env file, already gitignored) before running this.
+    user: process.env.BREVO_SMTP_USER,
+    pass: process.env.BREVO_SMTP_KEY,
   },
   logger: true, // Biar tetep kelihatan log detailnya kalau gagal
   debug: true
