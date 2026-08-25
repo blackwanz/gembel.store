@@ -6,17 +6,28 @@
 # postgres:17 yang sama seperti langkah backup di .github/workflows/main.yml,
 # jadi nggak butuh psql/Supabase CLI terinstall lokal -- cuma Docker.
 #
-# Pakai:
-#   export SUPABASE_DB_URL="postgresql://user:pass@host:5432/postgres"
-#   ./db/migrate.sh            # apply semua migrasi yang belum jalan
+# Pakai (pilih salah satu):
+#   1) export SUPABASE_DB_URL="postgresql://user:pass@host:5432/postgres"
+#      ./db/migrate.sh
+#   2) Taruh SUPABASE_DB_URL=postgresql://user:pass@host:5432/postgres di
+#      db/.env (sudah di-gitignore, gak bakal ke-commit -- lihat db/.env.example)
+#      ./db/migrate.sh          # otomatis ke-load dari db/.env kalau ada
+#
 #   ./db/migrate.sh --status   # cuma nampilin migrasi mana yang udah/belum jalan, gak apply apa-apa
 
 set -e
 
-: "${SUPABASE_DB_URL:?SUPABASE_DB_URL belum di-set. Contoh: export SUPABASE_DB_URL='postgresql://user:pass@host:5432/postgres'}"
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MIGRATIONS_DIR="$SCRIPT_DIR/migrations"
+
+if [ -f "$SCRIPT_DIR/.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$SCRIPT_DIR/.env"
+  set +a
+fi
+
+: "${SUPABASE_DB_URL:?SUPABASE_DB_URL belum di-set. Export manual, atau taruh di db/.env (lihat db/.env.example).}"
 LOCK_KEY=847362910  # arbitrary fixed advisory-lock key, unique to this script
 
 psql_run() {
