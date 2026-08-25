@@ -15,9 +15,10 @@
   <div style="display:flex;align-items:center;gap:28px;">
     <div class="logo display" style="font-size:16px;"><span class="g">GEMBEL</span> <span class="e">AI PIK</span></div>
     <div class="dash-tabs">
-      <div class="dash-tab active" data-tab="requests" onclick="switchTab('requests')">Semua Query</div>
+      <div class="dash-tab active" data-tab="requests" onclick="switchTab('requests')">Semua Query<span id="requests-unseen-count"></span></div>
       <div class="dash-tab" data-tab="users" onclick="switchTab('users')">Users</div>
       <div class="dash-tab" data-tab="payments" onclick="switchTab('payments')">Pembayaran</div>
+      <div class="dash-tab" data-tab="leaderboard" onclick="switchTab('leaderboard')">Leaderboard</div>
     </div>
   </div>
   <div style="display:flex;align-items:center;gap:14px;">
@@ -123,6 +124,24 @@
       </div>
     </div>
   </div>
+  <!-- ===== TAB: LEADERBOARD ===== -->
+  <div id="tab-leaderboard" class="tab-panel" style="display:none;">
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Leaderboard — Set Poin Bulanan</h2>
+        <input type="month" id="leaderboard-month-picker" style="max-width:160px;">
+      </div>
+      <p style="padding:0 20px 12px;color:var(--text-faint);font-size:12.5px;">Poin diisi manual (belum dihitung otomatis dari transaksi). Kosongin / 0 buat hapus user dari leaderboard bulan itu.</p>
+      <div style="overflow-x:auto;">
+        <table class="data-table">
+          <thead><tr><th>User</th><th>Poin bulan ini</th><th>Aksi</th></tr></thead>
+          <tbody id="leaderboard-tbody">
+            <tr><td colspan="3" style="color:var(--text-faint);">Memuat…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/dist/umd/supabase.min.js"></script>
@@ -135,6 +154,27 @@ let ALL_REQUESTS = [];
 let ALL_PROFILES = {}; // id -> profile
 let ACTIVE_FILTER = 'all';
 let ALL_PAYMENTS = [];
+let ALL_LEADERBOARD = {}; // user_id -> leaderboard_points row, for the currently-picked month
+let leaderboardMonth = currentMonthValue();
+
+function currentMonthValue() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function updateRequestsUnseenBadge() {
+  const count = ALL_REQUESTS.filter(r => !r.seen_by_admin).length;
+  document.getElementById('requests-unseen-count').textContent = count > 0 ? ` (${count} baru)` : '';
+}
+
+async function markRequestsSeen() {
+  const unseenIds = ALL_REQUESTS.filter(r => !r.seen_by_admin).map(r => r.id);
+  if (!unseenIds.length) return;
+  const { error } = await supabase.from('app_requests').update({ seen_by_admin: true }).in('id', unseenIds);
+  if (error) { console.error(error); return; }
+  ALL_REQUESTS.forEach(r => { if (unseenIds.includes(r.id)) r.seen_by_admin = true; });
+  updateRequestsUnseenBadge();
+}
 
 function renderPayments() {
   const tbody = document.getElementById('payments-tbody');
@@ -184,6 +224,8 @@ function switchTab(name) {
   document.getElementById('tab-requests').style.display = name === 'requests' ? 'block' : 'none';
   document.getElementById('tab-users').style.display = name === 'users' ? 'block' : 'none';
   document.getElementById('tab-payments').style.display = name === 'payments' ? 'block' : 'none';
+  document.getElementById('tab-leaderboard').style.display = name === 'leaderboard' ? 'block' : 'none';
+  if (name === 'requests') markRequestsSeen();
 }
 
 function setFilter(status) {
@@ -297,6 +339,55 @@ async function toggleRole(id, currentRole) {
   renderUsers();
 }
 
+function renderLeaderboard() {
+  const tbody = document.getElementById('leaderboard-tbody');
+  const users = Object.values(ALL_PROFILES).sort((a, b) => (a.full_name || a.email).localeCompare(b.full_name || b.email));
+  tbody.innerHTML = users.map(p => {
+    const row = ALL_LEADERBOARD[p.id];
+    return `
+      <tr>
+        <td>
+          <div class="cell-user">
+            <div class="u-mini">${escapeHtml(initials(p.full_name || p.email))}</div>
+            <div style="font-weight:600;">${escapeHtml(p.full_name || p.email)}</div>
+          </div>
+        </td>
+        <td><input type="number" min="0" step="1" class="lb-points-input" id="lb-input-${p.id}" value="${row ? row.points : ''}" placeholder="0" style="width:110px;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text-main);"></td>
+        <td><button class="btn btn-primary btn-sm" onclick="saveLeaderboardPoint('${p.id}')">Simpan</button></td>
+      </tr>
+    `;
+  }).join('');
+}
+
+async function saveLeaderboardPoint(userId) {
+  const input = document.getElementById(`lb-input-${userId}`);
+  const points = Number(input.value) || 0;
+  const periodMonth = leaderboardMonth + '-01';
+
+  if (points <= 0) {
+    const { error } = await supabase.from('leaderboard_points').delete().eq('user_id', userId).eq('period_month', periodMonth);
+    if (error) { alert('Gagal hapus: ' + error.message); return; }
+    delete ALL_LEADERBOARD[userId];
+    input.value = '';
+    return;
+  }
+
+  const { error } = await supabase.from('leaderboard_points').upsert({
+    user_id: userId, period_month: periodMonth, points, updated_by: CURRENT_USER.id, updated_at: new Date().toISOString(),
+  }, { onConflict: 'user_id,period_month' });
+  if (error) { alert('Gagal simpan: ' + error.message); return; }
+  ALL_LEADERBOARD[userId] = { points };
+}
+
+async function loadLeaderboardMonth() {
+  const periodMonth = leaderboardMonth + '-01';
+  const { data, error } = await supabase.from('leaderboard_points').select('*').eq('period_month', periodMonth);
+  if (error) { console.error(error); return; }
+  ALL_LEADERBOARD = {};
+  (data || []).forEach(r => { ALL_LEADERBOARD[r.user_id] = r; });
+  renderLeaderboard();
+}
+
 function updateOverviewStats() {
   document.getElementById('stat-pending').textContent = ALL_REQUESTS.filter(r => r.status !== 'selesai').length;
   document.getElementById('stat-done').textContent = ALL_REQUESTS.filter(r => r.status === 'selesai').length;
@@ -323,6 +414,7 @@ async function loadAll() {
   renderUsers();
   renderPayments();
   updateOverviewStats();
+  updateRequestsUnseenBadge();
 }
 
 (async () => {
@@ -336,6 +428,14 @@ async function loadAll() {
   document.getElementById('chip-name').textContent = name;
 
   await loadAll();
+
+  const monthPicker = document.getElementById('leaderboard-month-picker');
+  monthPicker.value = leaderboardMonth;
+  monthPicker.addEventListener('change', () => {
+    leaderboardMonth = monthPicker.value;
+    loadLeaderboardMonth();
+  });
+  await loadLeaderboardMonth();
 
   supabase
     .channel('admin-requests')

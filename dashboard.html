@@ -87,6 +87,15 @@
     </div>
 
     <div class="panel" style="max-width:440px;margin-top:18px;">
+      <div class="panel-head"><h2>🏆 Leaderboard Bulan Ini</h2><span class="count" id="leaderboard-month-label"></span></div>
+      <table class="data-table">
+        <tbody id="leaderboard-list">
+          <tr><td style="color:var(--text-faint);padding:16px 20px;">Memuat…</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel" style="max-width:440px;margin-top:18px;">
       <div class="panel-head"><h2>Update profil</h2></div>
       <div style="padding:4px 2px;">
         <div class="field">
@@ -294,6 +303,45 @@ async function saveProfile() {
   setTimeout(() => { btn.textContent = 'Simpan profil'; }, 1800);
 }
 
+function currentMonthFirstDay() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+}
+
+// Points are set manually by an admin (admin.html) -- this just reads and
+// ranks whatever's there for the current month.
+async function loadLeaderboard() {
+  const periodMonth = currentMonthFirstDay();
+  document.getElementById('leaderboard-month-label').textContent = new Date(periodMonth).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+
+  const { data, error } = await supabase
+    .from('leaderboard_points')
+    .select('*')
+    .eq('period_month', periodMonth)
+    .order('points', { ascending: false });
+
+  const listEl = document.getElementById('leaderboard-list');
+  if (error) { listEl.innerHTML = '<tr><td style="color:var(--text-faint);padding:16px 20px;">Gagal load leaderboard.</td></tr>'; return; }
+  if (!data || data.length === 0) { listEl.innerHTML = '<tr><td style="color:var(--text-faint);padding:16px 20px;">Belum ada data bulan ini.</td></tr>'; return; }
+
+  const userIds = [...new Set(data.map(r => r.user_id))];
+  const { data: profs } = await supabase.from('profiles').select('id, full_name, email').in('id', userIds);
+  const nameMap = {};
+  (profs || []).forEach(p => { nameMap[p.id] = p.full_name || p.email || 'Member'; });
+
+  listEl.innerHTML = data.map((row, i) => {
+    const isMe = row.user_id === CURRENT_USER.id;
+    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`;
+    return `
+      <tr${isMe ? ' style="background:var(--primary-soft);"' : ''}>
+        <td style="width:36px;">${medal}</td>
+        <td>${escapeHtml(nameMap[row.user_id] || 'Member')}${isMe ? ' <span style="color:var(--text-faint);">(lo)</span>' : ''}</td>
+        <td style="text-align:right;font-family:var(--font-mono);">${Number(row.points).toLocaleString('id-ID')} poin</td>
+      </tr>
+    `;
+  }).join('');
+}
+
 // Renders the first-party app tiles from assets/apps.config.js -- adding or
 // unplugging an app is a one-line edit there, not a dashboard.html change.
 function renderBuiltinApps() {
@@ -318,6 +366,7 @@ function renderBuiltinApps() {
   CURRENT_PROFILE = ctx.profile;
   fillProfile();
   renderBuiltinApps();
+  loadLeaderboard();
   await loadRequests();
 
   // live-update ticket status the moment an admin changes it
