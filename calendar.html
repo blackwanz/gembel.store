@@ -734,6 +734,44 @@
         const dayNamesShort = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
         const dayNamesFull = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
+        // ---------- App shell: hold a constant visual size across browser zoom ----------
+        // Same technique as focus.html's Active Priorities panel (see the comment there for
+        // the full rationale). Real page zoom (Ctrl +/-) scales every CSS px uniformly, so
+        // .app-shell's plain max-width shrinks right along with the page instead of giving the
+        // calendar grid/day cells more room to work with — the ask is the opposite: the shell
+        // should look the same size on screen at any zoom level, while its contents (day cells,
+        // gaps, text) keep shrinking normally with zoom, so zooming out packs more of the
+        // calendar into view instead of just making the whole thing tiny and cramped.
+        //
+        // Unlike the priorities panel (which has one fixed authored width), this shell's width
+        // is normally responsive (auto, capped by max-width) so it fits any window size — so
+        // the "hold this size" reference can't be a hardcoded constant, or it would force every
+        // narrower-than-that window into a horizontal scrollbar even at normal 100% zoom. Instead
+        // it's measured from the shell's own natural width, re-captured on every resize that
+        // happens AT the baseline zoom (a real window resize), and only left in place — scaled
+        // up — once the zoom actually moves away from that baseline.
+        const calZoomBaselineDPR = window.devicePixelRatio || 1;
+        let calShellNaturalWidth = null;
+        function applyAppShellZoomLock() {
+            const shell = document.querySelector('.app-shell');
+            if (!shell) return;
+            const zoom = (window.devicePixelRatio || 1) / calZoomBaselineDPR;
+            if (Math.abs(zoom - 1) < 0.02) {
+                // At (approximately) the zoom level the page loaded at — let the shell size
+                // itself normally and refresh the baseline, so a genuine window resize here
+                // is never fought by a stale locked width.
+                shell.style.width = '';
+                calShellNaturalWidth = shell.getBoundingClientRect().width;
+                return;
+            }
+            if (calShellNaturalWidth == null) calShellNaturalWidth = shell.getBoundingClientRect().width;
+            const cssWidth = Math.min(calShellNaturalWidth * 4.4, calShellNaturalWidth / zoom);
+            shell.style.width = cssWidth + 'px';
+            shell.style.margin = '0 auto';
+        }
+        window.addEventListener('resize', applyAppShellZoomLock);
+        applyAppShellZoomLock();
+
         // ============ CLOUD ACCOUNT / PER-USER STORAGE KEYS ============
         // Every key is namespaced with the logged-in user's id so two accounts
         // sharing one browser never see each other's data, and everything is
@@ -808,10 +846,15 @@
             }
         }
 
-        // Full reconcile on every save: upsert whatever's currently in memory,
-        // delete whatever's no longer there. Simpler and safer than tracking
-        // per-mutation diffs across ~10 call sites, and cheap enough at the
-        // personal-use data volumes this app is built for.
+        // Upsert-only sync: pushes whatever's currently in memory, but NEVER bulk-deletes by
+        // "not in the current local set" — that used to delete-reconcile against whatever this
+        // tab/device happened to have in memory, so a second open tab/session (or the same tab
+        // left open for hours) would silently wipe out records added elsewhere in between,
+        // since anything added after this tab's last pull looked, from here, like something
+        // that had been removed. Actual deletions are instead pushed immediately, per-row, at
+        // the exact moment the user deletes something (see deleteGoalPool/removeGoalFromDate) —
+        // so this function can only ever ADD/update cloud rows, never destroy ones it doesn't
+        // know about.
         let cloudSyncTimer = null;
         function queueCloudSync() {
             setSyncIndicator('saving');
@@ -840,19 +883,10 @@
                     const { error } = await supabase.from('calendar_goals').upsert(goalRows);
                     if (error) throw error;
                 }
-                let delGoals = supabase.from('calendar_goals').delete().eq('user_id', CURRENT_USER.id);
-                if (goalRows.length) delGoals = delGoals.not('id', 'in', `(${goalRows.map(g => `"${g.id}"`).join(',')})`);
-                const { error: delGoalsErr } = await delGoals;
-                if (delGoalsErr) throw delGoalsErr;
-
                 if (entryRows.length) {
                     const { error } = await supabase.from('calendar_goal_entries').upsert(entryRows);
                     if (error) throw error;
                 }
-                let delEntries = supabase.from('calendar_goal_entries').delete().eq('user_id', CURRENT_USER.id);
-                if (entryRows.length) delEntries = delEntries.not('id', 'in', `(${entryRows.map(e => `"${e.id}"`).join(',')})`);
-                const { error: delEntriesErr } = await delEntries;
-                if (delEntriesErr) throw delEntriesErr;
 
                 const { error: settingsErr } = await supabase.from('calendar_settings').upsert({ user_id: CURRENT_USER.id, theme });
                 if (settingsErr) throw settingsErr;
@@ -862,6 +896,24 @@
                 console.error('cloud push failed', e);
                 setSyncIndicator('error');
             }
+        }
+        // Immediate, targeted cloud deletes — called right at the moment the user deletes
+        // something, so removal doesn't depend on a later full-state push (see the comment
+        // on pushCloudData above for why that bulk approach was removed).
+        async function deleteCloudGoal(goalId) {
+            if (!CURRENT_USER || IS_GUEST) return;
+            try { await supabase.from('calendar_goals').delete().eq('user_id', CURRENT_USER.id).eq('id', goalId); }
+            catch (e) { console.error('cloud goal delete failed', e); }
+        }
+        async function deleteCloudGoalEntries(goalId) {
+            if (!CURRENT_USER || IS_GUEST) return;
+            try { await supabase.from('calendar_goal_entries').delete().eq('user_id', CURRENT_USER.id).eq('goal_id', goalId); }
+            catch (e) { console.error('cloud entries delete failed', e); }
+        }
+        async function deleteCloudEntry(entryId) {
+            if (!CURRENT_USER || IS_GUEST) return;
+            try { await supabase.from('calendar_goal_entries').delete().eq('user_id', CURRENT_USER.id).eq('id', entryId); }
+            catch (e) { console.error('cloud entry delete failed', e); }
         }
 
         // ============ THEME (light / dark) ============
@@ -2308,12 +2360,14 @@
             if (!result || !result.confirmed) return;
 
             goals = goals.filter(g => g.id !== goalId);
+            deleteCloudGoal(goalId);
 
             if (result.deleteHistory) {
                 for (const dateId in progress) {
                     progress[dateId] = progress[dateId].filter(e => e.id !== goalId);
                 }
                 delete textBackupDb[goalId];
+                deleteCloudGoalEntries(goalId);
             }
             persistAll();
             loadGoals();
@@ -2389,6 +2443,7 @@
             if (event) event.stopPropagation();
             if (progress[dateId]) {
                 progress[dateId] = progress[dateId].filter(e => e.entryId !== entryId);
+                deleteCloudEntry(entryId);
                 persistAll();
                 renderCalendar();
             }
@@ -2562,6 +2617,22 @@
             URL.revokeObjectURL(url);
         }
 
+        // Unlike the normal add/edit/delete flows above (which push their own immediate,
+        // targeted cloud deletes — see deleteCloudGoal/deleteCloudEntry), restoring a backup
+        // replaces the ENTIRE local dataset in one shot, so nothing calls those per-row delete
+        // paths for whatever gets replaced away. pushCloudData is upsert-only now (on purpose —
+        // see its comment), so without this, a restore would leave orphaned rows in the cloud
+        // for anything present before the restore but absent from the restored data.
+        function deleteCloudRowsRemovedByRestore(oldGoals, oldProgress, newGoals, newProgress) {
+            const newGoalIds = new Set((newGoals || []).map(g => g.id));
+            (oldGoals || []).forEach(g => { if (!newGoalIds.has(g.id)) deleteCloudGoal(g.id); });
+            const newEntryIds = new Set();
+            for (const dateId in (newProgress || {})) (newProgress[dateId] || []).forEach(e => newEntryIds.add(e.entryId));
+            for (const dateId in (oldProgress || {})) {
+                (oldProgress[dateId] || []).forEach(e => { if (!newEntryIds.has(e.entryId)) deleteCloudEntry(e.entryId); });
+            }
+        }
+
         function importBackupFile(file) {
             const reader = new FileReader();
             reader.onload = async (e) => {
@@ -2569,11 +2640,13 @@
                     const data = JSON.parse(e.target.result);
                     if (!data.goals || !data.progress) throw new Error('invalid');
                     if (!(await gembelConfirm('Ini akan mengganti data yang ada dengan isi file backup. Lanjutkan?'))) return;
+                    const oldGoals = goals, oldProgress = progress;
                     goals = data.goals;
                     progress = data.progress;
                     textBackupDb = data.textBackupDb || {};
                     migrateGoals();
                     migrateProgressEntries();
+                    deleteCloudRowsRemovedByRestore(oldGoals, oldProgress, goals, progress);
                     persistAll();
                     loadGoals();
                     renderCalendar();
@@ -2592,11 +2665,13 @@
             if (!(await gembelConfirm(`Pulihkan data dari snapshot ${key.replace(BACKUP_PREFIX, '')}? Data saat ini akan diganti.`))) return;
             try {
                 const data = JSON.parse(raw);
+                const oldGoals = goals, oldProgress = progress;
                 goals = data.goals;
                 progress = data.progress;
                 textBackupDb = data.textBackupDb || {};
                 migrateGoals();
                 migrateProgressEntries();
+                deleteCloudRowsRemovedByRestore(oldGoals, oldProgress, goals, progress);
                 persistAll();
                 loadGoals();
                 renderCalendar();

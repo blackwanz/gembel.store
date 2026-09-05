@@ -35964,6 +35964,41 @@ async function pushCloudData() {
   }
 }
 
+// ---------- Neon Flow auto color-switch (cross-app automation) ----------
+// See the matching function in focus.html for the full rationale — this is the "orange while
+// reading" half. Mirrors progbar.html's ("Neon Flow — Time Tracker") own state shape directly
+// into the same localStorage/cloud row, so opening a book switches its color automatically
+// instead of requiring a separate manual click over there.
+function neonFlowAutoSwitch(color) {
+  if (!CURRENT_USER) return;
+  try {
+    const key = `cyber_${CURRENT_USER.id}_state`;
+    let pbState = null;
+    try { pbState = JSON.parse(localStorage.getItem(key)); } catch (e) {}
+    const now = new Date();
+    if (!pbState || !pbState.active) {
+      if (color === 'blue') return;
+      const target = new Date(now);
+      target.setHours(19, 30, 0, 0);
+      if (now >= target) target.setDate(target.getDate() + 1);
+      pbState = { active: true, activeColor: null, startTime: now.toISOString(), targetTime: target.toISOString(), segments: [], clickCount: 0, clickTimeout: null };
+    }
+    if (pbState.activeColor === color) return;
+    pbState.activeColor = color;
+    pbState.segments = pbState.segments || [];
+    pbState.segments.push({ color, duration: 0, timestamp: now.toISOString() });
+    localStorage.setItem(key, JSON.stringify(pbState));
+    const historyKey = `cyber_${CURRENT_USER.id}_history`;
+    supabase.from('user_progbar_data').upsert({
+      user_id: CURRENT_USER.id,
+      history: JSON.parse(localStorage.getItem(historyKey) || '[]'),
+      current_state: pbState,
+    }).then(({ error }) => { if (error) console.warn('Neon Flow cloud mirror skip:', error.message); });
+  } catch (e) {
+    console.warn('Neon Flow auto-switch failed:', e);
+  }
+}
+
 /* ---------- dictionary ---------- */
 let DICT = null, EXC = null;
 function buildDict() {
@@ -36592,6 +36627,7 @@ function openBook(id, stay) {
   if (T.ci >= T.chunks.length) T.ci = 0;
   T.typed = ''; T.streak = 0; T.bestStreak = 0;
   newSession();
+  neonFlowAutoSwitch('orange');
   el.title.textContent = b.title;
   if (!stay) showView('type');
   renderChunk();
@@ -36685,6 +36721,7 @@ function newSession() {
   T.sess = { start: Date.now(), activeMs: 0, lastKey: 0, correct: 0, errors: 0, keys: 0, chunks: 0 };
 }
 function endSession(reason) {
+  neonFlowAutoSwitch('blue');
   const s = T.sess;
   if (!s || s.keys < 20 || !T.book) { newSession(); return; }
   const secs = Math.max(1, s.activeMs / 1000);

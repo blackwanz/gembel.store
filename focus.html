@@ -230,16 +230,16 @@
     .copy-prev-row button, .copy-any-day-row button {
         white-space: nowrap; flex-shrink: 0; width: 172px; text-overflow: ellipsis; overflow: hidden;
     }
+    .cat-chevron { display: inline-block; font-size: 0.8em; }
 
-    /* Schedule Settings: tabs row gains a toggle button pinned to its far right that reveals/
-       hides the copy controls + add-entry form (both secondary/power-user actions compared to
-       just browsing and viewing the list) — collapsed by default so the modal opens lean. */
+    /* Schedule Settings: Add/Copy/Delete-all used to live behind a standing "➕ Add / Copy"
+       toggle button — moved to a right-click menu on the entry list instead (see the
+       contextmenu handler on #schedule-entry-list), same pattern as every other list in this
+       app (Kanban, Goals). The revealed panel itself (copy controls + add-entry form) is
+       unchanged, still collapsed by default so the modal opens lean — setCopyAddCollapsed(false)
+       is just triggered from the context menu now instead of a click on a visible button. */
     .schedule-tabs-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 0; }
     .tabs-left { display: flex; gap: 6px; flex-wrap: wrap; }
-    .copy-add-toggle-btn { white-space: nowrap; display: flex; align-items: center; gap: 4px; }
-    .copy-add-toggle-btn .cat-chevron { display: inline-block; transition: transform 0.15s ease; font-size: 0.8em; }
-    .copy-add-toggle-btn[aria-expanded="true"] .cat-chevron { transform: rotate(180deg); }
-    .copy-add-toggle-btn[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
     .copy-add-collapsible { display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--border); border-radius: 8px; padding: 12px; background: var(--panel-bg-2); }
 
     /* Repeat (recurring entries), Google Calendar-style: interval+unit, an optional weekday
@@ -268,7 +268,7 @@
     .entry-list-section { border-top: 1px dashed var(--border); margin-top: 6px; padding-top: 14px; }
     .entry-list-header-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
     .entry-delete-all-btn { white-space: nowrap; font-size: 0.76rem; padding: 5px 10px; }
-    .schedule-entry-list { display: flex; flex-direction: column; gap: 8px; margin: 4px 0; }
+    .schedule-entry-list { display: flex; flex-direction: column; gap: 8px; margin: 4px 0; min-height: 60px; }
     .schedule-entry {
         display: flex; align-items: center; gap: 8px; background: var(--panel-bg-2);
         border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; font-size: 0.82rem;
@@ -280,45 +280,21 @@
     .tag.cat-Other { background-color: #555; }
     .entry-form-box { border-top: 1px dashed var(--border); margin-top: 6px; padding-top: 14px; display: flex; flex-direction: column; gap: 10px; }
 
-    /* ---------- 24h dual-loop spiral ---------- */
+    /* ---------- Day strip + 3-month overview (replaces the old dual-loop spiral) ---------- */
     .spiral-section { border: 1px solid var(--border); border-radius: 8px; padding: 12px; background: var(--panel-bg-2); display: flex; flex-direction: column; gap: 8px; }
     .spiral-header-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
     .spiral-hint { font-size: 0.68rem; color: var(--text-muted); }
-    .spiral-wrap { position: relative; display: flex; justify-content: center; }
-    #spiral-svg { width: 100%; max-width: 300px; height: auto; }
-    /* The dual-loop spiral makes one full revolution for hours 0-12 (inner loop) and a second
-       full revolution for hours 12-24 (outer loop) — so hour H and hour H+12 sit at the exact
-       same angle, just at different radii. That's an inherent property of a 2-loop clock (much
-       like a normal analog clock face reuses the same 12 positions for AM and PM), but combined
-       with the track/ticks previously being drawn in the same low-contrast var(--border) (#333)
-       as the barely-lighter panel background (#232323), there was almost no visible structure to
-       orient by — only the bright entry arcs floated there with nothing to anchor them, which is
-       what read as "nyasar" (scattered/lost) rather than as a coherent 24h flow. The changes
-       below don't touch any entry/lane/midnight-wrap geometry (all unchanged) — they only make
-       the underlying clock face itself easier to read:
-         1. Track + tick lines bumped to a lighter, more visible gray.
-         2. A faint dashed ring marks the inner/outer loop boundary (hour 12) — the one radius
-            where "which loop am I looking at" stops being ambiguous at a glance.
-         3. The hour-00 and hour-12 ticks (day start, and the loop seam) get a bolder line +
-            label than the other 3-hour ticks, since those two are the primary anchors. */
-    .spiral-track { fill: none; stroke: #4a4a4a; stroke-width: 1; }
-    .spiral-tick-line { stroke: #4a4a4a; stroke-width: 1; }
-    .spiral-tick-line.major { stroke: #6b6b6b; stroke-width: 1.5; }
-    .spiral-boundary-ring { fill: none; stroke: #4a4a4a; stroke-width: 1; stroke-dasharray: 2 3; opacity: 0.8; }
-    .spiral-tick-label { fill: var(--text-muted); font-size: 7px; text-anchor: middle; dominant-baseline: middle; }
-    .spiral-tick-label.major { fill: #cfcfcf; font-size: 7.5px; font-weight: 700; }
-    .spiral-now-marker { fill: #fff; stroke: var(--bg-main, #141414); stroke-width: 1.5; }
-    .spiral-segment { fill: none; stroke-linecap: round; cursor: pointer; transition: stroke-width 0.15s ease, opacity 0.15s ease, filter 0.15s ease; }
-    .spiral-segment:hover { stroke-width: 10; filter: url(#spiral-glow) brightness(1.45) saturate(1.2); }
-    .spiral-segment.dimmed { opacity: 0.25; }
-    .spiral-segment.actual-segment { stroke-dasharray: 4 3; opacity: 0.9; }
-    .spiral-segment.spiral-segment-continued { opacity: 0.45; }
-    .spiral-tooltip {
-        position: absolute; top: 6px; left: 50%; transform: translateX(-50%); background: #111; border: 1px solid var(--accent);
-        border-radius: 6px; padding: 6px 10px; font-size: 0.74rem; white-space: nowrap; pointer-events: none; z-index: 5;
-        box-shadow: 0 4px 14px rgba(0,0,0,0.5);
-    }
-    .spiral-tooltip .stt-time { color: var(--accent); font-weight: 700; margin-right: 6px; }
+
+    /* Single 24h bar for the currently-browsed day — colored = scheduled, blank = free. */
+    .day-strip-wrap { display: flex; flex-direction: column; gap: 3px; }
+    .day-strip-track { position: relative; height: 30px; background: rgba(255,255,255,0.05); border-radius: 5px; overflow: hidden; }
+    .day-strip-seg { position: absolute; top: 0; height: 100%; border-radius: 2px; cursor: pointer; opacity: 0.92; transition: opacity 0.15s ease, filter 0.15s ease; }
+    .day-strip-seg:hover { opacity: 1; filter: brightness(1.25); }
+    .day-strip-seg.actual { top: auto; bottom: 0; height: 40%; opacity: 0.7; }
+    .day-strip-now { position: absolute; top: -2px; bottom: -2px; width: 2px; background: #fff; box-shadow: 0 0 4px rgba(255,255,255,0.8); pointer-events: none; }
+    .day-strip-hourmarks { position: relative; height: 12px; }
+    .day-strip-hourmarks span { position: absolute; transform: translateX(-50%); font-size: 0.62rem; color: var(--text-muted); }
+
     .spiral-legend { display: flex; flex-wrap: wrap; gap: 6px 12px; justify-content: center; font-size: 0.68rem; color: var(--text-muted); }
     .spiral-legend-item { display: flex; align-items: center; gap: 4px; transition: opacity 0.15s ease; }
     .spiral-legend-item.unused { opacity: 0.4; }
@@ -330,7 +306,38 @@
     .planned-free-bar { width: 100%; max-width: 280px; height: 8px; background: rgba(255,255,255,0.07); border-radius: 5px; overflow: hidden; }
     .planned-free-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), #81c784); border-radius: 5px; transition: width 0.5s cubic-bezier(0.4,0,0.2,1); }
     .planned-free-label { font-size: 0.72rem; color: var(--text-muted); font-weight: 600; }
+
     .planned-free-label .pf-planned { color: var(--accent); }
+
+    /* Zoom tabs — Day shows the single 24h strip above; Week/Month/Year swap it for a row of
+       bars (see .period-bars-row) so "how full is my week/month/year" reads as a shape instead
+       of a scrolling list. */
+    .zoom-tabs { display: flex; gap: 4px; }
+    .zoom-tab { background: #2a2a2a; color: var(--text-muted); border: 1px solid var(--border); padding: 4px 10px; border-radius: 14px; font-size: 0.7rem; font-weight: 600; }
+    .zoom-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .zoom-tab:hover:not(.active) { border-color: var(--accent); color: var(--accent); }
+
+    /* Each bar's fill height = % of that period planned (merged-overlap, same calc as the Day
+       view's planned/free bar) — Week: 7 bars, one per day. Month: one bar per week ("monthly
+       seen weekly"). Year: 12 bars, one per month. Clicking a bar drills one level down (Year's
+       month -> Month view on it; Month's week -> Week view on it; Week's day -> jumps there and
+       switches to Day view) instead of needing separate navigation controls for each level. */
+    .period-bars-row { display: flex; align-items: flex-end; gap: 6px; height: 92px; padding: 0 2px; }
+    .period-bar-wrap { position: relative; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; height: 100%; cursor: pointer; }
+    .period-bar-track { position: relative; width: 100%; max-width: 34px; height: 70px; background: rgba(255,255,255,0.06); border-radius: 4px; overflow: hidden; display: flex; align-items: flex-end; transition: box-shadow 0.15s ease; }
+    .period-bar-wrap:hover .period-bar-track { box-shadow: inset 0 0 0 1px var(--accent); }
+    .period-bar-wrap.highlight .period-bar-track { box-shadow: inset 0 0 0 1.5px #fff; }
+    .period-bar-fill { width: 100%; background: linear-gradient(180deg, #81c784, var(--accent)); border-radius: 3px 3px 0 0; transition: height 0.35s cubic-bezier(0.4,0,0.2,1); }
+    .period-bar-label { font-size: 0.62rem; color: var(--text-muted); }
+    .period-label { text-align: center; font-size: 0.7rem; color: var(--text-muted); margin-top: 4px; }
+    /* Pure-CSS hover reveal (no JS positioning needed) — a small scale/fade-in is the "little
+       animation" the tooltip needs to feel like a reveal rather than an instant snap-in. */
+    .period-tooltip {
+        position: absolute; bottom: 100%; left: 50%; transform: translate(-50%, 4px) scale(0.9); opacity: 0; pointer-events: none;
+        background: #111; border: 1px solid var(--accent); border-radius: 6px; padding: 5px 9px; font-size: 0.72rem;
+        white-space: nowrap; transition: opacity 0.15s ease, transform 0.15s ease; z-index: 6;
+    }
+    .period-bar-wrap:hover .period-tooltip { opacity: 1; transform: translate(-50%, -4px) scale(1); }
 
     /* ---------- Execution report calendar ---------- */
     .report-month-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
@@ -414,6 +421,23 @@
     .goal-filter-label { font-size: 0.72rem; color: var(--text-muted); white-space: nowrap; }
     #goal-filter-select { max-width: 180px; }
 
+    /* Search — same collapsed-icon/reveal-on-hover pattern as the goal filter next to it, so the
+       toolbar isn't permanently spending width on a box that's usually empty. ".has-query" (set
+       from JS, since :has() support can't be assumed here) keeps it revealed while a search is
+       actually active, same as .goal-filter-wrap.active does for the goal filter. */
+    .task-search-wrap { display: flex; align-items: center; cursor: default; border-radius: 14px; padding: 4px 6px; }
+    .task-search-icon { font-size: 0.85rem; opacity: 0.75; transition: opacity 0.15s ease; }
+    .task-search-wrap.has-query .task-search-icon { opacity: 1; }
+    .task-search-wrap.has-query { background: rgba(76,175,80,0.12); box-shadow: inset 0 0 0 1px rgba(76,175,80,0.4); }
+    .task-search-reveal {
+        display: flex; align-items: center; max-width: 0; opacity: 0; overflow: hidden; margin-left: 0;
+        transition: max-width 0.3s ease, opacity 0.25s ease, margin-left 0.3s ease;
+    }
+    .task-search-wrap:hover .task-search-reveal, .task-search-wrap:focus-within .task-search-reveal, .task-search-wrap.has-query .task-search-reveal {
+        max-width: 200px; opacity: 1; margin-left: 6px;
+    }
+    #task-search-input { max-width: 180px; }
+
     /* Long-Term Goals: the panel's own toolbar ("+ Add Goal") needs to stay reachable no matter
        how far the goal list is scrolled, so clicking it never requires the browser to auto-scroll
        the whole panel back to the top just to bring an off-screen button into view (which used to
@@ -458,10 +482,14 @@
        #win-priorities so the outer panel doesn't clip it first) is what moves, not the
        columns. */
     .kanban-board { display: grid; grid-template-columns: repeat(3, 260px); gap: 14px; flex-grow: 1; align-items: start; overflow-x: auto; overflow-y: visible; padding-bottom: 4px; }
-    .kanban-column { background-color: rgba(0,0,0,0.2); border-radius: 6px; padding: 10px; min-height: 60px; width: 260px; transition: outline 0.1s; }
+    .kanban-column { background-color: rgba(0,0,0,0.2); border-radius: 6px; padding: 10px; min-height: 220px; width: 260px; transition: outline 0.1s; }
     .kanban-column h3 { text-align: center; color: var(--text-muted); font-size: 0.85rem; text-transform: uppercase; letter-spacing: .04em; display: flex; align-items: center; justify-content: center; gap: 4px; }
     .col-count { background: var(--border); border-radius: 10px; padding: 1px 7px; font-size: 0.7rem; margin-left: 2px; }
     .kanban-column.drag-over { outline: 2px dashed var(--accent); outline-offset: -4px; }
+    /* min-height on the drop target itself (not just the column) — an almost-empty "In Progress"
+       column used to collapse to ~40px tall, so the first drag into it had almost nothing to
+       aim for. This keeps a generous drop zone even with 0-1 cards in the column. */
+    .col-body { min-height: 190px; }
 
     .task-card { background-color: var(--panel-bg); border: 1px solid var(--border); border-left: 4px solid var(--accent); padding: 10px; border-radius: 4px; margin-bottom: 10px; transition: transform 0.1s; cursor: grab; position: relative; }
     .task-card:hover { transform: translateY(-2px); }
@@ -494,6 +522,8 @@
     .tag.due.overdue { background-color: rgba(224,82,82,0.18); color: var(--danger); }
     .task-actions { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; opacity: 0; transition: opacity 0.15s ease; }
     .task-card:hover .task-actions, .task-card:focus-within .task-actions { opacity: 1; }
+    .task-card.pinned, .goal-card.pinned { box-shadow: 0 0 0 1px var(--accent); }
+    .pin-badge { font-size: 0.8rem; margin-right: 4px; }
     .task-mini-btn {
         width: 20px; height: 20px; border-radius: 50%; padding: 0; display: flex; align-items: center; justify-content: center;
         font-size: 0.68rem; background: var(--panel-bg-2); border: 1px solid var(--border); color: var(--text-muted);
@@ -511,8 +541,37 @@
     .report-table td .pct-bar-wrap { width: 64px; display: inline-block; vertical-align: middle; }
     .report-table .pct-bar-label { font-size: 0.72rem; margin-left: 6px; color: var(--text-muted); }
 
+    .movement-timeline-section, .archived-section { margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--border); }
+    .movement-timeline-head { font-size: 0.78rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 10px; }
+    .movement-timeline { display: flex; align-items: flex-end; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+    .movement-bar-wrap { display: flex; flex-direction: column; align-items: center; gap: 4px; flex-shrink: 0; }
+    .movement-bar { display: flex; flex-direction: column-reverse; width: 22px; min-height: 3px; border-radius: 3px 3px 0 0; overflow: hidden; }
+    .movement-seg.movement-todo { background: #7c8db3; }
+    .movement-seg.movement-progress { background: #d4a92e; }
+    .movement-seg.movement-done { background: var(--accent); }
+    .movement-hour-label { font-size: 0.65rem; color: var(--text-muted); }
+    .movement-legend { display: flex; gap: 14px; margin-top: 10px; font-size: 0.7rem; color: var(--text-muted); }
+    .movement-legend span { display: flex; align-items: center; gap: 5px; }
+    .movement-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .movement-dot.movement-todo { background: #7c8db3; }
+    .movement-dot.movement-progress { background: #d4a92e; }
+    .movement-dot.movement-done { background: var(--accent); }
+    .archived-head-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+    .archived-head-row input[type="text"] { max-width: 180px; margin-left: auto; }
+    .archived-list { display: flex; flex-direction: column; gap: 6px; }
+    /* Single compact row (count + one bulk action), not a re-listing of every match — see the
+       render site in renderBoard() for why. */
+    #archived-search-hits { background: var(--panel-bg-2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; margin-bottom: 14px; align-items: center; gap: 10px; font-size: 0.78rem; color: var(--text-muted); }
+    #archived-search-hits button { flex-shrink: 0; margin-left: auto; width: auto; }
+    .archived-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 0.82rem; padding: 6px 0; border-bottom: 1px dashed var(--border); }
+    .archived-title { opacity: 0.75; }
+
     .goal-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px; }
-    .goal-card { background: var(--panel-bg-2); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; }
+    .goal-card { background: var(--panel-bg-2); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; position: relative; }
+    /* Ctrl/Cmd-click multi-select for the bulk "edit timeline" context-menu action below —
+       a distinct blue highlight (not the green .pinned ring) so the two states read separately
+       even when a pinned goal is also part of the current selection. */
+    .goal-card.multi-selected { box-shadow: inset 0 0 0 1px var(--info); background: rgba(33,150,243,0.1); }
     .goal-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 6px; margin-bottom: 6px; }
     .goal-title { font-size: 0.85rem; font-weight: 600; }
     .goal-actions { display: flex; gap: 4px; flex-shrink: 0; }
@@ -546,6 +605,10 @@
     .achievement-card .goal-pct-label { color: #ffd54f; }
 
     .goal-links-breakdown { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); display: flex; flex-direction: column; gap: 4px; }
+    .goal-links-collapsed-hint { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); font-size: 0.72rem; color: var(--text-muted); cursor: pointer; }
+    .goal-links-collapsed-hint:hover { color: var(--accent); }
+    .goal-bulk-bar { display: flex; align-items: center; gap: 8px; font-size: 0.78rem; color: var(--text-main); background: rgba(33,150,243,0.12); box-shadow: inset 0 0 0 1px rgba(33,150,243,0.35); border-radius: 6px; padding: 8px 10px; margin-bottom: 10px; }
+    .goal-bulk-bar span { font-weight: 600; margin-right: auto; }
     /* Click = select (a lightweight blue highlight, see .selected below); double-click = toggle
        the underlying task's done state right from the goal card — see the goals-list click/
        dblclick delegated listeners in script. */
@@ -568,6 +631,24 @@
     .goal-links-section { border-top: 1px dashed var(--border); margin-top: 4px; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
     .goal-links-header-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
     .goal-links-header-row .field-label { margin: 0; }
+    /* Popup checklist for picking which tasks to link — replaces a native <select multiple>,
+       which rendered cramped and hard to scan at the goal form's width. Roomy, scrollable,
+       searchable, and shows each task's current linked/done state inline. */
+    /* position:fixed (not absolute) and positioned from JS via the toggle button's own
+       getBoundingClientRect() — the goal form's containers (.modal-box.settings-modal-box and
+       .modal-scroll-content) both clip overflow for their own scrolling, so an absolutely
+       positioned popup anchored inside them would get cut off instead of floating over the form. */
+    .goal-link-picker-popup {
+        position: fixed; z-index: 60;
+        background: var(--panel-bg); border: 1px solid var(--border); border-radius: 8px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.45); padding: 10px; display: flex; flex-direction: column; gap: 8px;
+    }
+    .goal-link-picker-list { overflow-y: auto; max-height: 220px; display: flex; flex-direction: column; gap: 2px; }
+    .goal-link-picker-opt { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 5px; font-size: 0.82rem; cursor: pointer; }
+    .goal-link-picker-opt:hover { background: rgba(255,255,255,0.05); }
+    .goal-link-picker-opt input[type="checkbox"] { width: auto; flex-shrink: 0; accent-color: var(--accent); cursor: pointer; }
+    .goal-link-picker-opt .glp-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .goal-link-picker-opt .glp-note { flex-shrink: 0; font-size: 0.7rem; color: var(--text-muted); }
     #goal-auto-allocate-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(76,175,80,0.12); }
     #goal-auto-allocate-btn:disabled { opacity: 0.4; cursor: not-allowed; }
     .goal-links-editor-list { display: flex; flex-direction: column; gap: 6px; }
@@ -731,7 +812,12 @@
             <div class="tabs" id="category-tabs"></div>
 
             <div class="toolbar" id="priorities-toolbar">
-                <button id="add-task-toggle">+ Add Task</button>
+                <div class="task-search-wrap" id="task-search-wrap" tabindex="0" title="Search tasks — right-click a column to add one">
+                    <span class="task-search-icon">🔍</span>
+                    <div class="task-search-reveal">
+                        <input type="text" id="task-search-input" placeholder="Search tasks…">
+                    </div>
+                </div>
                 <div class="goal-filter-wrap" id="goal-filter-wrap" tabindex="0" title="Focus board on one goal's tasks">
                     <span class="goal-filter-icon">🧭</span>
                     <div class="goal-filter-reveal">
@@ -744,6 +830,8 @@
             </div>
 
             <!-- Kanban view -->
+            <div id="archived-search-hits" style="display:none;"></div>
+
             <div id="kanban-view" class="kanban-board">
                 <div class="kanban-column" data-status="todo">
                     <h3>To Do <span class="col-count" id="count-todo">0</span></h3>
@@ -754,7 +842,9 @@
                     <div class="col-body" id="col-progress"></div>
                 </div>
                 <div class="kanban-column" data-status="done">
-                    <h3>Done <span class="col-count" id="count-done">0</span></h3>
+                    <h3>Done <span class="col-count" id="count-done">0</span>
+                        <button type="button" class="task-mini-btn" id="archive-done-btn" title="Archive all done cards — moves them off the board, still counted in Report" style="opacity:1; position:static; margin-left:auto;">🗄</button>
+                    </h3>
                     <div class="col-body" id="col-done"></div>
                 </div>
             </div>
@@ -884,13 +974,43 @@
         </div>
 
         <div class="modal-scroll-content">
+            <div class="spiral-section">
+                <div class="spiral-header-row">
+                    <label class="field-label" style="margin:0;">Schedule overview — <span id="spiral-date-label">today</span></label>
+                    <div class="zoom-tabs" id="zoom-tabs">
+                        <button type="button" class="zoom-tab active" data-zoom="day">Day</button>
+                        <button type="button" class="zoom-tab" data-zoom="week">Week</button>
+                        <button type="button" class="zoom-tab" data-zoom="month">Month</button>
+                        <button type="button" class="zoom-tab" data-zoom="year">Year</button>
+                    </div>
+                </div>
+
+                <div id="zoom-day-view">
+                    <div class="day-strip-wrap">
+                        <div class="day-strip-track" id="day-strip-track"></div>
+                        <div class="day-strip-hourmarks" id="day-strip-hourmarks"></div>
+                    </div>
+                    <div class="planned-free-row">
+                        <div class="planned-free-bar"><div class="planned-free-fill" id="planned-free-fill"></div></div>
+                        <div class="planned-free-label" id="planned-free-label">0% planned · 100% free</div>
+                    </div>
+                </div>
+
+                <div id="zoom-period-view" class="period-view" style="display:none;">
+                    <div class="period-bars-row" id="period-bars-row"></div>
+                    <div class="period-label" id="period-label"></div>
+                </div>
+
+                <div class="spiral-legend" id="spiral-legend"></div>
+                <div class="spiral-hint" style="text-align:center;">Tap a swatch to recolor its category · hover a bar for its % planned · click a bar to drill in</div>
+            </div>
+
             <div class="tabs schedule-tabs-row">
                 <div class="tabs-left">
                     <button type="button" class="tab-btn" id="browse-day-btn" data-mode="day">Day</button>
                     <button type="button" class="tab-btn active" id="browse-month-btn" data-mode="month">Month</button>
                     <button type="button" class="tab-btn" id="browse-week-btn" data-mode="week">Week</button>
                 </div>
-                <button type="button" class="secondary copy-add-toggle-btn" id="copy-add-toggle-btn" title="Show copy &amp; add-entry controls" aria-expanded="false">➕ Add / Copy <span class="cat-chevron">▾</span></button>
             </div>
 
             <div class="month-picker-row">
@@ -902,9 +1022,10 @@
                 </div>
             </div>
 
-            <!-- Copy controls + the add/edit entry form live here, collapsed by default (see
-                 #copy-add-toggle-btn above) so the modal opens lean — just the tabs, the date
-                 picker, the spiral, and the entry list. Editing an EXISTING entry (as opposed to
+            <!-- Copy controls + the add/edit entry form live here, collapsed by default (reached
+                 via right-click on the entry list below — see its contextmenu handler) so the
+                 modal opens lean — just the overview, the tabs, the date picker, and the entry
+                 list. Editing an EXISTING entry (as opposed to
                  adding a new one) temporarily relocates .entry-form-box out of this wrapper to
                  sit inline below that specific entry in the list instead (see
                  positionEntryFormBox/editScheduleEntry) — independent of whether this wrapper
@@ -1023,28 +1144,11 @@
                 </div>
             </div>
 
-            <div class="spiral-section">
-                <div class="spiral-header-row">
-                    <label class="field-label" style="margin:0;">24h spiral — <span id="spiral-date-label">today</span></label>
-                </div>
-                <div class="spiral-wrap">
-                    <svg id="spiral-svg" viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg"></svg>
-                    <div class="spiral-tooltip" id="spiral-tooltip" style="display:none;"></div>
-                </div>
-                <div class="spiral-legend" id="spiral-legend"></div>
-                <div class="spiral-hint" style="text-align:center;">Tap a swatch to recolor its category · dashed = actual (Focus Tracker)</div>
-                <div class="planned-free-row">
-                    <div class="planned-free-bar"><div class="planned-free-fill" id="planned-free-fill"></div></div>
-                    <div class="planned-free-label" id="planned-free-label">0% planned · 100% free</div>
-                </div>
-            </div>
-
             <div class="entry-list-section">
                 <div class="entry-list-header-row">
                     <label class="field-label" id="entry-list-label" style="margin:0;">Entries</label>
-                    <button type="button" class="danger entry-delete-all-btn" id="entry-delete-all-btn">🗑 Delete all</button>
                 </div>
-                <div class="schedule-entry-list" id="schedule-entry-list"></div>
+                <div class="schedule-entry-list" id="schedule-entry-list" title="Right-click for Add / Copy / Delete all"></div>
             </div>
         </div>
     </div>
@@ -1110,6 +1214,7 @@
         </div>
         <div class="modal-actions" style="flex-direction:column;align-items:stretch;">
             <button type="button" id="delete-entry-one-btn">Delete just this one</button>
+            <button type="button" class="danger" id="delete-entry-following-btn">Delete this and following occurrences</button>
             <button type="button" class="danger" id="delete-entry-series-btn">Delete all occurrences in this series</button>
             <button type="button" class="secondary" id="delete-entry-cancel-btn">Cancel</button>
         </div>
@@ -1121,7 +1226,7 @@
      the old inline panel that opened at the top of the Active Priorities panel and scrolled the
      whole panel to reach it. -->
 <div class="modal-overlay" id="task-modal">
-    <div class="modal-box" style="max-width:500px;">
+    <div class="modal-box" style="max-width:680px; max-height:88vh; overflow-y:auto;">
         <button type="button" class="modal-close-x" id="close-task-modal-btn" title="Close">✕</button>
         <div>
             <h3 id="task-modal-title">Add Task</h3>
@@ -1139,7 +1244,7 @@
         <div class="form-row">
             <div style="flex:1;">
                 <label class="field-label">Description (optional)</label>
-                <textarea id="task-desc-input" placeholder="Add more detail about this task..." style="min-height:50px;"></textarea>
+                <textarea id="task-desc-input" placeholder="Add more detail about this task..." style="min-height:160px; resize:vertical;"></textarea>
             </div>
         </div>
         <div class="form-row">
@@ -1265,8 +1370,14 @@
                     <button type="button" class="secondary" id="goal-auto-allocate-btn" title="Click: toggle drag-to-adjust mode. Double-click: split evenly across all linked tasks.">⚖ Auto Allocation</button>
                 </div>
                 <div class="form-row">
-                    <div style="flex:2;">
-                        <select id="goal-link-task-select"></select>
+                    <div style="flex:2; position:relative;">
+                        <button type="button" class="secondary" id="goal-link-picker-toggle" style="width:100%; text-align:left;">
+                            <span id="goal-link-picker-toggle-label">Select tasks to link…</span> <span class="cat-chevron">▾</span>
+                        </button>
+                        <div class="goal-link-picker-popup" id="goal-link-picker-popup" style="display:none;">
+                            <input type="text" id="goal-link-picker-search" placeholder="🔍 Search tasks…">
+                            <div class="goal-link-picker-list" id="goal-link-picker-list"></div>
+                        </div>
                     </div>
                     <div style="max-width:90px;">
                         <input type="number" id="goal-link-weight-input" min="0" max="100" step="1" value="10" placeholder="%">
@@ -1283,6 +1394,29 @@
                 <button type="button" class="secondary" id="cancel-goal-btn">Cancel</button>
                 <button type="button" id="save-goal-btn">Save Goal</button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Bulk-edit target timeline — reached via right-click on a Ctrl/Cmd-click multi-selection of
+     Long-Term Goal cards, so several goals' target months can be pushed/set together instead of
+     opening each one's own Edit Goal form in turn. -->
+<div class="modal-overlay" id="bulk-goal-timeline-modal">
+    <div class="modal-box" style="max-width:380px;">
+        <button type="button" class="modal-close-x" id="close-bulk-goal-timeline-btn" title="Close">✕</button>
+        <div>
+            <h3>Set target month</h3>
+            <div class="modal-subtitle" id="bulk-goal-timeline-desc">for the selected goals</div>
+        </div>
+        <div class="form-row">
+            <div>
+                <label class="field-label">Target month</label>
+                <input type="month" id="bulk-goal-timeline-input">
+            </div>
+        </div>
+        <div class="form-actions">
+            <button type="button" class="secondary" id="bulk-goal-timeline-cancel-btn">Cancel</button>
+            <button type="button" id="bulk-goal-timeline-apply-btn">Apply to all</button>
         </div>
     </div>
 </div>
@@ -1420,10 +1554,11 @@
         LAYOUT_KEY = prefix + 'layout';
     }
 
-    let state = { tasks: [], timelineEntries: [], goals: [], focusSessions: [], executionHistory: [], categoryColors: {} }; // real value loaded after the cloud pull, in boot()
+    let state = { tasks: [], timelineEntries: [], goals: [], focusSessions: [], executionHistory: [], categoryColors: {}, taskEvents: [] }; // real value loaded after the cloud pull, in boot()
     let layout = { minimized: [], showActual: false };
     let activeCategory = isWorkHours() ? 'Kerja' : 'All';
     let activeGoalId = 'all'; // 'all' | a goal's id — narrows the Kanban board to just that goal's linked tasks
+    let taskSearchQuery = ''; // free-text filter on the Active Priorities board (title + description)
     let editingTaskId = null;
     let expandedTaskId = null; // task card currently "pre-selected" (description shown inline)
     let pendingDeleteTaskId = null; // task awaiting confirmation in #delete-task-modal
@@ -1433,6 +1568,7 @@
     let totalDuration = 25 * 60;
     let isRunning = false;
     let pendingFinish = null; // { taskId, title, category, durationMin }
+    let focusEndAt = null; // wall-clock ms timestamp the running session finishes at — see tickFocusTimer()
 
     // ---------- Persistence ----------
     function currentMonthKey() {
@@ -1464,7 +1600,9 @@
                         counters[t.priority] += 1;
                     }
                     if (typeof t.dueDate === 'undefined') t.dueDate = null;
+                    if (typeof t.archived !== 'boolean') t.archived = false;
                 });
+                if (!Array.isArray(raw.taskEvents)) raw.taskEvents = [];
                 if (!Array.isArray(raw.timelineEntries)) {
                     // Migrate old month-keyed schedule format into flat dated entries (best effort: day 1 of month)
                     raw.timelineEntries = [];
@@ -1509,7 +1647,8 @@
                 { id: 'g1', title: 'Get AS/400 certification', category: 'Kerja', targetDate: '', progress: 30, links: [], createdAt: new Date().toISOString() }
             ],
             executionHistory: [],
-            categoryColors: {}
+            categoryColors: {},
+            taskEvents: []
         };
     }
 
@@ -1618,6 +1757,18 @@
         cloudSyncTimer = setTimeout(pushCloudData, 800);
     }
 
+    // NOTE on deletes: this function is upsert-only for tasks/timelineEntries/goals/
+    // focusSessions/executionHistory — it never bulk-deletes cloud rows just because they're
+    // "not in the current local set". It used to: a second open tab/session (or the same tab
+    // left open for hours) would push its own in-memory snapshot and delete-reconcile against
+    // it, silently wiping out anything added elsewhere since that tab last pulled — indistinguishable,
+    // from its point of view, from something the user had actually deleted. Real deletions are
+    // now pushed immediately, per-row, at the exact moment the user deletes something (see
+    // deleteCloudTask/deleteCloudTimelineEntries/deleteCloudGoal and the Excel-restore diff
+    // below), so this function can only ever ADD/update cloud rows.
+    // goal_links and category_colors below still use the old delete-by-absence reconcile —
+    // lower-traffic, lower-risk tables (links only change when goals/tasks themselves change;
+    // colors are a rarely-touched display preference), left as-is to keep this fix scoped.
     async function pushCloudData() {
         if (!CURRENT_USER) return;
         try {
@@ -1627,27 +1778,18 @@
                 sort_order: t.order || 0, due_date: t.dueDate || null, created_at: t.createdAt, completed_at: t.completedAt || null,
             }));
             if (taskRows.length) { const { error } = await supabase.from('focus_tasks').upsert(taskRows); if (error) throw error; }
-            let delTasks = supabase.from('focus_tasks').delete().eq('user_id', CURRENT_USER.id);
-            if (taskRows.length) delTasks = delTasks.not('id', 'in', `(${taskRows.map(t => `"${t.id}"`).join(',')})`);
-            const { error: delTasksErr } = await delTasks; if (delTasksErr) throw delTasksErr;
 
             const entryRows = state.timelineEntries.map(e => ({
                 id: e.id, user_id: CURRENT_USER.id, entry_date: e.date, entry_time: e.time, duration_min: e.durationMin || 30,
                 title: e.title, category: e.category, description: e.desc || null, done: !!e.done, hidden_from_spiral: !!e.hiddenFromSpiral,
             }));
             if (entryRows.length) { const { error } = await supabase.from('focus_timeline_entries').upsert(entryRows); if (error) throw error; }
-            let delEntries = supabase.from('focus_timeline_entries').delete().eq('user_id', CURRENT_USER.id);
-            if (entryRows.length) delEntries = delEntries.not('id', 'in', `(${entryRows.map(e => `"${e.id}"`).join(',')})`);
-            const { error: delEntriesErr } = await delEntries; if (delEntriesErr) throw delEntriesErr;
 
             const goalRows = state.goals.map(g => ({
                 id: g.id, user_id: CURRENT_USER.id, title: g.title, category: g.category,
                 target_month: g.targetDate ? g.targetDate + '-01' : null, progress: g.progress || 0, created_at: g.createdAt,
             }));
             if (goalRows.length) { const { error } = await supabase.from('focus_goals').upsert(goalRows); if (error) throw error; }
-            let delGoals = supabase.from('focus_goals').delete().eq('user_id', CURRENT_USER.id);
-            if (goalRows.length) delGoals = delGoals.not('id', 'in', `(${goalRows.map(g => `"${g.id}"`).join(',')})`);
-            const { error: delGoalsErr } = await delGoals; if (delGoalsErr) throw delGoalsErr;
 
             const linkRows = [];
             state.goals.forEach(g => (g.links || []).forEach(l => {
@@ -1668,9 +1810,6 @@
                 note: s.note || null, completed_at: s.completedAt,
             }));
             if (sessionRows.length) { const { error } = await supabase.from('focus_sessions').upsert(sessionRows); if (error) throw error; }
-            let delSessions = supabase.from('focus_sessions').delete().eq('user_id', CURRENT_USER.id);
-            if (sessionRows.length) delSessions = delSessions.not('id', 'in', `(${sessionRows.map(s => `"${s.id}"`).join(',')})`);
-            const { error: delSessionsErr } = await delSessions; if (delSessionsErr) throw delSessionsErr;
 
             const execRows = state.executionHistory.map(x => ({
                 id: x.id, user_id: CURRENT_USER.id, entry_id: x.entryId || null, entry_title: x.entryTitle,
@@ -1679,9 +1818,6 @@
                 note: x.note || null, executed_at: x.executedAt,
             }));
             if (execRows.length) { const { error } = await supabase.from('focus_execution_history').upsert(execRows); if (error) throw error; }
-            let delExec = supabase.from('focus_execution_history').delete().eq('user_id', CURRENT_USER.id);
-            if (execRows.length) delExec = delExec.not('id', 'in', `(${execRows.map(x => `"${x.id}"`).join(',')})`);
-            const { error: delExecErr } = await delExec; if (delExecErr) throw delExecErr;
 
             const colorRows = Object.entries(state.categoryColors || {}).map(([category, color]) => ({ user_id: CURRENT_USER.id, category, color }));
             if (colorRows.length) { const { error } = await supabase.from('focus_category_colors').upsert(colorRows, { onConflict: 'user_id,category' }); if (error) throw error; }
@@ -1693,6 +1829,67 @@
         } catch (e) {
             console.error('cloud push failed', e);
             setSyncDot('error');
+        }
+    }
+    // Immediate, targeted cloud deletes — called right at the moment the user deletes
+    // something, so removal doesn't depend on a later full-state push (see the comment on
+    // pushCloudData above for why the old bulk delete-by-absence reconcile was removed).
+    async function deleteCloudTask(id) {
+        if (!CURRENT_USER) return;
+        try { await supabase.from('focus_tasks').delete().eq('user_id', CURRENT_USER.id).eq('id', id); }
+        catch (e) { console.error('cloud task delete failed', e); }
+    }
+    async function deleteCloudTimelineEntries(ids) {
+        if (!CURRENT_USER || !ids || !ids.length) return;
+        try { await supabase.from('focus_timeline_entries').delete().eq('user_id', CURRENT_USER.id).in('id', ids); }
+        catch (e) { console.error('cloud timeline entry delete failed', e); }
+    }
+    async function deleteCloudGoal(id) {
+        if (!CURRENT_USER) return;
+        try { await supabase.from('focus_goals').delete().eq('user_id', CURRENT_USER.id).eq('id', id); }
+        catch (e) { console.error('cloud goal delete failed', e); }
+    }
+
+    // ---------- Neon Flow auto color-switch (cross-app automation) ----------
+    // progbar.html ("Neon Flow — Time Tracker") tracks the day as green/blue/orange segments,
+    // manually toggled by clicking its own button 1/2/3 times. This writes into that exact same
+    // localStorage/cloud state shape so STARTING or STOPPING a focus session here switches its
+    // color automatically — green while a session is running — instead of requiring a separate
+    // manual click over there. Blue (the "at rest" default) deliberately only downgrades an
+    // ALREADY-running Neon Flow session: merely finishing/abandoning a session shouldn't spin up
+    // a brand new tracked day just to immediately sit idle on blue — only green/orange do that
+    // (same as a real first click on progbar.html would). See ketik-buku.html for the "orange
+    // while reading" half of this.
+    function neonFlowAutoSwitch(color) {
+        if (!CURRENT_USER) return;
+        try {
+            const key = `cyber_${CURRENT_USER.id}_state`;
+            let pbState = null;
+            try { pbState = JSON.parse(localStorage.getItem(key)); } catch (e) {}
+            const now = new Date();
+            if (!pbState || !pbState.active) {
+                if (color === 'blue') return;
+                const target = new Date(now);
+                target.setHours(19, 30, 0, 0);
+                if (now >= target) target.setDate(target.getDate() + 1);
+                pbState = { active: true, activeColor: null, startTime: now.toISOString(), targetTime: target.toISOString(), segments: [], clickCount: 0, clickTimeout: null };
+            }
+            if (pbState.activeColor === color) return;
+            pbState.activeColor = color;
+            pbState.segments = pbState.segments || [];
+            pbState.segments.push({ color, duration: 0, timestamp: now.toISOString() });
+            localStorage.setItem(key, JSON.stringify(pbState));
+            // progbar.html's own loadCloud() overwrites localStorage from the cloud on every
+            // load, so without mirroring this switch up there too, opening it later the same
+            // day would silently revert this automatic change back to its last manual state.
+            const historyKey = `cyber_${CURRENT_USER.id}_history`;
+            supabase.from('user_progbar_data').upsert({
+                user_id: CURRENT_USER.id,
+                history: JSON.parse(localStorage.getItem(historyKey) || '[]'),
+                current_state: pbState,
+            }).then(({ error }) => { if (error) console.warn('Neon Flow cloud mirror skip:', error.message); });
+        } catch (e) {
+            console.warn('Neon Flow auto-switch failed:', e);
         }
     }
 
@@ -2141,21 +2338,16 @@
     });
 
     // ---- Copy/Add controls toggle ----
-    // Single button collapses the "Copy previous / copy from any day / add entry" cluster so
-    // the modal opens lean — the user only sees it when they actually want to copy or add
-    // something. Editing an EXISTING entry (Task: reposition edit form below its row) forces
-    // this open independently via positionEntryFormBox, since the entry form has to be visible
-    // for editing regardless of this toggle's own state.
-    const copyAddToggleBtn = document.getElementById('copy-add-toggle-btn');
+    // Collapses the "Copy previous / copy from any day / add entry" cluster so the modal opens
+    // lean — the user only sees it when they actually want to copy or add something. Reached via
+    // right-click on the entry list now (see the contextmenu handler on #schedule-entry-list)
+    // instead of a standing toggle button. Editing an EXISTING entry (reposition edit form below
+    // its row) forces this open independently via positionEntryFormBox, since the entry form has
+    // to be visible for editing regardless of this toggle's own state.
     const copyAddCollapsible = document.getElementById('copy-add-collapsible');
     function setCopyAddCollapsed(collapsed) {
         copyAddCollapsible.style.display = collapsed ? 'none' : 'flex';
-        copyAddToggleBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
     }
-    copyAddToggleBtn.addEventListener('click', () => {
-        const isCollapsed = copyAddCollapsible.style.display === 'none';
-        setCopyAddCollapsed(!isCollapsed);
-    });
 
     // Returns a single concrete date (YYYY-MM-DD) representing "where the user currently is"
     // in the settings modal, regardless of which picker they last touched. Used when switching
@@ -2173,11 +2365,14 @@
     document.getElementById('browse-day-btn').addEventListener('click', () => setBrowseMode('day'));
     document.getElementById('browse-month-btn').addEventListener('click', () => setBrowseMode('month'));
     document.getElementById('browse-week-btn').addEventListener('click', () => setBrowseMode('week'));
-    function setBrowseMode(mode) {
+    function setBrowseMode(mode, explicitAnchor) {
         // Carry the anchor date forward from whichever mode is being left, and seed the
         // newly-entered mode's own picker from it, so all three pickers stay coherent with
         // each other instead of drifting independently (see getAnchorDate above).
-        const anchor = getAnchorDate();
+        // explicitAnchor overrides that derived anchor — used by jumpToDay() (the month
+        // overview's "click a day" affordance) to land on a specific date rather than
+        // wherever the currently-active mode happened to be pointed.
+        const anchor = explicitAnchor || getAnchorDate();
         browseMode = mode;
         if (mode === 'day') {
             dayPicker.value = anchor;
@@ -2204,6 +2399,13 @@
         // drift to unrelated dates when tabbing Day/Month/Week back and forth.
         resetEntryForm(anchor);
         renderScheduleEntryList();
+    }
+
+    // Clicking a day bar in the Week zoom view (see renderPeriodBars) jumps straight to Day mode
+    // on that date — spotting a gap there should lead directly into looking at/filling it,
+    // not require manually switching to Day mode and re-picking the same date by hand.
+    function jumpToDay(dateStr) {
+        setBrowseMode('day', dateStr);
     }
 
     dayPicker.addEventListener('change', () => {
@@ -2308,16 +2510,19 @@
         renderScheduleSpiral();
     });
 
-    // ---------- 24h dual-loop spiral (00:00 = center, 24:00 = outer edge, 2 full turns = 100%) ----------
-    const SPIRAL_CENTER = 150, SPIRAL_MAX_R = 138, SPIRAL_MIN_R = 16;
+    // ---------- Day strip + 3-month overview (replaces the old dual-loop spiral) ----------
+    // The spiral drew one day as a 2-turn radial arc, which looked striking but only ever showed
+    // a single date at a time and needed real study to read. A plain horizontal strip (00:00 left
+    // edge, 24:00 right edge, colored = scheduled / blank = free) reads instantly, and stacking
+    // 90 of them — one per upcoming day — turns "where in the next few months am I actually
+    // free?" into something you can just look at, which the spiral had no way to answer at all.
     const SPIRAL_TOTAL_MINUTES = 24 * 60;
-    const SPIRAL_TOTAL_RADIANS = 2 * (2 * Math.PI); // 2 full loops for 24h
 
     const SPIRAL_COLORS = { Kerja: '#1565d8', Trading: '#9c27b0', Bisnis: '#ff9800', Kuliah: '#e53935', Personal: '#00897b', Other: '#9e9e9e' };
     const ALL_CATEGORIES_WITH_OTHER = [...CATEGORIES, 'Other'];
 
     // A user's custom pick (state.categoryColors[cat]) always wins; otherwise fall back to the
-    // built-in default. Centralizing this one lookup keeps the spiral, the Daily Timeline
+    // built-in default. Centralizing this one lookup keeps the day strip, the Daily Timeline
     // border, and every tag pill in sync the moment a category gets recolored.
     function getCategoryColor(cat) {
         const custom = state.categoryColors && state.categoryColors[cat];
@@ -2335,95 +2540,9 @@
         renderGoalsList();
     }
 
-    function spiralMinutesToTheta(minutes) {
-        return Math.max(0, Math.min(SPIRAL_TOTAL_MINUTES, minutes)) / SPIRAL_TOTAL_MINUTES * SPIRAL_TOTAL_RADIANS;
-    }
-    // radiusOffset nudges the drawn radius outward a few px — used to give genuinely
-    // overlapping entries their own parallel "lane" instead of being drawn exactly on top of
-    // each other (see computePiecesWithLanes).
-    function spiralThetaToRadius(theta, radiusOffset) {
-        const t = theta / SPIRAL_TOTAL_RADIANS;
-        return SPIRAL_MIN_R + t * (SPIRAL_MAX_R - SPIRAL_MIN_R) + (radiusOffset || 0);
-    }
-    function spiralPolarToXY(theta, r) {
-        const angle = theta - Math.PI / 2; // start at 12 o'clock, sweep clockwise
-        return { x: SPIRAL_CENTER + r * Math.cos(angle), y: SPIRAL_CENTER + r * Math.sin(angle) };
-    }
-    function spiralMinutesToXY(minutes, radiusOffset) {
-        const theta = spiralMinutesToTheta(minutes);
-        return spiralPolarToXY(theta, spiralThetaToRadius(theta, radiusOffset));
-    }
     function spiralTimeToMinutes(hhmm) {
         const [h, m] = hhmm.split(':').map(Number);
         return h * 60 + m;
-    }
-    function buildSpiralPathD(startMinutes, endMinutes, steps, radiusOffset) {
-        const span = endMinutes - startMinutes;
-        const n = steps || Math.max(2, Math.round(span / 6));
-        let d = '';
-        for (let i = 0; i <= n; i++) {
-            const minutes = startMinutes + (i / n) * span;
-            const { x, y } = spiralMinutesToXY(minutes, radiusOffset);
-            d += (i === 0 ? 'M' : 'L') + x.toFixed(2) + ',' + y.toFixed(2) + ' ';
-        }
-        return d.trim();
-    }
-
-    // Segments are drawn using each entry's real durationMin so the spiral reflects actual
-    // time usage (e.g. an 8h sleep block visibly spans a third of a loop, not a tiny dot).
-    // A small visual floor keeps very short entries (a 5-min duration) from disappearing
-    // into an invisible point.
-    const SPIRAL_MIN_SEGMENT_MINUTES = 14;
-
-    // Trims a hair off the drawn end of every segment so two entries with only a tiny gap
-    // between them (even ~1 minute) always keep a visible seam — instead of visually fusing
-    // together once one of them grows thicker/glows on hover. Never trims more than half of
-    // a segment's own span, so very short entries stay comfortably visible.
-    const SPIRAL_GAP_TRIM_MINUTES = 1.5;
-    function buildSpiralPathPiece(startMinutes, endMinutes, radiusOffset) {
-        const start = Math.max(0, startMinutes);
-        const end = Math.min(SPIRAL_TOTAL_MINUTES, endMinutes);
-        const trimmedEnd = Math.max(start + (end - start) * 0.5, end - SPIRAL_GAP_TRIM_MINUTES);
-        return buildSpiralPathD(start, trimmedEnd, undefined, radiusOffset);
-    }
-
-    // Genuinely time-overlapping entries (two things scheduled over the same minutes) used to
-    // be drawn exactly on top of each other — same centerline, same thickness — which made
-    // hovering the one painted "underneath" look broken/straight since its glow blended into
-    // the other's stroke. This assigns each drawable piece a "lane" (0, 1, 2...) via the classic
-    // greedy interval-scheduling algorithm, so overlapping pieces get nudged onto their own
-    // parallel arc instead of colliding. Non-overlapping pieces all land in lane 0, so the
-    // common case (nothing overlaps) draws exactly as before with zero radius offset.
-    // Offset must clear each stroke's HALF-width on both sides, including the hover-grown
-    // width (6px base -> 10px on :hover, see .spiral-segment:hover), or two lanes' strokes
-    // still visually/hit-test overlap even though their centerlines differ. Needs at least
-    // half(hover)=5 + half(base)=3 = 8 units between adjacent lanes; 10 gives a clean seam.
-    const SPIRAL_LANE_OFFSET = 10;
-    function computePiecesWithLanes(entries) {
-        const pieces = [];
-        entries.forEach(e => {
-            const start = spiralTimeToMinutes(e.time);
-            const span = Math.max(SPIRAL_MIN_SEGMENT_MINUTES, Number(e.durationMin) || 30);
-            const end = start + span;
-            if (end <= SPIRAL_TOTAL_MINUTES) {
-                pieces.push({ entry: e, start, end });
-            } else {
-                // Runs past midnight — split into two pieces so it still reads as one
-                // continuous block wrapping onto this same day's inner loop, rather than being
-                // truncated at 24:00 or requiring a trip to a different date to see the rest.
-                pieces.push({ entry: e, start, end: SPIRAL_TOTAL_MINUTES });
-                pieces.push({ entry: e, start: 0, end: Math.min(SPIRAL_TOTAL_MINUTES, end - SPIRAL_TOTAL_MINUTES) });
-            }
-        });
-        pieces.sort((a, b) => a.start - b.start);
-        const laneEnds = [];
-        pieces.forEach(p => {
-            let lane = laneEnds.findIndex(end => end <= p.start);
-            if (lane === -1) { lane = laneEnds.length; laneEnds.push(0); }
-            laneEnds[lane] = p.end;
-            p.lane = lane;
-        });
-        return pieces;
     }
 
     // Focus sessions only record when they finished, not when they started, so this estimates
@@ -2438,132 +2557,70 @@
     }
 
     function renderScheduleSpiral() {
-        const svg = document.getElementById('spiral-svg');
         const dateInput = document.getElementById('entry-date-input');
         const spiralDate = (dateInput && dateInput.value) || currentDateStr();
-
         document.getElementById('spiral-date-label').textContent = dateLabel(spiralDate);
 
         const dayEntries = state.timelineEntries.filter(e => e.date === spiralDate).sort((a, b) => a.time.localeCompare(b.time));
-
-        let svgContent = `<defs><filter id="spiral-glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="3" result="blur"></feGaussianBlur><feMerge><feMergeNode in="blur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge></filter></defs>`;
-        svgContent += `<path class="spiral-track" d="${buildSpiralPathD(0, SPIRAL_TOTAL_MINUTES, 720)}"></path>`;
-
-        // Faint dashed guide ring at the hour-12 radius — the one place a viewer can look and
-        // immediately tell "everything inside this ring is morning (00-12h), everything outside
-        // it is afternoon/evening (12-24h)" instead of having to mentally track which of the
-        // spiral's two revolutions a given arc belongs to.
-        const boundaryR = spiralThetaToRadius(spiralMinutesToTheta(720));
-        svgContent += `<circle class="spiral-boundary-ring" cx="${SPIRAL_CENTER}" cy="${SPIRAL_CENTER}" r="${boundaryR.toFixed(2)}"></circle>`;
-
-        // Hour tick marks every 3 hours for orientation (0,3,6...21), placed just outside the
-        // track point. Hour 00 (day start) and hour 12 (the inner/outer loop seam — also the
-        // only other angular position sharing the 12-o'clock spot) are drawn as "major" ticks —
-        // a bolder line and label — since those two are the primary anchors for reading the
-        // rest of the spiral; the other five are secondary reference points.
-        for (let h = 0; h < 24; h += 3) {
-            const minutes = h * 60;
-            const theta = spiralMinutesToTheta(minutes);
-            const r = spiralThetaToRadius(theta);
-            const isMajor = h === 0 || h === 12;
-            const tickHalfLen = isMajor ? 4.5 : 3;
-            const inner = spiralPolarToXY(theta, r - tickHalfLen);
-            const outer = spiralPolarToXY(theta, r + tickHalfLen);
-            const labelPos = spiralPolarToXY(theta, r + 9);
-            const majorClass = isMajor ? ' major' : '';
-            svgContent += `<line class="spiral-tick-line${majorClass}" x1="${inner.x.toFixed(2)}" y1="${inner.y.toFixed(2)}" x2="${outer.x.toFixed(2)}" y2="${outer.y.toFixed(2)}"></line>`;
-            svgContent += `<text class="spiral-tick-label${majorClass}" x="${labelPos.x.toFixed(2)}" y="${labelPos.y.toFixed(2)}">${String(h).padStart(2, '0')}</text>`;
-        }
-
-        // Entry segments — skip ones flagged hiddenFromSpiral (they still exist in
-        // timelineEntries/data, they just don't get drawn here). Entries that run past
-        // midnight are split into two arcs so they read as one continuous block wrapping onto
-        // this same day's inner loop, instead of being truncated at the 24:00 edge or jumping
-        // to a different day's view. Pieces that genuinely overlap in time get assigned their
-        // own lane (see computePiecesWithLanes) so they draw as parallel arcs instead of
-        // exactly on top of each other.
         const visibleEntries = dayEntries.filter(e => !e.hiddenFromSpiral);
-        const laneAssignedPieces = computePiecesWithLanes(visibleEntries);
-        // The outermost lane's offset must stay within the viewBox — SPIRAL_MAX_R + offset
-        // can't pass 150 (SPIRAL_CENTER, i.e. the SVG's edge) or arcs get clipped. In the rare
-        // case of many entries all genuinely overlapping at once, this compresses lane spacing
-        // to fit instead of letting the outer lanes draw outside the visible canvas.
-        const maxLane = laneAssignedPieces.reduce((m, p) => Math.max(m, p.lane), 0);
-        const availableHeadroom = SPIRAL_CENTER - SPIRAL_MAX_R - 2; // 2px margin from the hard edge
-        const effectiveLaneOffset = maxLane > 0 ? Math.min(SPIRAL_LANE_OFFSET, availableHeadroom / maxLane) : SPIRAL_LANE_OFFSET;
-        laneAssignedPieces.forEach(piece => {
-            const color = getCategoryColor(piece.entry.category);
-            const radiusOffset = piece.lane * effectiveLaneOffset;
-            const d = buildSpiralPathPiece(piece.start, piece.end, radiusOffset);
-            svgContent += `<path class="spiral-segment" data-entry-id="${piece.entry.id}" data-lane="${piece.lane}" d="${d}" stroke="${color}" stroke-width="6"></path>`;
-        });
 
-        // Actual layer — today's (or the browsed date's) completed focus sessions, drawn as
-        // dashed arcs so they read as "what really happened" next to the solid planned ones.
-        // Only drawn when the Daily Timeline's Actual toggle is on.
-        let visibleSessions = [];
+        renderCategoryLegend(visibleEntries);
+        if (scheduleZoomMode === 'day') {
+            renderDayStrip(spiralDate, visibleEntries);
+            renderPlannedFreeIndicator(dayEntries);
+        } else {
+            renderPeriodBars();
+        }
+    }
+
+    // One straight 24h bar for the currently-browsed date. An entry that runs past midnight is
+    // split into an end-of-day + start-of-next-day piece, same idea the spiral used, so it still
+    // reads as one continuous block instead of being truncated at the 24:00 edge.
+    function renderDayStrip(date, entries) {
+        const track = document.getElementById('day-strip-track');
+        let html = '';
+        entries.forEach(e => {
+            const start = spiralTimeToMinutes(e.time);
+            const end = start + (Number(e.durationMin) || 30);
+            const color = getCategoryColor(e.category);
+            const pieces = end <= SPIRAL_TOTAL_MINUTES ? [[start, end]] : [[start, SPIRAL_TOTAL_MINUTES], [0, end - SPIRAL_TOTAL_MINUTES]];
+            pieces.forEach(([s, en]) => {
+                const left = (s / SPIRAL_TOTAL_MINUTES) * 100;
+                const width = Math.max(0.4, ((en - s) / SPIRAL_TOTAL_MINUTES) * 100);
+                const endLabel = addMinutesToTime(e.time, Number(e.durationMin) || 30);
+                html += `<div class="day-strip-seg" style="left:${left}%; width:${width}%; background:${color};" title="${e.time}–${endLabel} ${escapeHTML(e.title)}"></div>`;
+            });
+        });
+        // Actual layer — today's (or the browsed date's) completed focus sessions, drawn as a
+        // thinner strip underneath the planned one, only when the Daily Timeline's Actual toggle
+        // is on — same "what really happened next to what was planned" idea the spiral had.
         if (layout.showActual) {
-            visibleSessions = state.focusSessions.filter(s => s.completedAt && s.completedAt.slice(0, 10) === spiralDate);
-            visibleSessions.forEach(s => {
+            state.focusSessions.filter(s => s.completedAt && s.completedAt.slice(0, 10) === date).forEach(s => {
                 const { startMin, durationMin } = actualSessionTimeRange(s);
-                const visualSpan = Math.max(SPIRAL_MIN_SEGMENT_MINUTES, durationMin);
-                const color = getCategoryColor(s.category || 'Other');
-                const d = buildSpiralPathPiece(startMin, startMin + visualSpan);
-                svgContent += `<path class="spiral-segment actual-segment" data-session-id="${s.id}" d="${d}" stroke="${color}" stroke-width="4"></path>`;
+                const left = (startMin / SPIRAL_TOTAL_MINUTES) * 100;
+                const width = Math.max(0.4, (durationMin / SPIRAL_TOTAL_MINUTES) * 100);
+                html += `<div class="day-strip-seg actual" style="left:${left}%; width:${width}%; background:${getCategoryColor(s.category || 'Other')};" title="⏱ ${escapeHTML(s.taskTitle)}"></div>`;
             });
         }
-
-        // "Now" marker if the spiral is showing today
-        if (spiralDate === currentDateStr()) {
+        if (date === currentDateStr()) {
             const now = new Date();
-            const { x, y } = spiralMinutesToXY(now.getHours() * 60 + now.getMinutes());
-            svgContent += `<circle class="spiral-now-marker" cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="3.5"></circle>`;
+            const left = ((now.getHours() * 60 + now.getMinutes()) / SPIRAL_TOTAL_MINUTES) * 100;
+            html += `<div class="day-strip-now" style="left:${left}%;" title="Now"></div>`;
         }
+        track.innerHTML = html;
 
-        svg.innerHTML = svgContent;
-
-        // Hover/tap tooltip wiring — planned entries and actual sessions each get their own,
-        // since they carry different fields (title vs taskTitle, no execRecord on sessions).
-        //
-        // Deliberately NOT using per-path mouseenter/mouseleave: when two lanes' arcs sit only
-        // a few px apart (see computePiecesWithLanes), moving the mouse directly from one arc's
-        // stroke to an adjacent lane's stroke can fail to fire a clean leave+enter pair on thin
-        // SVG paths, leaving the tooltip stuck on the previously-hovered segment even though the
-        // cursor is now genuinely over a different one. Instead this tracks pointer position at
-        // the SVG level and resolves "what's under the cursor right now" via elementFromPoint on
-        // every move, which is immune to that per-element pairing gap.
-        const tooltip = document.getElementById('spiral-tooltip');
-        function describeSegment(seg) {
-            if (seg.dataset.entryId) {
-                const entry = visibleEntries.find(e => e.id === seg.dataset.entryId);
-                if (!entry) return null;
-                const endTime = addMinutesToTime(entry.time, Number(entry.durationMin) || 30);
-                return `<span class="stt-time">${entry.time}–${endTime}</span>${escapeHTML(entry.title)}`;
-            }
-            if (seg.dataset.sessionId) {
-                const s = visibleSessions.find(x => x.id === seg.dataset.sessionId);
-                if (!s) return null;
-                const { startMin, durationMin } = actualSessionTimeRange(s);
-                const startHHMM = addMinutesToTime('00:00', startMin);
-                const endHHMM = addMinutesToTime(startHHMM, durationMin);
-                return `<span class="stt-time">⏱ ${startHHMM}–${endHHMM}</span>${escapeHTML(s.taskTitle)}`;
-            }
-            return null;
+        const marks = document.getElementById('day-strip-hourmarks');
+        let markHtml = '';
+        for (let h = 0; h < 24; h += 3) {
+            markHtml += `<span style="left:${(h * 60 / SPIRAL_TOTAL_MINUTES) * 100}%;">${String(h).padStart(2, '0')}</span>`;
         }
-        svg.addEventListener('mousemove', (ev) => {
-            const target = document.elementFromPoint(ev.clientX, ev.clientY);
-            const seg = target && target.closest && target.closest('.spiral-segment');
-            if (!seg) { tooltip.style.display = 'none'; return; }
-            const html = describeSegment(seg);
-            if (!html) { tooltip.style.display = 'none'; return; }
-            tooltip.innerHTML = html;
-            tooltip.style.display = 'block';
-        });
-        svg.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+        marks.innerHTML = markHtml;
+    }
 
-        // Legend always lists every category (not just today's) so colors stay customizable
-        // even for categories that aren't scheduled on the currently-browsed date. Categories
-        // not used today are dimmed to keep "what's actually on today" easy to read at a glance.
+    // Lists every category (not just today's) so colors stay customizable even for ones not
+    // scheduled on the currently-browsed date. Categories not used today are dimmed to keep
+    // "what's actually on today" easy to read at a glance.
+    function renderCategoryLegend(visibleEntries) {
         const legendWrap = document.getElementById('spiral-legend');
         const usedCategories = new Set(visibleEntries.map(e => e.category));
         legendWrap.innerHTML = ALL_CATEGORIES_WITH_OTHER.map(cat => `
@@ -2574,18 +2631,15 @@
         legendWrap.querySelectorAll('.spiral-legend-swatch').forEach(input => {
             input.addEventListener('input', () => setCategoryColor(input.dataset.cat, input.value));
         });
-
-        renderPlannedFreeIndicator(dayEntries);
     }
 
-    // How much of the 24h is planned vs still free, correctly handling overlapping entries:
-    // two entries both covering 09:00-10:00 should only count that hour once, not twice — so
-    // this merges every entry's [start,end) range into a union before summing, rather than
-    // naively adding up each entry's durationMin independently (which used to double-count
-    // any overlap and steal from "free%" that wasn't actually spoken for).
-    // Uses ALL of the day's entries regardless of hiddenFromSpiral — hiding only affects
-    // what's drawn on the spiral, not whether time is considered "used" for this summary.
-    function renderPlannedFreeIndicator(dayEntries) {
+    // How much of a set of entries' time is planned, correctly handling overlapping entries: two
+    // entries both covering 09:00-10:00 should only count that hour once, not twice — so this
+    // merges every entry's [start,end) range into a union before summing, rather than naively
+    // adding up each entry's durationMin independently (which used to double-count any overlap).
+    // Shared by the Day view's planned/free bar AND every Week/Month/Year bar below — one merge
+    // routine, fed either a single day's entries or (for period bars) one day at a time.
+    function computePlannedPctFromEntries(dayEntries) {
         // Deliberately NOT clamped to 1440 here: an entry that runs past midnight (e.g.
         // Downtime, 22:00 + 8h) still represents 8 real hours of the day's rhythm and should
         // count in full — clamping each entry's own end would silently drop its overflow from
@@ -2613,14 +2667,120 @@
             }
         });
         if (mergedStart !== null) totalPlannedMin += mergedEnd - mergedStart;
+        return Math.max(0, Math.min(100, Math.round((totalPlannedMin / SPIRAL_TOTAL_MINUTES) * 100)));
+    }
+    // Uses ALL of a day's entries regardless of hiddenFromSpiral — hiding only affects what's
+    // drawn on the day strip, not whether time is considered "used" for this %.
+    function computeDayPlannedPct(dateStr) {
+        return computePlannedPctFromEntries(state.timelineEntries.filter(e => e.date === dateStr));
+    }
 
-        const plannedPct = Math.max(0, Math.min(100, Math.round((totalPlannedMin / SPIRAL_TOTAL_MINUTES) * 100)));
+    function renderPlannedFreeIndicator(dayEntries) {
+        const plannedPct = computePlannedPctFromEntries(dayEntries);
         const freePct = 100 - plannedPct;
-
         const fill = document.getElementById('planned-free-fill');
         const label = document.getElementById('planned-free-label');
         if (fill) fill.style.width = plannedPct + '%';
         if (label) label.innerHTML = `<span class="pf-planned">${plannedPct}% planned</span> · ${freePct}% free`;
+    }
+
+    // ---------- Week/Month/Year zoom bars ----------
+    // Day is the finest zoom (the single 24h strip above); these three levels each show a row of
+    // bars — Week: 7 bars (days). Month: one bar per week ("monthly seen weekly", i.e. the month
+    // is read as ~4-5 weeks, not 30 individual days). Year: 12 bars (months). Each bar's height is
+    // its %-planned, with a hover tooltip giving the exact number; clicking a bar drills down one
+    // level (Year's month -> Month view on it; Month's week -> Week view on it; Week's day ->
+    // jumps the whole schedule form to that day and drops back to Day view).
+    let scheduleZoomMode = 'day'; // 'day' | 'week' | 'month' | 'year'
+    let zoomAnchorDate = currentDateStr(); // which week/month/year is currently shown, independent of Day-browse
+
+    function setScheduleZoom(mode) {
+        if (mode !== 'day' && scheduleZoomMode === 'day') {
+            // Seed the zoom anchor from wherever the Day view was looking, the first time you
+            // step up a level, so Week/Month/Year open centered on what you were just browsing.
+            const dateInput = document.getElementById('entry-date-input');
+            zoomAnchorDate = (dateInput && dateInput.value) || currentDateStr();
+        }
+        scheduleZoomMode = mode;
+        document.querySelectorAll('#zoom-tabs .zoom-tab').forEach(btn => btn.classList.toggle('active', btn.dataset.zoom === mode));
+        document.getElementById('zoom-day-view').style.display = mode === 'day' ? 'block' : 'none';
+        document.getElementById('zoom-period-view').style.display = mode === 'day' ? 'none' : 'block';
+        renderScheduleSpiral();
+    }
+    document.querySelectorAll('#zoom-tabs .zoom-tab').forEach(btn => {
+        btn.addEventListener('click', () => setScheduleZoom(btn.dataset.zoom));
+    });
+
+    function renderPeriodBarsRow(bars, labelText) {
+        const row = document.getElementById('period-bars-row');
+        row.innerHTML = bars.map(b => `
+            <div class="period-bar-wrap ${b.highlight ? 'highlight' : ''}">
+                <div class="period-tooltip">${escapeHTML(b.tooltip)}</div>
+                <div class="period-bar-track"><div class="period-bar-fill" style="height:${b.pct}%;"></div></div>
+                <span class="period-bar-label">${escapeHTML(b.label)}</span>
+            </div>`).join('');
+        row.querySelectorAll('.period-bar-wrap').forEach((el, i) => {
+            if (bars[i].onClick) el.addEventListener('click', bars[i].onClick);
+        });
+        document.getElementById('period-label').textContent = labelText;
+    }
+
+    const WEEKDAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    function renderPeriodBars() {
+        if (scheduleZoomMode === 'week') {
+            const { start } = weekStrToRange(dateToWeekStr(new Date(zoomAnchorDate + 'T00:00:00')));
+            const bars = [];
+            for (let i = 0; i < 7; i++) {
+                const d = new Date(start); d.setDate(d.getDate() + i);
+                const dStr = dateToStr(d);
+                const pct = computeDayPlannedPct(dStr);
+                bars.push({
+                    label: WEEKDAY_SHORT[i], pct, highlight: dStr === currentDateStr(),
+                    tooltip: `${shortDateLabel(dStr)} — ${pct}% planned`,
+                    onClick: () => { jumpToDay(dStr); setScheduleZoom('day'); }
+                });
+            }
+            renderPeriodBarsRow(bars, 'Week of ' + shortDateLabel(dateToStr(start)));
+        } else if (scheduleZoomMode === 'month') {
+            const ym = zoomAnchorDate.slice(0, 7);
+            const [y, m] = ym.split('-').map(Number);
+            const daysInMonth = new Date(y, m, 0).getDate();
+            const weeks = [];
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dStr = ym + '-' + String(day).padStart(2, '0');
+                const dow = new Date(dStr + 'T00:00:00').getDay(); // 0=Sun
+                if (!weeks.length || dow === 1) weeks.push([]);
+                weeks[weeks.length - 1].push(dStr);
+            }
+            const bars = weeks.map((days, idx) => {
+                const pct = Math.round(days.reduce((sum, d) => sum + computeDayPlannedPct(d), 0) / days.length);
+                const weekStartStr = days[0];
+                return {
+                    label: 'W' + (idx + 1), pct, highlight: days.includes(currentDateStr()),
+                    tooltip: `${shortDateLabel(days[0])}–${shortDateLabel(days[days.length - 1])} — ${pct}% planned`,
+                    onClick: () => { zoomAnchorDate = weekStartStr; setScheduleZoom('week'); }
+                };
+            });
+            renderPeriodBarsRow(bars, monthLabel(ym));
+        } else if (scheduleZoomMode === 'year') {
+            const year = Number(zoomAnchorDate.slice(0, 4));
+            const bars = [];
+            for (let mo = 1; mo <= 12; mo++) {
+                const ymKey = year + '-' + String(mo).padStart(2, '0');
+                const daysInMonth = new Date(year, mo, 0).getDate();
+                let sum = 0;
+                for (let day = 1; day <= daysInMonth; day++) sum += computeDayPlannedPct(ymKey + '-' + String(day).padStart(2, '0'));
+                const pct = Math.round(sum / daysInMonth);
+                bars.push({
+                    label: MONTH_SHORT[mo - 1], pct, highlight: ymKey === currentDateStr().slice(0, 7),
+                    tooltip: `${monthLabel(ymKey)} — ${pct}% planned`,
+                    onClick: () => { zoomAnchorDate = ymKey + '-01'; setScheduleZoom('month'); }
+                });
+            }
+            renderPeriodBarsRow(bars, String(year));
+        }
     }
 
     // Single source of truth for "which entries are currently in view" given the active
@@ -2659,8 +2819,6 @@
         const { entries, emptyLabel } = getBrowsedEntries();
         const listLabel = document.getElementById('entry-list-label');
         if (listLabel) listLabel.textContent = `Entries — ${emptyLabel}`;
-        const deleteAllBtn = document.getElementById('entry-delete-all-btn');
-        if (deleteAllBtn) deleteAllBtn.style.display = entries.length > 0 ? 'inline-block' : 'none';
 
         if (entries.length === 0) {
             wrap.innerHTML = `<div class="empty-hint">No entries for ${emptyLabel} yet. Add one below.</div>`;
@@ -2732,16 +2890,38 @@
         editScheduleEntry(row.dataset.entryId);
     });
     document.getElementById('schedule-entry-list').addEventListener('contextmenu', (e) => {
-        const row = e.target.closest('.schedule-entry');
-        if (!row) return;
         e.preventDefault();
-        const id = row.dataset.entryId;
-        const entry = state.timelineEntries.find(x => x.id === id);
-        if (!entry) return;
+        const row = e.target.closest('.schedule-entry');
+        if (row) {
+            const id = row.dataset.entryId;
+            const entry = state.timelineEntries.find(x => x.id === id);
+            if (!entry) return;
+            showContextMenu(e.clientX, e.clientY, [
+                { label: 'Edit entry', icon: '✎', action: () => editScheduleEntry(id) },
+                { label: entry.hiddenFromSpiral ? 'Show on spiral' : 'Hide from spiral', icon: entry.hiddenFromSpiral ? '👁' : '🙈', action: () => toggleEntrySpiralVisibility(id) },
+                { label: 'Delete entry', icon: '✕', danger: true, action: () => deleteScheduleEntry(id) }
+            ]);
+            return;
+        }
+        // Right-click on empty space (no entries yet, or below the last row) — Add/Copy/Delete
+        // all used to live behind a standing "➕ Add / Copy" toggle button; reachable here now,
+        // same pattern as every other list's right-click menu in this app.
+        const { entries } = getBrowsedEntries();
         showContextMenu(e.clientX, e.clientY, [
-            { label: 'Edit entry', icon: '✎', action: () => editScheduleEntry(id) },
-            { label: entry.hiddenFromSpiral ? 'Show on spiral' : 'Hide from spiral', icon: entry.hiddenFromSpiral ? '👁' : '🙈', action: () => toggleEntrySpiralVisibility(id) },
-            { label: 'Delete entry', icon: '✕', danger: true, action: () => deleteScheduleEntry(id) }
+            { label: 'Add entry', icon: '➕', action: () => {
+                setCopyAddCollapsed(false);
+                document.getElementById('entry-title-input').focus();
+                document.getElementById('entry-form-box').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            } },
+            { label: document.getElementById('copy-prev-btn').textContent, icon: '📋', action: () => {
+                setCopyAddCollapsed(false);
+                document.getElementById('copy-prev-btn').click();
+            } },
+            { label: 'Copy from a specific day…', icon: '📅', action: () => {
+                setCopyAddCollapsed(false);
+                document.getElementById('copy-any-day-source-input').focus();
+            } },
+            { label: `Delete all (${entries.length})`, icon: '✕', danger: true, action: deleteAllScheduleEntries }
         ]);
     });
 
@@ -3032,6 +3212,7 @@
             // individually down to just this one) — a plain yes/no confirm is unambiguous here.
             if (!(await customConfirm('Remove this schedule entry?', 'Remove entry', 'Delete', 'danger'))) return;
             state.timelineEntries = state.timelineEntries.filter(x => x.id !== id);
+            deleteCloudTimelineEntries([id]);
             saveState();
             renderScheduleEntryList();
             renderScheduleSpiral();
@@ -3041,12 +3222,29 @@
         // guessing. "just this one" only makes sense to ask when there's more than one left.
         pendingDeleteId = id;
         document.getElementById('delete-entry-modal-desc').textContent =
-            `"${e.title}" repeats on ${siblingCount} dates (including this one). Delete just this occurrence, or all ${siblingCount} at once?`;
+            `"${e.title}" repeats on ${siblingCount} dates (including this one). Delete just this occurrence, this and every later one, or all ${siblingCount} at once?`;
         deleteEntryModal.classList.add('active');
     }
     document.getElementById('delete-entry-one-btn').addEventListener('click', () => {
         if (!pendingDeleteId) return;
         state.timelineEntries = state.timelineEntries.filter(x => x.id !== pendingDeleteId);
+        deleteCloudTimelineEntries([pendingDeleteId]);
+        saveState();
+        pendingDeleteId = null;
+        deleteEntryModal.classList.remove('active');
+        renderScheduleEntryList();
+        renderScheduleSpiral();
+    });
+    // "This and following" — same underlying series, but only from this occurrence's date
+    // onward, so past occurrences (already happened) are left alone, Google Calendar-style.
+    document.getElementById('delete-entry-following-btn').addEventListener('click', () => {
+        if (!pendingDeleteId) return;
+        const e = state.timelineEntries.find(x => x.id === pendingDeleteId);
+        if (e && e.seriesId) {
+            const removedIds = state.timelineEntries.filter(x => x.seriesId === e.seriesId && x.date >= e.date).map(x => x.id);
+            state.timelineEntries = state.timelineEntries.filter(x => !(x.seriesId === e.seriesId && x.date >= e.date));
+            deleteCloudTimelineEntries(removedIds);
+        }
         saveState();
         pendingDeleteId = null;
         deleteEntryModal.classList.remove('active');
@@ -3057,7 +3255,9 @@
         if (!pendingDeleteId) return;
         const e = state.timelineEntries.find(x => x.id === pendingDeleteId);
         if (e && e.seriesId) {
+            const removedIds = state.timelineEntries.filter(x => x.seriesId === e.seriesId).map(x => x.id);
             state.timelineEntries = state.timelineEntries.filter(x => x.seriesId !== e.seriesId);
+            deleteCloudTimelineEntries(removedIds);
         }
         saveState();
         pendingDeleteId = null;
@@ -3088,12 +3288,12 @@
         if (!confirmed) return;
         const idsToDelete = new Set(entries.map(e => e.id));
         state.timelineEntries = state.timelineEntries.filter(x => !idsToDelete.has(x.id));
+        deleteCloudTimelineEntries([...idsToDelete]);
         saveState();
         if (editingEntryId && idsToDelete.has(editingEntryId)) resetEntryForm();
         renderScheduleEntryList();
         renderScheduleSpiral();
     }
-    document.getElementById('entry-delete-all-btn').addEventListener('click', deleteAllScheduleEntries);
 
     // ---------- Category tabs ----------
     function renderTabs() {
@@ -3115,10 +3315,10 @@
     function renderGoalFilterOptions() {
         const sel = document.getElementById('goal-filter-select');
         if (!sel) return;
-        if (activeGoalId !== 'all' && !state.goals.some(g => g.id === activeGoalId)) activeGoalId = 'all';
+        if (activeGoalId !== 'all' && activeGoalId !== '__unlinked__' && !state.goals.some(g => g.id === activeGoalId)) activeGoalId = 'all';
         sel.innerHTML = `<option value="all">All tasks</option>` + state.goals.map(g =>
             `<option value="${g.id}">${escapeHTML(g.title)}</option>`
-        ).join('');
+        ).join('') + `<option value="__unlinked__">🚫 Not linked</option>`;
         sel.value = activeGoalId;
         updateGoalFilterActiveState();
     }
@@ -3131,6 +3331,11 @@
     document.getElementById('goal-filter-select').addEventListener('change', (e) => {
         activeGoalId = e.target.value;
         updateGoalFilterActiveState();
+        renderBoard();
+    });
+    document.getElementById('task-search-input').addEventListener('input', (e) => {
+        taskSearchQuery = e.target.value;
+        document.getElementById('task-search-wrap').classList.toggle('has-query', !!taskSearchQuery.trim());
         renderBoard();
     });
 
@@ -3150,7 +3355,6 @@
         document.getElementById('task-modal-title').textContent = 'Add Task';
         openTaskModal(defaultStatus);
     }
-    document.getElementById('add-task-toggle').addEventListener('click', () => openAddTaskModal());
     document.getElementById('cancel-task-btn').addEventListener('click', closeTaskModal);
     document.getElementById('close-task-modal-btn').addEventListener('click', closeTaskModal);
     function resetTaskForm() {
@@ -3178,18 +3382,22 @@
             if (t) {
                 const wasDone = t.status === 'done';
                 const priorityChanged = t.priority !== priority;
+                const statusChanged = t.status !== status;
                 Object.assign(t, { title, category, priority, status, estMinutes, description, dueDate });
                 if (priorityChanged) t.order = computeInitialOrder(priority);
                 if (status === 'done' && !wasDone) t.completedAt = new Date().toISOString();
                 if (status !== 'done') t.completedAt = null;
+                if (statusChanged) logTaskEvent(status);
             }
         } else {
             state.tasks.push({
                 id: uid('t'), title, category, priority, status, estMinutes, description, dueDate,
                 order: computeInitialOrder(priority),
                 createdAt: new Date().toISOString(),
-                completedAt: status === 'done' ? new Date().toISOString() : null
+                completedAt: status === 'done' ? new Date().toISOString() : null,
+                archived: false
             });
+            logTaskEvent(status);
         }
         editingTaskId = null;
         saveState();
@@ -3215,6 +3423,44 @@
         openTaskModal();
     }
 
+    // ---------- Copy card — opens the same content in the Edit Task popup, pre-filled and
+    // suffixed "(copy)", instead of silently cloning the task straight onto the board. Nothing is
+    // actually created until the user hits Save there (editingTaskId stays null, so Save creates
+    // a new task instead of touching the original) — Cancel leaves the board exactly as it was. ----------
+    function duplicateTask(id) {
+        const t = state.tasks.find(x => x.id === id);
+        if (!t) return;
+        editingTaskId = null;
+        document.getElementById('task-title-input').value = t.title + ' (copy)';
+        document.getElementById('task-duration-input').value = t.estMinutes || '';
+        document.getElementById('task-desc-input').value = t.description || '';
+        document.getElementById('task-category-input').value = t.category;
+        document.getElementById('task-priority-input').value = t.priority;
+        document.getElementById('task-status-input').value = t.status;
+        document.getElementById('task-due-input').value = t.dueDate || '';
+        document.getElementById('save-task-btn').textContent = 'Add Task';
+        document.getElementById('task-modal-title').textContent = 'Copy Task';
+        openTaskModal();
+    }
+
+    // ---------- Task movement log — powers the Report's daily "column movement" timeline ----------
+    // Records nothing but {type, at}: no taskId/title needed since the report only ever
+    // aggregates counts per hour per status. Capped so a long-running board doesn't grow this
+    // forever in localStorage/cloud sync.
+    function logTaskEvent(type) {
+        state.taskEvents.push({ type, at: new Date().toISOString() });
+        if (state.taskEvents.length > 5000) state.taskEvents = state.taskEvents.slice(-5000);
+    }
+
+    // ---------- Pin/unpin a task — pinned cards float to the top of their column ----------
+    function toggleTaskPin(id) {
+        const t = state.tasks.find(x => x.id === id);
+        if (!t) return;
+        t.pinned = !t.pinned;
+        saveState();
+        renderBoard();
+    }
+
     // ---------- Delete task (confirmation shows the task's own name/description) ----------
     function deleteTask(id) {
         const t = state.tasks.find(x => x.id === id);
@@ -3236,6 +3482,7 @@
         state.tasks = state.tasks.filter(t => t.id !== id);
         state.goals.forEach(g => { if (g.links && g.links.length) g.links = g.links.filter(l => l.taskId !== id); });
         if (expandedTaskId === id) expandedTaskId = null;
+        deleteCloudTask(id);
         saveState();
         closeDeleteTaskModal();
         renderBoard();
@@ -3262,13 +3509,13 @@
         const hasDesc = !!(t.description && t.description.trim());
         const isExpanded = t.id === expandedTaskId;
         return `
-        <div class="task-card ${t.priority.toLowerCase()} ${t.status === 'done' ? 'done' : ''} ${isExpanded ? 'expanded' : ''}" draggable="true" data-id="${t.id}">
+        <div class="task-card ${t.priority.toLowerCase()} ${t.status === 'done' ? 'done' : ''} ${isExpanded ? 'expanded' : ''} ${t.pinned ? 'pinned' : ''}" draggable="true" data-id="${t.id}">
             <div class="task-actions">
                 <button type="button" class="task-mini-btn" onclick="editTask('${t.id}')" title="Edit">✎</button>
                 <button type="button" class="task-mini-btn delete" onclick="deleteTask('${t.id}')" title="Delete">✕</button>
             </div>
             <div class="task-top">
-                <div class="task-title">${escapeHTML(t.title)}${hasDesc ? '<span class="task-desc-indicator" title="Has a description — click card to preview">📝</span>' : ''}</div>
+                <div class="task-title">${t.pinned ? '<span class="pin-badge" title="Pinned">📌</span>' : ''}${escapeHTML(t.title)}${hasDesc ? '<span class="task-desc-indicator" title="Has a description — click card to preview">📝</span>' : ''}</div>
             </div>
             ${isExpanded && hasDesc ? `<div class="task-desc">${escapeHTML(t.description)}</div>` : ''}
             <div class="task-meta">
@@ -3315,7 +3562,20 @@
     }
     function hideContextMenu() { contextMenu.classList.remove('active'); }
     document.addEventListener('click', (e) => { if (!contextMenu.contains(e.target)) hideContextMenu(); });
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideContextMenu(); });
+    // Escape: closes the right-click menu, plus whichever modal popup is currently open — every
+    // modal-overlay has its own "✕" close button already wired with that modal's own cleanup
+    // (clearing editingTaskId, pendingDeleteTaskId, etc.), so clicking it programmatically reuses
+    // that exact logic instead of guessing per-modal state to reset. #focus-overlay (the running
+    // countdown) is deliberately excluded — Escape shouldn't bypass the Stop confirmation.
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        hideContextMenu();
+        const activeModal = document.querySelector('.modal-overlay.active');
+        if (activeModal) {
+            const closeBtn = activeModal.querySelector('.modal-close-x');
+            if (closeBtn) closeBtn.click();
+        }
+    });
     window.addEventListener('blur', hideContextMenu);
 
     document.getElementById('kanban-view').addEventListener('contextmenu', (e) => {
@@ -3325,8 +3585,11 @@
         const card = e.target.closest('.task-card');
         if (card) {
             const id = card.dataset.id;
+            const t = state.tasks.find(x => x.id === id);
             showContextMenu(e.clientX, e.clientY, [
                 { label: 'Edit task', icon: '✎', action: () => editTask(id) },
+                { label: 'Copy card', icon: '📄', action: () => duplicateTask(id) },
+                { label: t && t.pinned ? 'Unpin card' : 'Pin card', icon: '📌', action: () => toggleTaskPin(id) },
                 { label: 'Delete task', icon: '✕', danger: true, action: () => deleteTask(id) }
             ]);
         } else {
@@ -3338,12 +3601,17 @@
     });
 
     function renderBoard() {
-        const goal = activeGoalId !== 'all' ? state.goals.find(g => g.id === activeGoalId) : null;
+        const goal = (activeGoalId !== 'all' && activeGoalId !== '__unlinked__') ? state.goals.find(g => g.id === activeGoalId) : null;
+        const allLinkedTaskIds = activeGoalId === '__unlinked__' ? new Set(state.goals.flatMap(g => (g.links || []).map(l => l.taskId))) : null;
         const linkedTaskIds = goal ? new Set((goal.links || []).map(l => l.taskId)) : null;
+        const q = taskSearchQuery.trim().toLowerCase();
         const filtered = state.tasks
+            .filter(t => !t.archived)
             .filter(t => activeCategory === 'All' || t.category === activeCategory)
-            .filter(t => !linkedTaskIds || linkedTaskIds.has(t.id));
-        const sortFn = (a, b) => a.order - b.order;
+            .filter(t => !linkedTaskIds || linkedTaskIds.has(t.id))
+            .filter(t => !allLinkedTaskIds || !allLinkedTaskIds.has(t.id))
+            .filter(t => !q || t.title.toLowerCase().includes(q) || (t.description || '').toLowerCase().includes(q));
+        const sortFn = (a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || a.order - b.order;
 
         const cols = { todo: [], progress: [], done: [] };
         filtered.forEach(t => cols[t.status]?.push(t));
@@ -3355,6 +3623,74 @@
             el.innerHTML = cols[key].length
                 ? cols[key].map(taskCardHTML).join('')
                 : `<div class="empty-hint">No tasks</div>`;
+        });
+
+        // Searching the board also reaches archived cards — so "where did that task go" doesn't
+        // require a trip to the Report view's Archive list to answer, just typing its name here.
+        // Kept to a single compact row (count + one bulk action) rather than listing every match —
+        // the full list with individual Unarchive buttons is what Report's Archive section is for.
+        const archivedHitsEl = document.getElementById('archived-search-hits');
+        const archivedMatchIds = q ? state.tasks.filter(t => t.archived && (t.title.toLowerCase().includes(q) || (t.description || '').toLowerCase().includes(q))).map(t => t.id) : [];
+        if (archivedMatchIds.length) {
+            archivedHitsEl.style.display = 'flex';
+            archivedHitsEl.innerHTML = `
+                <span>🗄 ${archivedMatchIds.length} archived task${archivedMatchIds.length > 1 ? 's' : ''} match${archivedMatchIds.length > 1 ? '' : 'es'} this search</span>
+                <button type="button" class="secondary" onclick="unarchiveTasks('${archivedMatchIds.join(',')}')">Unarchive match${archivedMatchIds.length > 1 ? 'es' : ''}</button>`;
+        } else {
+            archivedHitsEl.style.display = 'none';
+            archivedHitsEl.innerHTML = '';
+        }
+    }
+
+    // ---------- Archive done cards — clears "Done" without losing the tasks or their history;
+    // archived tasks stay counted in the Report but drop off the board. Unarchiving happens
+    // from the Report view's Archive list. ----------
+    document.getElementById('archive-done-btn').addEventListener('click', () => {
+        const toArchive = state.tasks.filter(t => t.status === 'done' && !t.archived);
+        if (!toArchive.length) return;
+        toArchive.forEach(t => { t.archived = true; });
+        saveState();
+        renderBoard();
+    });
+    // Every unarchive path confirms first — an unarchived task reappears straight on the Active
+    // Priorities board (in whichever column its old status was), and bringing back a batch of old
+    // done cards unannounced would clutter a board someone deliberately archived them off of.
+    async function unarchiveTask(id) {
+        const t = state.tasks.find(x => x.id === id);
+        if (!t) return;
+        if (!(await customConfirm(`Unarchive "${t.title}"? It'll reappear on the Active Priorities board.`, 'Unarchive task', 'Unarchive'))) return;
+        t.archived = false;
+        saveState();
+        renderBoard();
+        renderReport();
+    }
+    async function unarchiveAllTasks() {
+        const archived = state.tasks.filter(t => t.archived);
+        if (!archived.length) return;
+        if (!(await customConfirm(`Unarchive all ${archived.length} task${archived.length > 1 ? 's' : ''}? They'll all reappear on the Active Priorities board at once.`, 'Unarchive all', 'Unarchive all', 'danger'))) return;
+        archived.forEach(t => { t.archived = false; });
+        saveState();
+        renderBoard();
+        renderReport();
+    }
+    // Unarchives exactly the given set of ids — used by the board search's compact "N archived
+    // tasks match" row, so a search only unarchives what it actually matched, not everything.
+    async function unarchiveTasks(idsCsv) {
+        const ids = new Set((idsCsv || '').split(',').filter(Boolean));
+        if (!ids.size) return;
+        if (!(await customConfirm(`Unarchive ${ids.size} matching task${ids.size > 1 ? 's' : ''}? They'll reappear on the Active Priorities board.`, 'Unarchive tasks', 'Unarchive'))) return;
+        state.tasks.forEach(t => { if (ids.has(t.id)) t.archived = false; });
+        saveState();
+        renderBoard();
+        renderReport();
+    }
+    // Filters the already-rendered archived list client-side (no re-render) so typing doesn't
+    // fight with the list's own re-render on every keystroke.
+    function filterArchivedList(query) {
+        const q = query.trim().toLowerCase();
+        document.querySelectorAll('#report-content .archived-row').forEach(row => {
+            const title = row.querySelector('.archived-title').textContent.toLowerCase();
+            row.style.display = !q || title.includes(q) ? '' : 'none';
         });
     }
 
@@ -3417,9 +3753,11 @@
 
                 t.order = newOrder;
                 const wasDone = t.status === 'done';
+                const prevStatus = t.status;
                 t.status = col.dataset.status;
                 if (t.status === 'done' && !wasDone) t.completedAt = new Date().toISOString();
                 if (t.status !== 'done') t.completedAt = null;
+                if (t.status !== prevStatus) logTaskEvent(t.status);
 
                 saveState();
                 renderBoard();
@@ -3448,6 +3786,109 @@
     document.getElementById('report-view-btn').addEventListener('click', () => setPrioritiesView('report'));
 
     function isoMonthOf(iso) { const d = new Date(iso); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
+
+    // Today's column movement — buckets logTaskEvent() entries by hour and status, so the
+    // report shows *when* tasks moved (created/todo, moved to in-progress, completed) instead
+    // of just the end-of-day totals the monthly table already gives.
+    function renderMovementTimelineHTML() {
+        const today = currentDateStr();
+        const todays = state.taskEvents.filter(ev => ev.at.slice(0, 10) === today);
+        if (!todays.length) return '';
+
+        const hours = {};
+        todays.forEach(ev => {
+            const h = new Date(ev.at).getHours();
+            if (!hours[h]) hours[h] = { todo: 0, progress: 0, done: 0 };
+            if (hours[h][ev.type] !== undefined) hours[h][ev.type] += 1;
+        });
+        const hourKeys = Object.keys(hours).map(Number).sort((a, b) => a - b);
+        const maxCount = Math.max(1, ...hourKeys.map(h => hours[h].todo + hours[h].progress + hours[h].done));
+        const barMaxPx = 60;
+
+        const bars = hourKeys.map(h => {
+            const row = hours[h];
+            const segs = ['todo', 'progress', 'done'].map(type => {
+                const count = row[type];
+                if (!count) return '';
+                const px = Math.max(3, Math.round((count / maxCount) * barMaxPx));
+                return `<div class="movement-seg movement-${type}" style="height:${px}px" title="${count} ${type === 'todo' ? 'new/to-do' : type === 'progress' ? 'moved to in-progress' : 'completed'}"></div>`;
+            }).join('');
+            return `<div class="movement-bar-wrap"><div class="movement-bar">${segs}</div><span class="movement-hour-label">${String(h).padStart(2, '0')}h</span></div>`;
+        }).join('');
+
+        return `
+        <div class="movement-timeline-section">
+            <div class="movement-timeline-head">Today's column movement</div>
+            <div class="movement-timeline">${bars}</div>
+            <div class="movement-legend">
+                <span><span class="movement-dot movement-todo"></span> new / to-do</span>
+                <span><span class="movement-dot movement-progress"></span> moved to in-progress</span>
+                <span><span class="movement-dot movement-done"></span> completed</span>
+            </div>
+        </div>`;
+    }
+
+    // Same stacked-bar idea as renderMovementTimelineHTML(), but bucketed by day-of-month across
+    // the current calendar month instead of by hour across today — answers "which days this
+    // month were busiest for moving cards" rather than just "what happened today".
+    function renderMonthlyMovementTimelineHTML() {
+        const currentMonth = isoMonthOf(new Date().toISOString());
+        const thisMonth = state.taskEvents.filter(ev => ev.at.slice(0, 7) === currentMonth);
+        if (!thisMonth.length) return '';
+
+        const days = {};
+        thisMonth.forEach(ev => {
+            const d = new Date(ev.at).getDate();
+            if (!days[d]) days[d] = { todo: 0, progress: 0, done: 0 };
+            if (days[d][ev.type] !== undefined) days[d][ev.type] += 1;
+        });
+        const dayKeys = Object.keys(days).map(Number).sort((a, b) => a - b);
+        const maxCount = Math.max(1, ...dayKeys.map(d => days[d].todo + days[d].progress + days[d].done));
+        const barMaxPx = 60;
+
+        const bars = dayKeys.map(d => {
+            const row = days[d];
+            const segs = ['todo', 'progress', 'done'].map(type => {
+                const count = row[type];
+                if (!count) return '';
+                const px = Math.max(3, Math.round((count / maxCount) * barMaxPx));
+                return `<div class="movement-seg movement-${type}" style="height:${px}px" title="${count} ${type === 'todo' ? 'new/to-do' : type === 'progress' ? 'moved to in-progress' : 'completed'}"></div>`;
+            }).join('');
+            return `<div class="movement-bar-wrap"><div class="movement-bar">${segs}</div><span class="movement-hour-label">${d}</span></div>`;
+        }).join('');
+
+        return `
+        <div class="movement-timeline-section">
+            <div class="movement-timeline-head">This month's column movement (${monthLabel(currentMonth)})</div>
+            <div class="movement-timeline">${bars}</div>
+            <div class="movement-legend">
+                <span><span class="movement-dot movement-todo"></span> new / to-do</span>
+                <span><span class="movement-dot movement-progress"></span> moved to in-progress</span>
+                <span><span class="movement-dot movement-done"></span> completed</span>
+            </div>
+        </div>`;
+    }
+
+    function renderArchivedTasksHTML() {
+        const archived = state.tasks.filter(t => t.archived);
+        if (!archived.length) return '';
+        return `
+        <div class="archived-section">
+            <div class="archived-head-row">
+                <div class="movement-timeline-head" style="margin-bottom:0;">Archived (${archived.length})</div>
+                <input type="text" placeholder="🔍 Search archived…" oninput="filterArchivedList(this.value)">
+                <button type="button" class="secondary" onclick="unarchiveAllTasks()">Unarchive all</button>
+            </div>
+            <div class="archived-list">
+                ${archived.map(t => `
+                    <div class="archived-row">
+                        <span class="archived-title">${escapeHTML(t.title)}</span>
+                        <button type="button" class="secondary" onclick="unarchiveTask('${t.id}')">Unarchive</button>
+                    </div>
+                `).join('')}
+            </div>
+        </div>`;
+    }
 
     function renderReport() {
         const months = {};
@@ -3488,6 +3929,10 @@
             });
             html += `</tbody></table>`;
         }
+
+        html += renderMovementTimelineHTML();
+        html += renderMonthlyMovementTimelineHTML();
+        html += renderArchivedTasksHTML();
 
         el.innerHTML = html;
     }
@@ -3532,6 +3977,8 @@
 
     // ---------- Long-term Goals ----------
     let editingGoalId = null;
+    let selectedGoalIds = new Set(); // Ctrl/Cmd-click multi-select, for the bulk "edit timeline" action
+    let expandedGoalIds = new Set(); // goals whose linked-task list is currently shown — collapsed by default
     let pendingGoalLinks = []; // [{taskId, weight}] while the goal form is open — committed to the goal on Save
     let linksEditMode = false; // true while the Auto Allocation drag-to-adjust mode is active
 
@@ -3570,27 +4017,75 @@
         return `<div class="goal-status-pill ${cls}" title="Expected ~${Math.round(expectedPct)}% by now, based on the target date">${label}</div>`;
     }
 
+    // ---------- Bulk-edit target timeline for a multi-selection of goals ----------
+    function openBulkGoalTimelineModal() {
+        document.getElementById('bulk-goal-timeline-desc').textContent = `for the ${selectedGoalIds.size} selected goals`;
+        document.getElementById('bulk-goal-timeline-input').value = '';
+        document.getElementById('bulk-goal-timeline-modal').classList.add('active');
+    }
+    function closeBulkGoalTimelineModal() {
+        document.getElementById('bulk-goal-timeline-modal').classList.remove('active');
+    }
+    document.getElementById('close-bulk-goal-timeline-btn').addEventListener('click', closeBulkGoalTimelineModal);
+    document.getElementById('bulk-goal-timeline-cancel-btn').addEventListener('click', closeBulkGoalTimelineModal);
+    document.getElementById('bulk-goal-timeline-apply-btn').addEventListener('click', () => {
+        const month = document.getElementById('bulk-goal-timeline-input').value;
+        if (!month) { customAlert('Pick a target month first.'); return; }
+        state.goals.forEach(g => { if (selectedGoalIds.has(g.id)) g.targetDate = month; });
+        selectedGoalIds.clear();
+        saveState();
+        closeBulkGoalTimelineModal();
+        renderGoalsList();
+    });
+
+    // ---------- Pin/unpin a goal — pinned goals float to the top of the Long-Term Goals list ----------
+    function toggleGoalPin(id) {
+        const g = state.goals.find(x => x.id === id);
+        if (!g) return;
+        g.pinned = !g.pinned;
+        saveState();
+        renderGoalsList();
+    }
+
     function renderGoalsList() {
         const wrap = document.getElementById('goals-list');
-        wrap.innerHTML = state.goals.length
-            ? state.goals.map(g => {
+        const sortedGoals = [...state.goals].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
+        // Always-visible bulk-action bar while 2+ goals are Ctrl/Cmd-click-selected — a guaranteed
+        // way to reach "edit timeline for N goals" that doesn't depend on right-clicking exactly
+        // one of the selected cards (the right-click menu below still offers the same action too).
+        const bulkBarHTML = selectedGoalIds.size > 0 ? `
+            <div class="goal-bulk-bar">
+                <span>${selectedGoalIds.size} goal${selectedGoalIds.size > 1 ? 's' : ''} selected</span>
+                ${selectedGoalIds.size > 1 ? `<button type="button" class="secondary goal-bulk-set-timeline-btn">📅 Set target month…</button>` : ''}
+                <button type="button" class="secondary goal-bulk-clear-btn">Clear</button>
+            </div>` : '';
+        wrap.innerHTML = bulkBarHTML + (sortedGoals.length
+            ? sortedGoals.map(g => {
                 const effectiveProgress = computeGoalProgress(g);
-                const linksHTML = (g.links && g.links.length) ? `
+                const validLinks = (g.links || []).filter(link => state.tasks.some(x => x.id === link.taskId));
+                const isExpanded = expandedGoalIds.has(g.id);
+                // Collapsed by default — a goal with several linked tasks used to always dump the
+                // whole breakdown onto the card, which got long fast with multiple goals in view.
+                // Clicking the card (not a button/row inside it) toggles it open.
+                const linksHTML = validLinks.length ? (
+                    isExpanded ? `
                     <div class="goal-links-breakdown">
-                        ${g.links.map(link => {
+                        ${validLinks.map(link => {
                             const t = state.tasks.find(x => x.id === link.taskId);
-                            if (!t) return '';
                             const done = t.status === 'done';
                             const selected = link.taskId === selectedGoalLinkTaskId;
-                            return `<div class="goal-link-row ${selected ? 'selected' : ''}" data-task-id="${t.id}" title="Click to select · double-click to mark ${done ? 'not done' : 'done'}">
+                            return `<div class="goal-link-row ${selected ? 'selected' : ''}" data-task-id="${t.id}" title="Click to select · double-click to mark ${done ? 'not done' : 'done'} · ✎ to edit">
                                 <span class="goal-link-check ${done ? 'done' : ''}">${done ? '✓' : '○'}</span>
                                 <span class="goal-link-title">${escapeHTML(t.title)}</span>
                                 ${dueBadgeHTML(t)}
                                 <span class="goal-link-weight">${link.weight}%</span>
+                                <button type="button" class="task-mini-btn goal-link-edit-btn" data-edit-task-id="${t.id}" title="Edit this task" style="opacity:1;position:static;">✎</button>
                             </div>`;
                         }).join('')}
-                    </div>` : '';
-                const linkedCount = (g.links || []).filter(link => state.tasks.some(x => x.id === link.taskId)).length;
+                    </div>`
+                    : `<div class="goal-links-collapsed-hint">🔗 ${validLinks.length} task${validLinks.length > 1 ? 's' : ''} linked — click to view</div>`
+                ) : '';
+                const linkedCount = validLinks.length;
                 const resetPrHTML = linkedCount ? `
                     <div class="goal-reset-pr-wrap">
                         <button type="button" class="task-mini-btn" onclick="toggleResetPriorityPopover('${g.id}')" title="Set priority on all ${linkedCount} linked task${linkedCount > 1 ? 's' : ''}" style="opacity:1;position:static;">⇅</button>
@@ -3600,9 +4095,9 @@
                         </div>
                     </div>` : '';
                 return `
-                <div class="goal-card" data-goal-id="${g.id}">
+                <div class="goal-card ${g.pinned ? 'pinned' : ''} ${selectedGoalIds.has(g.id) ? 'multi-selected' : ''}" data-goal-id="${g.id}">
                     <div class="goal-top">
-                        <div class="goal-title">${escapeHTML(g.title)} ${g.category !== 'Other' ? `<span class="tag cat-${g.category}" style="background-color:${getCategoryColor(g.category)};">${g.category}</span>` : ''}</div>
+                        <div class="goal-title">${g.pinned ? '<span class="pin-badge" title="Pinned">📌</span>' : ''}${escapeHTML(g.title)} ${g.category !== 'Other' ? `<span class="tag cat-${g.category}" style="background-color:${getCategoryColor(g.category)};">${g.category}</span>` : ''}</div>
                         <div class="goal-actions">
                             ${resetPrHTML}
                             <button type="button" class="task-mini-btn" onclick="editGoal('${g.id}')" title="Edit" style="opacity:1;position:static;">✎</button>
@@ -3617,13 +4112,15 @@
                 </div>
             `;
             }).join('')
-            : `<div class="empty-hint">No long-term goals yet. Right-click here to add one.</div>`;
+            : `<div class="empty-hint">No long-term goals yet. Right-click here to add one.</div>`);
 
         renderAchievementsList();
-        // Keep the link-task dropdown (and its "done"/"linked" suffixes) in sync in case
-        // the goal form is open while a task elsewhere gets added, edited, or deleted.
-        const linkSelect = document.getElementById('goal-link-task-select');
-        if (linkSelect) renderGoalLinkTaskOptions();
+        // Keep the link-task picker (and its "done"/"linked" suffixes) in sync in case the goal
+        // form is open (popup visible) while a task elsewhere gets added, edited, or deleted.
+        const linkPopup = document.getElementById('goal-link-picker-popup');
+        if (linkPopup && linkPopup.style.display !== 'none') {
+            renderGoalLinkPickerList(document.getElementById('goal-link-picker-search').value);
+        }
         // Keep Active Priorities' goal-focus filter dropdown in sync with the current goal list
         // too — a goal renamed/deleted here should be reflected there without needing to
         // manually reopen Active Priorities.
@@ -3637,10 +4134,41 @@
     // panel to go find it on the Kanban board.
     let selectedGoalLinkTaskId = null;
     document.getElementById('goals-list').addEventListener('click', (e) => {
+        // Bulk-action bar buttons (only present while 2+ goals are selected) — handled first
+        // since they're the most specific target.
+        if (e.target.closest('.goal-bulk-set-timeline-btn')) { openBulkGoalTimelineModal(); return; }
+        if (e.target.closest('.goal-bulk-clear-btn')) { selectedGoalIds.clear(); renderGoalsList(); return; }
+        // The ✎ button opens the task straight in the Active Priorities edit popup — handled
+        // first (and returned out of) so it doesn't also toggle the row's select-highlight below.
+        const editBtn = e.target.closest('.goal-link-edit-btn');
+        if (editBtn) { editTask(editBtn.dataset.editTaskId); return; }
         const row = e.target.closest('.goal-link-row');
-        if (!row) return;
-        const taskId = row.dataset.taskId;
-        selectedGoalLinkTaskId = selectedGoalLinkTaskId === taskId ? null : taskId;
+        if (row) {
+            const taskId = row.dataset.taskId;
+            selectedGoalLinkTaskId = selectedGoalLinkTaskId === taskId ? null : taskId;
+            renderGoalsList();
+            return;
+        }
+        // Any of the card's own action buttons (✎ edit, ✕ delete, ⇅ reset-priority + its popover)
+        // handle themselves via onclick — let them, instead of also toggling select/expand below.
+        if (e.target.closest('.task-mini-btn') || e.target.closest('.goal-reset-pr-wrap')) return;
+
+        const card = e.target.closest('.goal-card');
+        if (!card) return;
+        const id = card.dataset.goalId;
+
+        // Ctrl/Cmd-click anywhere else on a goal card toggles it into the multi-select set used
+        // by the bulk "edit timeline" action (Mac: Cmd-click — Ctrl-click opens the trackpad's
+        // own context menu instead, same as everywhere else on macOS).
+        if (e.ctrlKey || e.metaKey) {
+            if (selectedGoalIds.has(id)) selectedGoalIds.delete(id); else selectedGoalIds.add(id);
+            renderGoalsList();
+            return;
+        }
+        // A plain click on the card itself shows/hides its linked-task list — collapsed by
+        // default so a goal with many linked tasks doesn't dump its whole breakdown onto the
+        // card just for being in the list.
+        if (expandedGoalIds.has(id)) expandedGoalIds.delete(id); else expandedGoalIds.add(id);
         renderGoalsList();
     });
     document.getElementById('goals-list').addEventListener('dblclick', (e) => {
@@ -3651,6 +4179,7 @@
         const wasDone = t.status === 'done';
         t.status = wasDone ? 'todo' : 'done';
         t.completedAt = t.status === 'done' ? new Date().toISOString() : null;
+        logTaskEvent(t.status);
         saveState();
         renderGoalsList();
         renderBoard();
@@ -3675,18 +4204,82 @@
             : `<div class="empty-hint">No goals completed yet. Reach 100% on a long-term goal to see it here.</div>`;
     }
 
-    // ---------- Goal <-> Task linking editor (lives inside the goal add/edit form) ----------
-    function renderGoalLinkTaskOptions() {
-        const sel = document.getElementById('goal-link-task-select');
+    // ---------- Goal <-> Task linking picker (popup checklist, lives inside the goal add/edit form) ----------
+    let goalLinkPickerSelection = new Set(); // tasks checked in the popup, not yet committed to pendingGoalLinks
+
+    function updateGoalLinkPickerToggleLabel() {
+        const label = document.getElementById('goal-link-picker-toggle-label');
+        if (!label) return;
+        label.textContent = goalLinkPickerSelection.size
+            ? `${goalLinkPickerSelection.size} task${goalLinkPickerSelection.size > 1 ? 's' : ''} selected`
+            : 'Select tasks to link…';
+    }
+
+    function renderGoalLinkPickerList(query) {
+        const list = document.getElementById('goal-link-picker-list');
+        if (!list) return;
         if (!state.tasks.length) {
-            sel.innerHTML = `<option value="">No tasks yet — add one in Active Priorities first</option>`;
+            list.innerHTML = `<div class="empty-hint" style="padding:6px 0;">No tasks yet — add one in Active Priorities first.</div>`;
             return;
         }
-        sel.innerHTML = state.tasks.map(t => {
-            const linked = pendingGoalLinks.some(l => l.taskId === t.id);
-            return `<option value="${t.id}">[${escapeHTML(t.category)}] ${escapeHTML(t.title)}${t.status === 'done' ? ' ✓ done' : ''}${linked ? ' (linked)' : ''}</option>`;
-        }).join('');
+        const q = (query || '').trim().toLowerCase();
+        const matches = q ? state.tasks.filter(t => t.title.toLowerCase().includes(q) || t.category.toLowerCase().includes(q)) : state.tasks;
+        list.innerHTML = matches.length
+            ? matches.map(t => {
+                const linked = pendingGoalLinks.some(l => l.taskId === t.id);
+                const checked = goalLinkPickerSelection.has(t.id);
+                return `
+                <label class="goal-link-picker-opt">
+                    <input type="checkbox" data-task-id="${t.id}" ${checked ? 'checked' : ''}>
+                    <span class="glp-title">[${escapeHTML(t.category)}] ${escapeHTML(t.title)}</span>
+                    ${t.status === 'done' ? '<span class="glp-note">✓ done</span>' : ''}
+                    ${linked ? '<span class="glp-note">linked</span>' : ''}
+                </label>`;
+            }).join('')
+            : `<div class="empty-hint" style="padding:6px 0;">No matching task${q ? ` for "${escapeHTML(query.trim())}"` : ''}.</div>`;
     }
+
+    function openGoalLinkPickerPopup() {
+        const popup = document.getElementById('goal-link-picker-popup');
+        const toggle = document.getElementById('goal-link-picker-toggle');
+        const rect = toggle.getBoundingClientRect();
+        popup.style.top = (rect.bottom + 4) + 'px';
+        popup.style.left = rect.left + 'px';
+        popup.style.width = rect.width + 'px';
+        document.getElementById('goal-link-picker-search').value = '';
+        renderGoalLinkPickerList('');
+        popup.style.display = 'flex';
+        document.getElementById('goal-link-picker-search').focus();
+    }
+    function closeGoalLinkPickerPopup() {
+        document.getElementById('goal-link-picker-popup').style.display = 'none';
+    }
+    document.getElementById('goal-link-picker-toggle').addEventListener('click', (e) => {
+        e.stopPropagation();
+        const popup = document.getElementById('goal-link-picker-popup');
+        if (popup.style.display === 'flex') closeGoalLinkPickerPopup();
+        else openGoalLinkPickerPopup();
+    });
+    document.getElementById('goal-link-picker-search').addEventListener('input', (e) => renderGoalLinkPickerList(e.target.value));
+    document.getElementById('goal-link-picker-list').addEventListener('change', (e) => {
+        const cb = e.target.closest('input[type="checkbox"]');
+        if (!cb) return;
+        const taskId = cb.dataset.taskId;
+        if (cb.checked) goalLinkPickerSelection.add(taskId); else goalLinkPickerSelection.delete(taskId);
+        updateGoalLinkPickerToggleLabel();
+    });
+    // Clicking anywhere outside the popup/toggle closes it — but not a click inside the popup
+    // itself (e.g. the search input), which would otherwise close it before a checkbox registers.
+    document.addEventListener('click', (e) => {
+        const popup = document.getElementById('goal-link-picker-popup');
+        if (!popup || popup.style.display === 'none') return;
+        if (e.target.closest('#goal-link-picker-popup') || e.target.closest('#goal-link-picker-toggle')) return;
+        closeGoalLinkPickerPopup();
+    });
+    // The popup is position:fixed (see CSS comment above) so it doesn't scroll along with the
+    // goal form's own scrollable content — closing it on any scroll avoids it drifting away from
+    // the toggle button it's supposed to be anchored under.
+    window.addEventListener('scroll', () => closeGoalLinkPickerPopup(), true);
 
     function renderGoalLinksEditor() {
         const wrap = document.getElementById('goal-links-editor-list');
@@ -3722,7 +4315,10 @@
         totalEl.textContent = pendingGoalLinks.length ? `Total allocated: ${total}%` : '';
         totalEl.style.color = total > 100 ? 'var(--danger)' : (total === 100 ? 'var(--accent)' : 'var(--text-muted)');
 
-        renderGoalLinkTaskOptions();
+        const linkPopup = document.getElementById('goal-link-picker-popup');
+        if (linkPopup && linkPopup.style.display !== 'none') {
+            renderGoalLinkPickerList(document.getElementById('goal-link-picker-search').value);
+        }
         refreshProgressRowMode();
 
         const autoBtn = document.getElementById('goal-auto-allocate-btn');
@@ -3819,11 +4415,24 @@
     // Kanban board's context menu.
     document.getElementById('win-goals').addEventListener('contextmenu', (e) => {
         e.preventDefault();
+        // With 2+ goals Ctrl/Cmd-click-selected, ANY right-click inside the panel (whichever card,
+        // or empty space) offers the bulk timeline action — not just a right-click landing exactly
+        // on one of the selected cards, which was too easy to miss (the bulk-select bar above the
+        // list offers the same action via a plain click either way).
+        if (selectedGoalIds.size > 1) {
+            showContextMenu(e.clientX, e.clientY, [
+                { label: `Set target month for ${selectedGoalIds.size} goals…`, icon: '📅', action: () => openBulkGoalTimelineModal() },
+                { label: 'Clear selection', icon: '✕', action: () => { selectedGoalIds.clear(); renderGoalsList(); } }
+            ]);
+            return;
+        }
         const card = e.target.closest('.goal-card');
         if (card) {
             const id = card.dataset.goalId;
+            const g = state.goals.find(x => x.id === id);
             showContextMenu(e.clientX, e.clientY, [
                 { label: 'Edit goal', icon: '✎', action: () => editGoal(id) },
+                { label: g && g.pinned ? 'Unpin goal' : 'Pin goal', icon: '📌', action: () => toggleGoalPin(id) },
                 { label: 'Delete goal', icon: '✕', danger: true, action: () => deleteGoal(id) }
             ]);
         } else {
@@ -3848,12 +4457,17 @@
         progressInput.addEventListener('input', () => progressDisplay.textContent = progressInput.value + '%');
 
         document.getElementById('goal-link-add-btn').addEventListener('click', () => {
-            const taskId = document.getElementById('goal-link-task-select').value;
-            if (!taskId) { customAlert('Add a task in Active Priorities first, then link it here.'); return; }
+            const taskIds = Array.from(goalLinkPickerSelection);
+            if (!taskIds.length) { customAlert('Check one or more tasks in the picker above first, then click + Link.'); return; }
             const weight = Math.max(0, Math.min(100, parseInt(document.getElementById('goal-link-weight-input').value) || 0));
-            const existing = pendingGoalLinks.find(l => l.taskId === taskId);
-            if (existing) existing.weight = weight;
-            else pendingGoalLinks.push({ taskId, weight });
+            taskIds.forEach(taskId => {
+                const existing = pendingGoalLinks.find(l => l.taskId === taskId);
+                if (existing) existing.weight = weight;
+                else pendingGoalLinks.push({ taskId, weight });
+            });
+            goalLinkPickerSelection.clear();
+            updateGoalLinkPickerToggleLabel();
+            closeGoalLinkPickerPopup();
             renderGoalLinksEditor();
         });
 
@@ -3910,6 +4524,9 @@
         document.getElementById('goal-modal-title').textContent = 'Add Goal';
         pendingGoalLinks = [];
         linksEditMode = false;
+        goalLinkPickerSelection.clear();
+        closeGoalLinkPickerPopup();
+        updateGoalLinkPickerToggleLabel();
         renderGoalLinksEditor();
     }
 
@@ -3920,6 +4537,9 @@
         editingGoalId = null;
         pendingGoalLinks = [];
         linksEditMode = false;
+        goalLinkPickerSelection.clear();
+        closeGoalLinkPickerPopup();
+        updateGoalLinkPickerToggleLabel();
     }
 
     function editGoal(id) {
@@ -3938,6 +4558,9 @@
         document.getElementById('goal-modal-title').textContent = 'Edit Goal';
         pendingGoalLinks = (g.links || []).map(l => ({ ...l }));
         linksEditMode = false;
+        goalLinkPickerSelection.clear();
+        closeGoalLinkPickerPopup();
+        updateGoalLinkPickerToggleLabel();
         renderGoalLinksEditor();
         document.getElementById('goal-modal').classList.add('active');
     }
@@ -3945,6 +4568,7 @@
     async function deleteGoal(id) {
         if (!(await customConfirm('Delete this goal?', 'Delete goal', 'Delete', 'danger'))) return;
         state.goals = state.goals.filter(g => g.id !== id);
+        deleteCloudGoal(id);
         saveState();
         renderGoalsList();
     }
@@ -4195,6 +4819,27 @@
         return { taskId: t.id, title: t.title, category: t.category, durationMin: t.estMinutes || 25 };
     }
 
+    // Ticks off a wall-clock end timestamp (focusEndAt) rather than counting down once per
+    // setInterval fire. A backgrounded/alt-tabbed tab gets its timers throttled by the browser
+    // (delayed to once a minute, or paused outright) — decrementing timeLeft by 1 per tick would
+    // silently fall behind real elapsed time and only "catch up" slowly once the tab regains
+    // focus. Recomputing from Date.now() every tick means whatever time actually passed while
+    // hidden shows up correctly the instant the timer fires again, foreground or not.
+    function tickFocusTimer() {
+        if (!isRunning || focusEndAt == null) return;
+        timeLeft = Math.max(0, Math.round((focusEndAt - Date.now()) / 1000));
+        updateTimerDisplay();
+        if (timeLeft <= 0) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+            isRunning = false;
+            focusEndAt = null;
+            overlay.classList.remove('active');
+            neonFlowAutoSwitch('blue');
+            setTimeout(() => openCompletionModal(pendingFinish), 400);
+        }
+    }
+
     startBtn.addEventListener('click', () => {
         if (isRunning) return;
         const sel = currentSelection();
@@ -4203,30 +4848,51 @@
         overlay.classList.add('active');
         isRunning = true;
         pendingFinish = sel;
-        timerInterval = setInterval(() => {
-            timeLeft--;
-            updateTimerDisplay();
-            if (timeLeft <= 0) {
-                clearInterval(timerInterval);
-                timerInterval = null;
-                isRunning = false;
-                overlay.classList.remove('active');
-                setTimeout(() => openCompletionModal(pendingFinish), 400);
-            }
-        }, 1000);
+        focusEndAt = Date.now() + timeLeft * 1000;
+        timerInterval = setInterval(tickFocusTimer, 1000);
+        neonFlowAutoSwitch('green');
     });
 
-    function stopFocus() {
+    // A throttled/paused background tab won't fire the interval on time, but the moment the tab
+    // becomes visible again this recomputes immediately instead of waiting up to another second
+    // (or, in the worst case, up to a minute) for the next interval tick to catch up.
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) tickFocusTimer();
+    });
+
+    // Stop needed real validation. Two things can be true when it's clicked before the timer
+    // hits 00:00: the task might genuinely still be unfinished (early abandon — nothing to log),
+    // or it might already be DONE ahead of schedule (finished the task early, timer's just still
+    // counting down) — that case should still go through the completion modal and get logged,
+    // not get silently discarded just because time hadn't technically run out yet. Already
+    // finished BY THE WALL CLOCK (timer reached 0) always completes normally, no question asked.
+    async function stopFocus() {
+        if (!isRunning) return;
+        const remaining = focusEndAt != null ? Math.max(0, Math.round((focusEndAt - Date.now()) / 1000)) : timeLeft;
+        if (remaining <= 0) { tickFocusTimer(); return; }
+        const choice = await showPopup({
+            title: 'Stop focus session',
+            message: 'Time isn\'t up yet — did you already finish the task, or do you want to abandon this session?',
+            buttons: [
+                { label: 'Keep going', value: 'cancel', class: 'secondary' },
+                { label: 'Abandon — don\'t log it', value: 'discard', class: 'danger' },
+                { label: '✓ Already done — complete it', value: 'complete', class: '' }
+            ]
+        });
+        if (!choice || choice === 'cancel') return;
         clearInterval(timerInterval);
         timerInterval = null;
         isRunning = false;
+        focusEndAt = null;
         overlay.classList.remove('active');
+        neonFlowAutoSwitch('blue');
+        if (choice === 'complete') setTimeout(() => openCompletionModal(pendingFinish), 200);
     }
     document.getElementById('overlay-stop-btn').addEventListener('click', stopFocus);
 
-    document.getElementById('reset-btn').addEventListener('click', () => {
-        stopFocus();
-        onFocusTaskChange();
+    document.getElementById('reset-btn').addEventListener('click', async () => {
+        await stopFocus();
+        if (!isRunning) onFocusTaskChange();
     });
 
     // ---------- Completion modal ----------
@@ -4452,7 +5118,18 @@
                 // categoryColors is a local display preference rather than backup data tied
                 // to a point in time, so an Excel restore keeps whatever's currently set
                 // in-session instead of silently resetting custom colors to defaults.
-                state = { tasks, timelineEntries, goals, focusSessions, executionHistory, categoryColors: state.categoryColors || {} };
+                //
+                // pushCloudData is upsert-only (see its comment) so, unlike the normal add/edit/
+                // delete flows, a full-state restore like this has to push its own explicit cloud
+                // deletes for whatever's present now but absent from the restored data — otherwise
+                // those rows would just orphan in the cloud instead of actually being replaced.
+                const removedTaskIds = state.tasks.filter(t => !tasks.some(nt => nt.id === t.id)).map(t => t.id);
+                const removedEntryIds = state.timelineEntries.filter(e => !timelineEntries.some(ne => ne.id === e.id)).map(e => e.id);
+                const removedGoalIds = state.goals.filter(g => !goals.some(ng => ng.id === g.id)).map(g => g.id);
+                state = { tasks, timelineEntries, goals, focusSessions, executionHistory, categoryColors: state.categoryColors || {}, taskEvents: state.taskEvents || [] };
+                removedTaskIds.forEach(deleteCloudTask);
+                deleteCloudTimelineEntries(removedEntryIds);
+                removedGoalIds.forEach(deleteCloudGoal);
                 saveState();
 
                 activeCategory = isWorkHours() ? 'Kerja' : 'All';
