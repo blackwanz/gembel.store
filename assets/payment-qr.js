@@ -8,15 +8,17 @@
 // it blind was too risky. This works from the outside instead, two ways:
 //
 // 1. Once a payment request was created successfully and the modal is
-//    showing #pay-waiting ("menunggu konfirmasi"), wait 5s then drop the QR
-//    into it as another way to actually pay right now.
+//    showing #pay-waiting ("menunggu konfirmasi"), wait 10s then show the
+//    "automatic confirmation is taking too long, pay manually" fallback:
+//    the QRIS image, a "Selesai Transfer" acknowledgement button, and a
+//    "Notify admin" WhatsApp button.
 // 2. If creating the payment request itself fails (auth.js reports this via
 //    a plain alert(), e.g. "Gagal bikin tagihan: ..." -- happened for real
 //    when public.payment_requests didn't exist yet, see db/migrations/
 //    0016_payment_requests.sql), the modal never reaches #pay-waiting at
 //    all -- the user was left with just a dismissed alert and a dead end.
 //    That alert is intercepted here and, for payment failures specifically,
-//    swapped for the same QR fallback injected straight into the still-open
+//    swapped for the same fallback injected straight into the still-open
 //    form instead, so "the automated flow broke" still ends in "here's how
 //    to pay anyway" rather than a wall.
 //
@@ -25,19 +27,43 @@
 // adds an option for whenever the automated one isn't working.
 
 (function () {
+  // wa.me wants digits only (no +/spaces/dashes) -- the source value in site-config.js can be
+  // in whatever format's convenient to edit, this just normalizes it at build time.
+  function buildWhatsAppUrl() {
+    const raw = (window.SITE_CONFIG && window.SITE_CONFIG.whatsappAdminNumber) || '';
+    const digits = raw.replace(/[^0-9]/g, '');
+    const text = encodeURIComponent('Halo Gembel Master, saya baru aja transfer buat upgrade Elite Tier. Mohon dikonfirmasi ya 🙏');
+    return digits ? `https://wa.me/${digits}?text=${text}` : '';
+  }
+
   function buildQrBox(note) {
     const box = document.createElement('div');
     box.id = 'pay-qr-fallback';
     box.style.cssText = 'margin-top:18px;padding-top:18px;border-top:1px dashed var(--border);text-align:center;';
+    const waUrl = buildWhatsAppUrl();
     box.innerHTML = `
       <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:10px;">${note}</p>
       <img src="assets/payment-qr.png" alt="QRIS Gembel.id" style="max-width:220px;width:100%;border-radius:12px;border:1px solid var(--border);">
-      <p style="font-size:11.5px;color:var(--text-faint);margin-top:8px;">Setelah bayar, tunggu admin konfirmasi (biasanya &lt;5 menit).</p>
+      <p style="font-size:11.5px;color:var(--text-faint);margin:8px 0 14px;">Setelah bayar, tunggu admin konfirmasi (biasanya &lt;5 menit).</p>
+      <button type="button" class="btn btn-primary btn-block" id="pay-qr-done-btn" style="margin-bottom:8px;">✅ Selesai Transfer</button>
+      ${waUrl ? `<a class="btn btn-ghost btn-block" href="${waUrl}" target="_blank" rel="noopener">📱 Notif Gembel Master (WhatsApp)</a>` : ''}
     `;
+    const doneBtn = box.querySelector('#pay-qr-done-btn');
+    doneBtn.addEventListener('click', async () => {
+      const msg = 'Sip! Admin bakal cek & konfirmasi transfer kamu manual, biasanya kurang dari 5 menit.';
+      doneBtn.disabled = true;
+      doneBtn.textContent = '✅ Oke, ditunggu ya';
+      if (window.gembelAlert) await window.gembelAlert(msg); else alert(msg);
+    });
     return box;
   }
 
-  // ---- Path 1: waiting-for-confirmation panel, same as before ----
+  // ---- Path 1: waiting-for-confirmation panel ----
+  // 10s, not a real wait for anything server-side -- just how long the panel's own "menunggu
+  // konfirmasi" state (and its "05:00" admin-turnaround countdown, which is separate and left
+  // alone) gets to look like it might resolve on its own before assuming it won't and offering
+  // the manual-pay fallback instead.
+  const WAITING_FALLBACK_DELAY_MS = 10000;
   let pending = false;
   function tryInjectIntoWaiting() {
     const waiting = document.getElementById('pay-waiting');
@@ -45,16 +71,12 @@
     if (pending || document.getElementById('pay-qr-fallback')) return;
     pending = true;
 
-    // Short delay, not a real wait -- just long enough that the QR doesn't pop in mid-way
-    // through the waiting panel's own open animation. This has nothing to do with the "05:00"
-    // countdown shown in that panel (that's admin-confirmation turnaround, unrelated to when
-    // the QR itself appears).
     setTimeout(() => {
       pending = false;
       const w = document.getElementById('pay-waiting');
       if (!w || w.style.display === 'none' || document.getElementById('pay-qr-fallback')) return;
-      w.appendChild(buildQrBox('Atau scan QRIS ini buat bayar sekarang:'));
-    }, 800);
+      w.appendChild(buildQrBox('Konfirmasi otomatis kelamaan — bayar manual dulu pake QRIS ini ya:'));
+    }, WAITING_FALLBACK_DELAY_MS);
   }
 
   const observer = new MutationObserver(tryInjectIntoWaiting);
