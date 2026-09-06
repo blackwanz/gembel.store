@@ -22,15 +22,16 @@
 
 require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
-const { io } = require('socket.io-client');
-const WebSocket = require('ws'); // supabase-js's Realtime client throws at construction on
-                                  // Node < 22 without this, even though we never use Realtime here
+const WebSocket = require('ws'); // both our own Saweria connection below AND supabase-js's
+                                  // Realtime client need this -- Node < 22 has no global
+                                  // WebSocket, and Realtime throws at construction without one
+                                  // even though this process never actually uses Realtime.
 
 const {
   SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY,
   SAWERIA_STREAM_KEY,
-  SAWERIA_SOCKET_URL = 'wss://events.saweria.co',
+  SAWERIA_SOCKET_URL = 'wss://events.saweria.co/stream',
   SWEEP_INTERVAL_MS = '60000',
 } = process.env;
 
@@ -118,34 +119,38 @@ function handleMessage(eventName, msg) {
 }
 
 // ---- Socket connection ----
-// SAWERIA_SOCKET_URL/query shape below is still the commonly-guessed part that hasn't been
-// captured yet -- if `connect_error` keeps firing, that's the piece to re-check in DevTools
-// (Network -> WS -> click the connection -> Headers -> Request URL) rather than the message
-// parsing above, which is now based on real captured frames.
-function connect() {
-  const socket = io(SAWERIA_SOCKET_URL, {
-    query: { streamKey: SAWERIA_STREAM_KEY },
-    transports: ['websocket'],
-    reconnection: true,
-    reconnectionDelay: 2000,
-    reconnectionDelayMax: 30000,
-  });
+// This is a PLAIN WebSocket, not Socket.IO -- confirmed from the real widget's DevTools request
+// (2026-09-06): `wss://events.saweria.co/stream?streamKey=...`, a bare 101 Switching Protocols
+// upgrade with no Engine.IO/Socket.IO framing on top. Reconnection is therefore hand-rolled below
+// (the `ws` package doesn't auto-reconnect the way socket.io-client does).
+const RECONNECT_DELAY_MS = 3000;
 
-  socket.on('connect', () => {
+function connect() {
+  const url = `${SAWERIA_SOCKET_URL}?streamKey=${encodeURIComponent(SAWERIA_STREAM_KEY)}`;
+  const socket = new WebSocket(url);
+
+  socket.on('open', () => {
     console.log('[saweria-listener] Connected to Saweria socket.');
   });
 
-  // onAny instead of a specific event name: the captured frames show the payload distinguishes
-  // itself via its own `type` field rather than a distinct socket.io event name we could confirm,
-  // so this catches whatever event it actually arrives as and lets handleMessage() decide.
-  socket.onAny((eventName, msg) => handleMessage(eventName, msg));
-
-  socket.on('disconnect', (reason) => {
-    console.warn('[saweria-listener] Disconnected:', reason, '-- socket.io will auto-reconnect.');
+  socket.on('message', (raw) => {
+    let msg;
+    try {
+      msg = JSON.parse(raw.toString());
+    } catch (err) {
+      console.warn('[saweria-listener] Non-JSON message, ignoring:', raw.toString().slice(0, 200));
+      return;
+    }
+    handleMessage('message', msg);
   });
 
-  socket.on('connect_error', (err) => {
-    console.error('[saweria-listener] Connection error:', err.message);
+  socket.on('close', (code) => {
+    console.warn(`[saweria-listener] Disconnected (code ${code}), reconnecting in ${RECONNECT_DELAY_MS}ms...`);
+    setTimeout(connect, RECONNECT_DELAY_MS);
+  });
+
+  socket.on('error', (err) => {
+    console.error('[saweria-listener] Socket error:', err.message);
   });
 
   return socket;

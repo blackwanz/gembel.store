@@ -28,26 +28,32 @@ See `db/migrations/0018_payment_unique_code.sql` for the schema (`base_amount`, 
 `expires_at`, `paid_at` columns + a partial unique index that keeps two pending requests from
 ever landing on the same amount at once).
 
-## Verifying the endpoint (do this before relying on this in production)
+## The endpoint (confirmed 2026-09-06, but can still drift)
 
-The socket URL/event name/payload shape in `index.js` are the commonly-known values for
-Saweria's widget socket, but "commonly known" for an undocumented endpoint is not the same as
-"guaranteed current." Confirm it against your own account:
+Captured directly from a real widget's DevTools Network tab against a live account:
 
-1. Log into your Saweria dashboard, go to the Widget/Overlay page (the one you'd paste into
-   OBS as a browser source), and open that widget URL directly in a normal browser tab.
-2. Open DevTools → Network → filter by `WS` (WebSocket).
-3. From another device/browser, send a small real or test donation to your own Saweria account.
-4. In the WS frame log, note: the actual host being connected to, the query params in the
-   connection URL (this is where `streamKey` should appear), and the event name + JSON shape of
-   the frame that arrives when the donation lands (look for the amount field's exact key name —
-   it may not be `amount`).
-5. Update `SAWERIA_SOCKET_URL` in `.env` and, if the event name or payload key differs, edit the
-   `socket.on('donation', ...)` block in `index.js` to match.
+- **Connection**: plain WebSocket (NOT Socket.IO — no Engine.IO framing), `GET` upgrading to
+  `101 Switching Protocols`, at `wss://events.saweria.co/stream?streamKey=<your stream key>`.
+- **Message shape** (JSON text frames), two variants seen:
+  ```json
+  { "type": "donation", "data": [{ "id": "...", "donator": "test", "amount": 19999, "currency": "IDR" }] }
+  ```
+  ```json
+  { "type": "sync", "channel": "donation", "queue": [{ "id": "...", "donator": "test", "amount": 19999, ... }] }
+  ```
+  `sync` replays recent donations on (re)connect — `index.js` handles both the same way, since
+  re-processing an already-confirmed donation via `sync` is a harmless no-op (it only ever
+  updates rows still `status='pending'`).
 
-Re-check this periodically — an unannounced change on Saweria's side is the most likely failure
-mode, and it'll look like "confirmations just stopped happening" with no error anywhere obvious
-except this process's own logs going quiet on donation events.
+This is still an undocumented, unofficial endpoint that Saweria could change without notice. If
+confirmations silently stop happening, re-verify it the same way:
+
+1. Open your Saweria widget URL (Dashboard → Widget/Overlay) directly in a normal browser tab.
+2. DevTools → Network → filter `WS`.
+3. Refresh the page, click the one WS connection that appears, check the **Headers** tab's
+   **Request URL** against `SAWERIA_SOCKET_URL` in `.env`.
+4. Send a small test donation, watch the **Messages** tab for the incoming frame, and check its
+   shape still matches `extractDonations()` in `index.js`.
 
 ## Setup
 
