@@ -59,4 +59,12 @@ window.GEMBEL_APPS = [
     url: 'save%20file/index.html',
     enabled: true,
   },
+  {
+    id: 'masak',
+    name: 'Stok Dapur',
+    desc: 'Lacak stok bahan dapur & tanggal basinya biar gak ada yang kebuang. Bisa dipakai bareng orang lain per dapur (kos, rumah) lewat kode undangan.',
+    icon: '🥬',
+    url: 'masak.html',
+    enabled: true,
+  },
 ];

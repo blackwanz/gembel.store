@@ -227,7 +227,14 @@ function renderPayments() {
     const name = prof?.full_name || prof?.email || 'user';
     const badge = p.status === 'confirmed' ? '<span class="badge st-selesai">CONFIRMED</span>'
       : p.status === 'rejected' ? '<span class="badge st-antre">REJECTED</span>'
+      : p.status === 'expired' ? '<span class="badge st-antre">EXPIRED</span>'
       : '<span class="badge st-diproses">PENDING</span>';
+    // unique_code/base_amount only exist for requests created via the Saweria auto-confirm flow
+    // (assets/payment-saweria.js, db/migrations/0018_payment_unique_code.sql) -- older/manual
+    // rows just have amount with no code, so fall back to showing the plain amount for those.
+    const codeHint = p.unique_code != null
+      ? `<div style="font-size:11px;color:var(--text-faint);font-weight:400;">kode unik: ${p.unique_code}</div>`
+      : '';
     return `
     <tr>
       <td>
@@ -239,7 +246,7 @@ function renderPayments() {
           </div>
         </div>
       </td>
-      <td style="font-weight:700;">Rp ${Number(p.amount).toLocaleString('id-ID')}</td>
+      <td style="font-weight:700;">Rp ${Number(p.amount).toLocaleString('id-ID')}${codeHint}</td>
       <td style="white-space:nowrap;color:var(--text-faint);font-size:12px;">${fmtRelativeTime(p.created_at)}</td>
       <td>${badge}</td>
       <td>
@@ -253,7 +260,8 @@ function renderPayments() {
 
 async function setPayment(id, status) {
   if (status === 'confirmed' && !(await gembelConfirm('Konfirmasi pembayaran ini? User langsung jadi Elite 30 hari.'))) return;
-  const { error } = await supabase.from('payment_requests').update({ status }).eq('id', id);
+  const patch = status === 'confirmed' ? { status, paid_at: new Date().toISOString() } : { status };
+  const { error } = await supabase.from('payment_requests').update(patch).eq('id', id);
   if (error) { await gembelAlert('Gagal: ' + error.message); return; }
   await loadAll();
 }
