@@ -1710,7 +1710,7 @@
             const tasks = (tasksRes.data || []).map(r => ({
                 id: r.id, title: r.title, description: r.description || '', category: r.category, priority: r.priority,
                 status: r.status, estMinutes: r.est_minutes, order: r.sort_order, createdAt: r.created_at,
-                completedAt: r.completed_at, dueDate: r.due_date,
+                completedAt: r.completed_at, dueDate: r.due_date, archived: !!r.archived, pinned: !!r.pinned,
             }));
 
             const timelineEntries = (timelineRes.data || []).map(r => ({
@@ -1726,7 +1726,7 @@
             const goals = (goalsRes.data || []).map(r => ({
                 id: r.id, title: r.title, category: r.category,
                 targetDate: r.target_month ? String(r.target_month).slice(0, 7) : '',
-                progress: r.progress, links: linksByGoal[r.id] || [], createdAt: r.created_at,
+                progress: r.progress, links: linksByGoal[r.id] || [], createdAt: r.created_at, pinned: !!r.pinned,
             }));
 
             const focusSessions = (sessionsRes.data || []).map(r => ({
@@ -1743,7 +1743,15 @@
             const categoryColors = {};
             (colorsRes.data || []).forEach(r => { categoryColors[r.category] = r.color; });
 
-            localStorage.setItem(STORAGE_KEY, JSON.stringify({ tasks, timelineEntries, goals, focusSessions, executionHistory, categoryColors }));
+            // taskEvents (the Report's column-movement log) has no cloud table of its own —
+            // deliberately local-only, lightweight analytics rather than core cross-device
+            // state — so it must be carried forward explicitly here, or this wholesale
+            // localStorage overwrite would silently wipe it on every pull (page load, another
+            // device/tab's edit, even this tab's own realtime echo of its last save).
+            let existingTaskEvents = [];
+            try { existingTaskEvents = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}').taskEvents || []; } catch (e) { /* fall back to [] */ }
+
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({ tasks, timelineEntries, goals, focusSessions, executionHistory, categoryColors, taskEvents: existingTaskEvents }));
         } catch (e) {
             console.error('cloud pull exception', e);
         }
@@ -1776,6 +1784,7 @@
                 id: t.id, user_id: CURRENT_USER.id, title: t.title, description: t.description || null,
                 category: t.category, priority: t.priority, status: t.status, est_minutes: t.estMinutes ?? null,
                 sort_order: t.order || 0, due_date: t.dueDate || null, created_at: t.createdAt, completed_at: t.completedAt || null,
+                archived: !!t.archived, pinned: !!t.pinned,
             }));
             if (taskRows.length) { const { error } = await supabase.from('focus_tasks').upsert(taskRows); if (error) throw error; }
 
@@ -1788,6 +1797,7 @@
             const goalRows = state.goals.map(g => ({
                 id: g.id, user_id: CURRENT_USER.id, title: g.title, category: g.category,
                 target_month: g.targetDate ? g.targetDate + '-01' : null, progress: g.progress || 0, created_at: g.createdAt,
+                pinned: !!g.pinned,
             }));
             if (goalRows.length) { const { error } = await supabase.from('focus_goals').upsert(goalRows); if (error) throw error; }
 

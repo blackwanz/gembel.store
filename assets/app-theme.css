@@ -215,6 +215,13 @@ footer.site-footer { border-top: 1px solid var(--border); padding: 32px 6%; text
 
 .apps-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
 
+/* Your in-flight requests — a vertical list (not a grid), collapsed to a few by default; see
+   the "Lihat N lainnya" toggle in dashboard.html. Ticket cards themselves are unchanged, just
+   stacked instead of tiled. */
+.requests-list { display: flex; flex-direction: column; gap: 12px; padding: 16px 20px; }
+.requests-expand-row { padding: 0 20px 18px; }
+.section-label { font-size: 13px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; margin: 4px 0 14px; }
+
 /* ---------- TICKET CARDS (signature element) ---------- */
 .ticket { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px 20px 18px; position: relative; overflow: hidden; box-shadow: var(--shadow-card); animation: rise 0.35s ease both; }
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
@@ -251,6 +258,11 @@ footer.site-footer { border-top: 1px solid var(--border); padding: 32px 6%; text
 .new-card input[type=text]:focus { outline: none; border-color: var(--primary); }
 
 /* feature/tool card (e.g. the always-on calendar app) */
+/* #builtin-apps-slot is just a JS-insertion point wrapping the .tool-card tiles (see
+   renderBuiltinApps in dashboard.html) — display:contents makes it disappear from layout
+   entirely so its .tool-card children become direct grid items of .apps-grid themselves,
+   instead of stacking as plain block children straight down inside an unstyled wrapper div. */
+#builtin-apps-slot { display: contents; }
 .tool-card { background: linear-gradient(135deg, var(--primary-soft), var(--surface)); border: 1px solid var(--primary-soft-strong); border-radius: var(--radius-lg); padding: 22px; display: flex; flex-direction: column; gap: 14px; box-shadow: var(--shadow-card); }
 .tool-card .tool-icon { width: 40px; height: 40px; border-radius: var(--radius-sm); background: var(--primary); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 18px; }
 .tool-card h3 { font-size: 16px; color: var(--text-main); }

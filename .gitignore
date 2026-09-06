@@ -1,3 +1,6 @@
+# Manual/local DB & source backups (pg_dump output, tar archives) -- never commit these
+/backups/
+
 # Logs
 logs
 *.log

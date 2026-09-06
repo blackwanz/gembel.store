@@ -50,21 +50,41 @@
       <div class="stat"><div class="label">Selesai</div><div class="value" id="stat-selesai">0</div></div>
     </div>
 
-    <div class="apps-grid" id="apps-grid">
-      <div class="new-card prompt-hero">
-        <div class="prompt-hero-head">
-          <span class="prompt-hero-badge">✨ GEMBEL AI</span>
-          <h3>Mau app apa hari ini?</h3>
-        </div>
-        <p>Jelasin app yang lo butuhin, sedetail mungkin — gue racik jadi aplikasi jalan.</p>
-        <input type="text" id="new-title" placeholder="Judul singkat (opsional)">
-        <textarea id="new-prompt" placeholder="Contoh: aplikasi buat hitung target tabungan bulanan, ada grafik progress-nya..."></textarea>
-        <button class="btn btn-primary btn-block" id="submit-request-btn" onclick="submitRequest()">✨ Generate App →</button>
+    <!-- Command the AI: always the first thing on the page, full-width, never mixed in with
+         either list below it. -->
+    <div class="new-card prompt-hero" style="margin-bottom:26px;">
+      <div class="prompt-hero-head">
+        <span class="prompt-hero-badge">✨ GEMBEL AI</span>
+        <h3>Mau app apa hari ini?</h3>
       </div>
+      <p>Jelasin app yang lo butuhin, sedetail mungkin — gue racik jadi aplikasi jalan.</p>
+      <input type="text" id="new-title" placeholder="Judul singkat (opsional)">
+      <textarea id="new-prompt" placeholder="Contoh: aplikasi buat hitung target tabungan bulanan, ada grafik progress-nya..."></textarea>
+      <button class="btn btn-primary btn-block" id="submit-request-btn" onclick="submitRequest()">✨ Generate App →</button>
+    </div>
 
+    <!-- Your in-flight requests — a compact list (top-priority: still-being-worked-on ones
+         first), not a grid, and not mixed in with the built-in app tiles below. Collapsed to a
+         few by default; "Lihat N lainnya" expands it in place, pushing the built-in apps grid
+         further down, instead of everything permanently competing for space side-by-side. -->
+    <div class="panel" id="requests-panel">
+      <div class="panel-head">
+        <h2>Request App Kamu</h2>
+        <span class="count" id="requests-count"></span>
+      </div>
+      <div class="requests-list" id="requests-list">
+        <div id="requests-loading" class="skeleton"></div>
+      </div>
+      <div class="requests-expand-row" id="requests-expand-row" style="display:none;">
+        <button class="btn btn-ghost btn-sm btn-block" id="requests-expand-btn" onclick="toggleRequestsExpanded()"></button>
+      </div>
+    </div>
+
+    <!-- Built-in apps — its own dedicated grid (auto-fill: widening the window/zooming out
+         reveals more columns), no longer sharing space with the request list above. -->
+    <div class="section-label">App Bawaan</div>
+    <div class="apps-grid" id="apps-grid">
       <div id="builtin-apps-slot"></div>
-
-      <div id="requests-loading" class="skeleton"></div>
     </div>
   </div>
 
@@ -212,6 +232,13 @@ function updateStats(requests) {
   document.getElementById('stat-selesai').textContent = requests.filter(r => r.status === 'selesai').length;
 }
 
+let lastRequestsData = [];
+let requestsExpanded = false;
+const REQUESTS_COMPACT_LIMIT = 3;
+// Still-in-flight requests surface first regardless of date — those are the ones that
+// actually need a look; finished ones sink to the bottom of the (collapsed) list.
+const REQUEST_STATUS_PRIORITY = { diproses: 0, antre: 1, selesai: 2 };
+
 async function loadRequests() {
   const { data, error } = await supabase
     .from('app_requests')
@@ -219,18 +246,49 @@ async function loadRequests() {
     .eq('user_id', CURRENT_USER.id)
     .order('created_at', { ascending: false });
 
-  const loadingEl = document.getElementById('requests-loading');
-  if (loadingEl) loadingEl.remove();
-
-  document.querySelectorAll('.ticket').forEach(el => el.remove());
-
   if (error) {
     console.error(error);
     return;
   }
+  lastRequestsData = data;
   updateStats(data);
-  const grid = document.getElementById('apps-grid');
-  data.forEach(req => grid.insertAdjacentHTML('beforeend', renderTicket(req)));
+  renderRequestsList(data);
+}
+
+function renderRequestsList(data) {
+  const listEl = document.getElementById('requests-list');
+  const expandRow = document.getElementById('requests-expand-row');
+  const expandBtn = document.getElementById('requests-expand-btn');
+  const countEl = document.getElementById('requests-count');
+  if (countEl) countEl.textContent = data.length ? `${data.length} total` : '';
+
+  if (data.length === 0) {
+    listEl.innerHTML = `<div style="padding:20px 0;color:var(--text-faint);">Belum ada request. Pakai form di atas buat mulai.</div>`;
+    expandRow.style.display = 'none';
+    return;
+  }
+
+  const sorted = [...data].sort((a, b) =>
+    (REQUEST_STATUS_PRIORITY[a.status] ?? 3) - (REQUEST_STATUS_PRIORITY[b.status] ?? 3)
+    || new Date(b.created_at) - new Date(a.created_at)
+  );
+  const visible = requestsExpanded ? sorted : sorted.slice(0, REQUESTS_COMPACT_LIMIT);
+  listEl.innerHTML = visible.map(renderTicket).join('');
+
+  const hiddenCount = sorted.length - REQUESTS_COMPACT_LIMIT;
+  if (hiddenCount > 0) {
+    expandRow.style.display = 'block';
+    expandBtn.textContent = requestsExpanded ? '▲ Sembunyikan' : `▼ Lihat ${hiddenCount} lainnya`;
+  } else {
+    expandRow.style.display = 'none';
+  }
+}
+
+// Pure UI toggle — re-renders from lastRequestsData instead of re-querying Supabase, so
+// expanding/collapsing the list is instant and doesn't cost a network round trip.
+function toggleRequestsExpanded() {
+  requestsExpanded = !requestsExpanded;
+  renderRequestsList(lastRequestsData);
 }
 
 async function submitRequest() {

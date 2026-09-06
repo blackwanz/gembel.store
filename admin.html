@@ -247,9 +247,21 @@ function setFilter(status) {
 
 function statusLabel(s) { return { antre: 'ANTRE', diproses: 'DIPROSES', selesai: 'SELESAI' }[s] || s; }
 
+// On the "Semua" (all) view, surface what actually needs admin attention first — unseen
+// queries, then still-in-flight ones (diproses/antre) — instead of pure recency burying a new
+// "antre" query under a pile of older, already-"selesai" ones. A specific status filter already
+// groups by status on its own, so recency (the query's own created_at order) stays untouched there.
+const REQUEST_STATUS_PRIORITY = { diproses: 0, antre: 1, selesai: 2 };
 function renderRequests() {
   const tbody = document.getElementById('requests-tbody');
-  const rows = ALL_REQUESTS.filter(r => ACTIVE_FILTER === 'all' || r.status === ACTIVE_FILTER);
+  let rows = ALL_REQUESTS.filter(r => ACTIVE_FILTER === 'all' || r.status === ACTIVE_FILTER);
+  if (ACTIVE_FILTER === 'all') {
+    rows = [...rows].sort((a, b) =>
+      (a.seen_by_admin ? 1 : 0) - (b.seen_by_admin ? 1 : 0)
+      || (REQUEST_STATUS_PRIORITY[a.status] ?? 3) - (REQUEST_STATUS_PRIORITY[b.status] ?? 3)
+      || new Date(b.created_at) - new Date(a.created_at)
+    );
+  }
 
   if (rows.length === 0) {
     tbody.innerHTML = `<tr><td colspan="5" style="color:var(--text-faint);">Nggak ada query di kategori ini.</td></tr>`;
