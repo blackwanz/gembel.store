@@ -8,7 +8,7 @@ Version-controlled schema for the Supabase project backing gembel.fun. Requires 
 export SUPABASE_DB_URL="postgresql://postgres:<password>@<host>:5432/postgres"
 ```
 
-Use the same connection string as the `SUPABASE_DB_URL` GitHub secret already used for prod backups (`.github/workflows/main.yml`). Get it from Supabase dashboard → Project Settings → Database → Connection string (URI, direct connection, not the pooler).
+Get it from Supabase dashboard → Project Settings → Database → Connection string → **Session pooler** (see `db/.env.example` for why it's Session pooler specifically, not Direct connection or Transaction pooler — short version: IPv4 reachability from a VPS + `migrate.sh`'s advisory lock needing a real session). The `SUPABASE_DB_URL` GitHub secret used for prod backups (`.github/workflows/main.yml`) runs on a GitHub-hosted runner with IPv6, so it can stay on Direct connection — this only matters for anything run from the VPS or another IPv4-only network.
 
 ## Apply pending migrations
 
