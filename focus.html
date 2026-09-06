@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Unified Focus Dashboard</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27%3E%3Cdefs%3E%3ClinearGradient id=%27g%27 x1=%270%27 y1=%270%27 x2=%271%27 y2=%271%27%3E%3Cstop offset=%270%27 stop-color=%27%234f7cff%27/%3E%3Cstop offset=%271%27 stop-color=%27%232338a8%27/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width=%2764%27 height=%2764%27 rx=%2716%27 fill=%27url(%23g)%27/%3E%3Ctext x=%2732%27 y=%2746%27 font-family=%27Arial,sans-serif%27 font-weight=%27800%27 font-size=%2740%27 fill=%27white%27 text-anchor=%27middle%27%3EG%3C/text%3E%3Ccircle cx=%2750%27 cy=%2715%27 r=%276%27 fill=%27%23ffd166%27/%3E%3C/svg%3E">
 <style>
     :root {
         --bg-color: #121212;
@@ -161,7 +162,7 @@
        execute button, description) so it gets a tighter vertical rhythm than other
        panels' list rows — the goal is to fit a full day's completed + pending entries
        without needing to scroll to see what's done. */
-    #timeline-list { display: flex; flex-direction: column; gap: 6px; }
+    #timeline-list { display: flex; flex-direction: column; gap: 6px; min-height: 90px; }
     .timeline-item {
         display: flex; align-items: flex-start; gap: 8px; padding: 7px 8px;
         background-color: rgba(255,255,255,0.05); border-left: 3px solid var(--accent); border-radius: 4px;
@@ -467,22 +468,18 @@
        exactly 3 equal thirds of whatever width the parent panel happens to have — in the
        default multi-panel workspace layout (layout-scroll caps each panel to ~560px) that
        squeezed each column down to ~150px, narrow enough that even a normal-length task title
-       word-wrapped into an unreadably tall single-word-per-line card.
-       A later fix switched this to repeat(3, minmax(200px, 1fr)), but that still didn't solve
-       it — an `1fr` track always competes to fill whatever width the grid container has, so
-       the grid never actually "runs out of room and scrolls"; it just keeps shrinking every
-       track in lockstep down to the 200px floor and stops there, which is still cramped
-       (title/description wrap ugly, and zooming the browser out — or narrowing the panel —
-       keeps forcing all 3 columns to that same tight 200px instead of leaving them at a
-       comfortable size and scrolling sideways). Trello-style behavior needs the OPPOSITE: each
-       column holds a genuinely fixed, comfortable width (260px, chosen so a normal title + 2-3
-       tag pills sit comfortably without wrapping ugly) and never shrinks below it — once 3 of
-       those no longer fit side by side, the extra width overflows the grid and .kanban-board's
-       own horizontal scrollbar (enabled below, plus the matching overflow-x override on
-       #win-priorities so the outer panel doesn't clip it first) is what moves, not the
-       columns. */
-    .kanban-board { display: grid; grid-template-columns: repeat(3, 260px); gap: 14px; flex-grow: 1; align-items: start; overflow-x: auto; overflow-y: visible; padding-bottom: 4px; }
-    .kanban-column { background-color: rgba(0,0,0,0.2); border-radius: 6px; padding: 10px; min-height: 220px; width: 260px; transition: outline 0.1s; }
+       word-wrapped into an unreadably tall single-word-per-line card. That was fixed by pinning
+       every column to a genuinely fixed 260px and letting the board scroll sideways once 3 of
+       those stop fitting — but that traded away the opposite case: with a WIDE panel (zoomed
+       out, or the panel just resized/dragged bigger) the 3 columns stayed pinned at 260px each
+       with a dead gap of empty background to their right, instead of growing to actually use
+       the room they'd been given.
+       minmax(260px, 1fr) gets both: each column still refuses to shrink below the comfortable
+       260px floor (so a cramped panel still scrolls sideways instead of squeezing cards
+       unreadably thin — unchanged from before), but once there's more than 3*260px of width on
+       offer, `1fr` lets the columns grow to fill it evenly instead of leaving that space idle. */
+    .kanban-board { display: grid; grid-template-columns: repeat(3, minmax(260px, 1fr)); gap: 14px; flex-grow: 1; align-items: start; overflow-x: auto; overflow-y: visible; padding-bottom: 4px; }
+    .kanban-column { background-color: rgba(0,0,0,0.2); border-radius: 6px; padding: 10px; min-height: 220px; width: 100%; transition: outline 0.1s; }
     .kanban-column h3 { text-align: center; color: var(--text-muted); font-size: 0.85rem; text-transform: uppercase; letter-spacing: .04em; display: flex; align-items: center; justify-content: center; gap: 4px; }
     .col-count { background: var(--border); border-radius: 10px; padding: 1px 7px; font-size: 0.7rem; margin-left: 2px; }
     .kanban-column.drag-over { outline: 2px dashed var(--accent); outline-offset: -4px; }
@@ -520,6 +517,11 @@
     .tag.due { background-color: #333; color: var(--text-muted); }
     .tag.due.today { background-color: rgba(255,183,77,0.18); color: #ffb74d; }
     .tag.due.overdue { background-color: rgba(224,82,82,0.18); color: var(--danger); }
+    /* Only meaningfully clickable under a Long-Term Goal's linked-task rows (see the
+       goals-list click handler) — scoped there rather than globally so the Kanban card's own
+       due badge, which isn't wired to do anything special on click, doesn't look clickable too. */
+    .goal-link-row .due-badge { cursor: pointer; }
+    .goal-link-row .due-badge:hover { filter: brightness(1.3); text-decoration: underline; }
     .task-actions { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; opacity: 0; transition: opacity 0.15s ease; }
     .task-card:hover .task-actions, .task-card:focus-within .task-actions { opacity: 1; }
     .task-card.pinned, .goal-card.pinned { box-shadow: 0 0 0 1px var(--accent); }
@@ -1226,7 +1228,7 @@
      the old inline panel that opened at the top of the Active Priorities panel and scrolled the
      whole panel to reach it. -->
 <div class="modal-overlay" id="task-modal">
-    <div class="modal-box" style="max-width:680px; max-height:88vh; overflow-y:auto;">
+    <div class="modal-box" style="width:70vw; max-width:1000px; max-height:88vh; overflow-y:auto;">
         <button type="button" class="modal-close-x" id="close-task-modal-btn" title="Close">✕</button>
         <div>
             <h3 id="task-modal-title">Add Task</h3>
@@ -1295,7 +1297,7 @@
         <button type="button" class="modal-close-x" id="close-delete-task-modal-btn" title="Close">✕</button>
         <div>
             <h3>Delete task</h3>
-            <div class="modal-subtitle">This can't be undone.</div>
+            <div class="modal-subtitle" id="delete-task-modal-subtitle">This can't be undone.</div>
         </div>
         <div class="delete-task-preview">
             <div class="delete-task-preview-title" id="delete-task-modal-title"></div>
@@ -1716,6 +1718,7 @@
             const timelineEntries = (timelineRes.data || []).map(r => ({
                 id: r.id, date: r.entry_date, time: String(r.entry_time).slice(0, 5), durationMin: r.duration_min,
                 title: r.title, category: r.category, desc: r.description || '', done: r.done, hiddenFromSpiral: r.hidden_from_spiral,
+                seriesId: r.series_id || undefined,
             }));
 
             const linksByGoal = {};
@@ -1791,6 +1794,7 @@
             const entryRows = state.timelineEntries.map(e => ({
                 id: e.id, user_id: CURRENT_USER.id, entry_date: e.date, entry_time: e.time, duration_min: e.durationMin || 30,
                 title: e.title, category: e.category, description: e.desc || null, done: !!e.done, hidden_from_spiral: !!e.hiddenFromSpiral,
+                series_id: e.seriesId || null,
             }));
             if (entryRows.length) { const { error } = await supabase.from('focus_timeline_entries').upsert(entryRows); if (error) throw error; }
 
@@ -2327,7 +2331,12 @@
         return target.getFullYear() + '-W' + String(week).padStart(2, '0');
     }
 
-    document.getElementById('timeline-settings-btn').addEventListener('click', () => {
+    // Opens Schedule Settings pinned to today (Day mode), same as the ⚙ gear button — factored
+    // out so the Daily Timeline panel's own right-click menu (see the contextmenu handler on
+    // #timeline-list) can jump straight into "add" or "edit" for one of today's entries without
+    // duplicating this setup. `then` runs after the modal + its list are both up, e.g. to open
+    // the add-entry form or an existing entry's editor.
+    function openTimelineSettingsForToday(then) {
         settingsMonth = currentMonthKey();
         monthPicker.value = settingsMonth;
         weekPicker.value = currentWeekStr();
@@ -2341,6 +2350,31 @@
         // left last time — keeps the modal opening lean (tabs, date picker, spiral, list only).
         setCopyAddCollapsed(true);
         timelineSettingsModal.classList.add('active');
+        if (then) then();
+    }
+    document.getElementById('timeline-settings-btn').addEventListener('click', () => openTimelineSettingsForToday());
+
+    // The Daily Timeline panel itself had no way to add/edit a schedule entry without first
+    // finding and clicking the ⚙ gear icon — right-click (same pattern as every other list in
+    // this app) now opens Schedule Settings straight into the right spot instead.
+    document.querySelector('#win-timeline .panel-body').addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        const row = e.target.closest('.timeline-item');
+        if (row) {
+            const id = row.id.replace('tl-item-', '');
+            showContextMenu(e.clientX, e.clientY, [
+                { label: 'Edit entry', icon: '✎', action: () => openTimelineSettingsForToday(() => editScheduleEntry(id)) },
+                { label: 'Delete entry', icon: '✕', danger: true, action: () => deleteScheduleEntry(id) }
+            ]);
+        } else {
+            showContextMenu(e.clientX, e.clientY, [
+                { label: 'Add schedule entry', icon: '+', action: () => openTimelineSettingsForToday(() => {
+                    setCopyAddCollapsed(false);
+                    document.getElementById('entry-title-input').focus();
+                    document.getElementById('entry-form-box').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }) }
+            ]);
+        }
     });
     document.getElementById('close-timeline-settings-btn').addEventListener('click', () => {
         timelineSettingsModal.classList.remove('active');
@@ -3326,8 +3360,11 @@
         const sel = document.getElementById('goal-filter-select');
         if (!sel) return;
         if (activeGoalId !== 'all' && activeGoalId !== '__unlinked__' && !state.goals.some(g => g.id === activeGoalId)) activeGoalId = 'all';
-        sel.innerHTML = `<option value="all">All tasks</option>` + state.goals.map(g =>
-            `<option value="${g.id}">${escapeHTML(g.title)}</option>`
+        // Pinned goals float to the top here too — same ordering as the Long-Term Goals list —
+        // so pinning a goal makes it quicker to find in both places, not just one.
+        const sortedGoals = [...state.goals].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
+        sel.innerHTML = `<option value="all">All tasks</option>` + sortedGoals.map(g =>
+            `<option value="${g.id}">${g.pinned ? '📌 ' : ''}${escapeHTML(g.title)}</option>`
         ).join('') + `<option value="__unlinked__">🚫 Not linked</option>`;
         sel.value = activeGoalId;
         updateGoalFilterActiveState();
@@ -3433,6 +3470,20 @@
         openTaskModal();
     }
 
+    // Same edit popup as editTask(), but focuses (and opens the native date picker on) the due
+    // date field — used by the overdue/due-date badge under a Long-Term Goal's linked tasks, so
+    // fixing a date you just noticed is overdue doesn't require also hunting for the date field
+    // once the popup opens.
+    function editTaskFocusDate(id) {
+        editTask(id);
+        const dateInput = document.getElementById('task-due-input');
+        dateInput.focus();
+        // showPicker() needs a live user-activation window to work at all — wrapped since some
+        // browsers (or a modal not yet done animating in) can throw here; focus() above is the
+        // real requirement, the native picker popping open too is a bonus when it's allowed.
+        try { dateInput.showPicker && dateInput.showPicker(); } catch (err) { /* focus alone is enough */ }
+    }
+
     // ---------- Copy card — opens the same content in the Edit Task popup, pre-filled and
     // suffixed "(copy)", instead of silently cloning the task straight onto the board. Nothing is
     // actually created until the user hits Save there (editingTaskId stays null, so Save creates
@@ -3471,11 +3522,19 @@
         renderBoard();
     }
 
-    // ---------- Delete task (confirmation shows the task's own name/description) ----------
+    // ---------- Delete task (confirmation names the exact task being deleted, so a
+    // wrong-card delete never happens without seeing what's about to go) ----------
     function deleteTask(id) {
         const t = state.tasks.find(x => x.id === id);
         if (!t) return;
+        // Defensive: if some other modal was left marked .active (e.g. this fired from a
+        // context-menu action while an edit popup was still technically open underneath),
+        // close it first — two stacked .modal-overlay's otherwise fight over the same
+        // fixed layer and this one can end up rendered behind the other, reading as "the
+        // popup doesn't show" even though it technically opened.
+        document.querySelectorAll('.modal-overlay.active').forEach(m => { if (m.id !== 'delete-task-modal') m.classList.remove('active'); });
         pendingDeleteTaskId = id;
+        document.getElementById('delete-task-modal-subtitle').textContent = `"${t.title}" will be permanently deleted. This can't be undone.`;
         document.getElementById('delete-task-modal-title').textContent = t.title;
         document.getElementById('delete-task-modal-desc').textContent = t.description || '';
         document.getElementById('delete-task-modal').classList.add('active');
@@ -3505,14 +3564,19 @@
     // clicked ("pre-selected", tracked via expandedTaskId), and a small 📝 marker is the only
     // hint a description exists at all. Editing always goes through the ✎ icon, right-click
     // menu, or the modal itself — a plain click just expands/collapses the preview.
+    // Every returned tag carries data-task-id + the "due-badge" class (harmless where nothing
+    // listens for it, e.g. the Kanban card) so the Long-Term Goals list can wire a click on
+    // just this badge straight into "edit this task, cursor already on the date field" — see
+    // the goals-list click handler below — without needing a second HTML-building function.
     function dueBadgeHTML(t) {
         if (!t.dueDate) return '';
         const shortLabel = formatDueShort(t.dueDate);
-        if (t.status === 'done') return `<span class="tag due">${shortLabel}</span>`;
+        const title = 'Click to edit the due date';
+        if (t.status === 'done') return `<span class="tag due due-badge" data-task-id="${t.id}" title="${title}">${shortLabel}</span>`;
         const today = currentDateStr();
-        if (t.dueDate < today) return `<span class="tag due overdue">⚠ Overdue · ${shortLabel}</span>`;
-        if (t.dueDate === today) return `<span class="tag due today">📅 Due today</span>`;
-        return `<span class="tag due">📅 ${shortLabel}</span>`;
+        if (t.dueDate < today) return `<span class="tag due overdue due-badge" data-task-id="${t.id}" title="${title}">⚠ Overdue · ${shortLabel}</span>`;
+        if (t.dueDate === today) return `<span class="tag due today due-badge" data-task-id="${t.id}" title="${title}">📅 Due today</span>`;
+        return `<span class="tag due due-badge" data-task-id="${t.id}" title="${title}">📅 ${shortLabel}</span>`;
     }
     function taskCardHTML(t) {
         const estTag = t.estMinutes ? `<span class="tag est">${t.estMinutes}m</span>` : '';
@@ -3597,6 +3661,7 @@
             const id = card.dataset.id;
             const t = state.tasks.find(x => x.id === id);
             showContextMenu(e.clientX, e.clientY, [
+                { label: 'Add task here', icon: '+', action: () => openAddTaskModal(t ? t.status : column.dataset.status) },
                 { label: 'Edit task', icon: '✎', action: () => editTask(id) },
                 { label: 'Copy card', icon: '📄', action: () => duplicateTask(id) },
                 { label: t && t.pinned ? 'Unpin card' : 'Pin card', icon: '📌', action: () => toggleTaskPin(id) },
@@ -4152,6 +4217,11 @@
         // first (and returned out of) so it doesn't also toggle the row's select-highlight below.
         const editBtn = e.target.closest('.goal-link-edit-btn');
         if (editBtn) { editTask(editBtn.dataset.editTaskId); return; }
+        // The overdue/due-date badge — clicking it (instead of the row itself) jumps straight
+        // into editing that task with the cursor already in the date field, since "is this
+        // overdue or not" is exactly the kind of thing you look at this badge to fix.
+        const dueBadge = e.target.closest('.due-badge');
+        if (dueBadge) { editTaskFocusDate(dueBadge.dataset.taskId); return; }
         const row = e.target.closest('.goal-link-row');
         if (row) {
             const taskId = row.dataset.taskId;
