@@ -23,6 +23,8 @@
 require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
 const { io } = require('socket.io-client');
+const WebSocket = require('ws'); // supabase-js's Realtime client throws at construction on
+                                  // Node < 22 without this, even though we never use Realtime here
 
 const {
   SUPABASE_URL,
@@ -41,6 +43,7 @@ for (const [name, value] of Object.entries({ SUPABASE_URL, SUPABASE_SERVICE_ROLE
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
+  realtime: { transport: WebSocket },
 });
 
 async function confirmPaymentForAmount(amount) {
@@ -80,10 +83,45 @@ async function sweepExpired() {
   }
 }
 
+// ---- Payload shape ----
+// Confirmed by capturing the real widget socket's DevTools frames (2026-09-06) -- the amount is
+// NOT a top-level `payload.amount` like early guesses assumed. Two message shapes were observed:
+//
+//   { type: 'donation', data: [{ id, donator, amount, currency, ... }] }   -- a fresh donation
+//   { type: 'sync', channel: 'donation', queue: [{ id, donator, amount, ... }] }  -- replayed on
+//                                                                              (re)connect
+//
+// Both are handled the same way below since confirmPaymentForAmount() only ever touches rows
+// still 'pending', so replaying an already-confirmed donation via 'sync' is a harmless no-op.
+const seenDonationIds = new Set(); // avoid logging/processing the exact same donation id twice per run
+function extractDonations(msg) {
+  if (!msg || typeof msg !== 'object') return [];
+  if (msg.type === 'donation' && Array.isArray(msg.data)) return msg.data;
+  if (msg.type === 'sync' && Array.isArray(msg.queue)) return msg.queue;
+  return [];
+}
+
+function handleMessage(eventName, msg) {
+  const donations = extractDonations(msg);
+  if (donations.length === 0) return; // not a donation/sync message (or unrecognized shape) -- ignore
+  for (const d of donations) {
+    const amount = Number(d && d.amount);
+    if (!Number.isFinite(amount)) {
+      console.warn('[saweria-listener] Donation entry with no usable amount:', d);
+      continue;
+    }
+    if (d.id && seenDonationIds.has(d.id)) continue;
+    if (d.id) seenDonationIds.add(d.id);
+    console.log(`[saweria-listener] Donation seen (event="${eventName}", donator="${d.donator}", amount=${amount}).`);
+    confirmPaymentForAmount(amount).catch((err) => console.error('[saweria-listener] confirmPaymentForAmount threw:', err));
+  }
+}
+
 // ---- Socket connection ----
-// NOTE: event name and payload shape ('donation', payload.amount) are the commonly-observed
-// values for Saweria's widget socket as of when this was written -- verify against your own
-// account before trusting this in production (see README.md).
+// SAWERIA_SOCKET_URL/query shape below is still the commonly-guessed part that hasn't been
+// captured yet -- if `connect_error` keeps firing, that's the piece to re-check in DevTools
+// (Network -> WS -> click the connection -> Headers -> Request URL) rather than the message
+// parsing above, which is now based on real captured frames.
 function connect() {
   const socket = io(SAWERIA_SOCKET_URL, {
     query: { streamKey: SAWERIA_STREAM_KEY },
@@ -97,15 +135,10 @@ function connect() {
     console.log('[saweria-listener] Connected to Saweria socket.');
   });
 
-  socket.on('donation', (payload) => {
-    const amount = Number(payload && payload.amount);
-    if (!Number.isFinite(amount)) {
-      console.warn('[saweria-listener] Ignoring donation event with unrecognized payload shape:', payload);
-      return;
-    }
-    console.log('[saweria-listener] Donation event:', payload);
-    confirmPaymentForAmount(amount).catch((err) => console.error('[saweria-listener] confirmPaymentForAmount threw:', err));
-  });
+  // onAny instead of a specific event name: the captured frames show the payload distinguishes
+  // itself via its own `type` field rather than a distinct socket.io event name we could confirm,
+  // so this catches whatever event it actually arrives as and lets handleMessage() decide.
+  socket.onAny((eventName, msg) => handleMessage(eventName, msg));
 
   socket.on('disconnect', (reason) => {
     console.warn('[saweria-listener] Disconnected:', reason, '-- socket.io will auto-reconnect.');
