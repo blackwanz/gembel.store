@@ -195,7 +195,7 @@ function renderTicket(req) {
   }
 
   return `
-    <div class="ticket st-${req.status}" data-id="${req.id}">
+    <div class="ticket st-${req.status}" data-type="request" data-id="${req.id}" title="Klik kanan buat opsi">
       <div class="ticket-head">
         <span class="ticket-num mono" title="ID App: ${req.id}">${num}</span>
         <span class="badge st-${req.status}">${statusLabel(req.status)}</span>
@@ -211,6 +211,24 @@ function renderTicket(req) {
           ${canOpen ? `<a class="btn btn-primary btn-sm" href="${req.app_url}" target="_blank" rel="noopener">Buka</a>` : ''}
           ${!canOpen && !canDownload && !expired ? `<button class="btn btn-ghost btn-sm" disabled>${req.status === 'antre' ? 'Dalam antrian' : req.status === 'diproses' ? 'Lagi dikerjain' : 'Belum ada link'}</button>` : ''}
         </div>
+      </div>
+    </div>`;
+}
+
+// Admin announcements (maintenance notices, etc.) -- rendered as the same card shape as a
+// request ticket so they live in the same list, just visually distinct (accent-colored left
+// edge, a 📢 badge instead of a status badge, no action buttons). One row per recipient (see
+// db/migrations/0017_notifications.sql), so deleting "mine" never touches anyone else's copy.
+function renderNotificationHTML(n) {
+  return `
+    <div class="ticket notif-ticket" data-type="notification" data-id="${n.id}" title="Klik kanan buat opsi">
+      <div class="ticket-head">
+        <span class="ticket-num mono">📢 PENGUMUMAN</span>
+      </div>
+      <h3>${escapeHtml(n.title)}</h3>
+      <p class="prompt" style="-webkit-line-clamp:unset;">${escapeHtml(n.message)}</p>
+      <div class="ticket-foot">
+        <span class="ticket-time">${fmtRelativeTime(n.created_at)}</span>
       </div>
     </div>`;
 }
@@ -234,6 +252,7 @@ function updateStats(requests) {
 }
 
 let lastRequestsData = [];
+let lastNotificationsData = [];
 let requestsExpanded = false;
 const REQUESTS_COMPACT_LIMIT = 3;
 // Still-in-flight requests surface first regardless of date — those are the ones that
@@ -241,42 +260,53 @@ const REQUESTS_COMPACT_LIMIT = 3;
 const REQUEST_STATUS_PRIORITY = { diproses: 0, antre: 1, selesai: 2 };
 
 async function loadRequests() {
-  const { data, error } = await supabase
-    .from('app_requests')
-    .select('*')
-    .eq('user_id', CURRENT_USER.id)
-    .order('created_at', { ascending: false });
+  const [{ data: reqData, error: reqErr }, { data: notifData, error: notifErr }] = await Promise.all([
+    supabase.from('app_requests').select('*').eq('user_id', CURRENT_USER.id).order('created_at', { ascending: false }),
+    supabase.from('notifications').select('*').eq('user_id', CURRENT_USER.id).order('created_at', { ascending: false }),
+  ]);
 
-  if (error) {
-    console.error(error);
-    return;
-  }
-  lastRequestsData = data;
-  updateStats(data);
-  renderRequestsList(data);
+  if (reqErr) { console.error(reqErr); return; }
+  // Notifications are a bonus on top of the core request list -- a failure there (e.g. schema
+  // not migrated yet on an older deploy) shouldn't block requests from showing.
+  if (notifErr) console.error(notifErr);
+
+  lastRequestsData = reqData || [];
+  lastNotificationsData = notifData || [];
+  updateStats(lastRequestsData);
+  renderRequestsList();
 }
 
-function renderRequestsList(data) {
+// Notifications always sort above requests -- they're admin announcements (maintenance, etc.),
+// time-sensitive by nature, and would otherwise get buried under whatever request happens to be
+// "diproses" this week.
+function renderRequestsList() {
   const listEl = document.getElementById('requests-list');
   const expandRow = document.getElementById('requests-expand-row');
   const expandBtn = document.getElementById('requests-expand-btn');
   const countEl = document.getElementById('requests-count');
-  if (countEl) countEl.textContent = data.length ? `${data.length} total` : '';
 
-  if (data.length === 0) {
+  const sortedRequests = [...lastRequestsData].sort((a, b) =>
+    (REQUEST_STATUS_PRIORITY[a.status] ?? 3) - (REQUEST_STATUS_PRIORITY[b.status] ?? 3)
+    || new Date(b.created_at) - new Date(a.created_at)
+  );
+  const sortedNotifs = [...lastNotificationsData].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  const combined = [
+    ...sortedNotifs.map(n => ({ html: renderNotificationHTML(n) })),
+    ...sortedRequests.map(r => ({ html: renderTicket(r) })),
+  ];
+
+  if (countEl) countEl.textContent = combined.length ? `${combined.length} total` : '';
+
+  if (combined.length === 0) {
     listEl.innerHTML = `<div style="padding:20px 0;color:var(--text-faint);">Belum ada request. Pakai form di atas buat mulai.</div>`;
     expandRow.style.display = 'none';
     return;
   }
 
-  const sorted = [...data].sort((a, b) =>
-    (REQUEST_STATUS_PRIORITY[a.status] ?? 3) - (REQUEST_STATUS_PRIORITY[b.status] ?? 3)
-    || new Date(b.created_at) - new Date(a.created_at)
-  );
-  const visible = requestsExpanded ? sorted : sorted.slice(0, REQUESTS_COMPACT_LIMIT);
-  listEl.innerHTML = visible.map(renderTicket).join('');
+  const visible = requestsExpanded ? combined : combined.slice(0, REQUESTS_COMPACT_LIMIT);
+  listEl.innerHTML = visible.map(item => item.html).join('');
 
-  const hiddenCount = sorted.length - REQUESTS_COMPACT_LIMIT;
+  const hiddenCount = combined.length - REQUESTS_COMPACT_LIMIT;
   if (hiddenCount > 0) {
     expandRow.style.display = 'block';
     expandBtn.textContent = requestsExpanded ? '▲ Sembunyikan' : `▼ Lihat ${hiddenCount} lainnya`;
@@ -285,11 +315,63 @@ function renderRequestsList(data) {
   }
 }
 
+// ---- Right-click delete for a request or notification card ----
+// A single click never deletes anything by itself: right-click opens a menu, and the action
+// itself still goes through gembelConfirm before anything actually happens.
+function showDashContextMenu(x, y, items) {
+  let menu = document.getElementById('dash-context-menu');
+  if (!menu) {
+    menu = document.createElement('div');
+    menu.id = 'dash-context-menu';
+    menu.className = 'dash-context-menu';
+    document.body.appendChild(menu);
+  }
+  menu.innerHTML = items.map((it, i) => `<button type="button" class="dash-context-menu-item${it.danger ? ' danger' : ''}" data-idx="${i}">${it.icon || ''} ${escapeHtml(it.label)}</button>`).join('');
+  menu.classList.add('show');
+  const rect = menu.getBoundingClientRect();
+  const maxX = window.innerWidth - rect.width - 8;
+  const maxY = window.innerHeight - rect.height - 8;
+  menu.style.left = Math.min(x, Math.max(8, maxX)) + 'px';
+  menu.style.top = Math.min(y, Math.max(8, maxY)) + 'px';
+  menu.querySelectorAll('.dash-context-menu-item').forEach(btn => {
+    btn.addEventListener('click', () => { hideDashContextMenu(); items[Number(btn.dataset.idx)].action(); });
+  });
+}
+function hideDashContextMenu() {
+  const menu = document.getElementById('dash-context-menu');
+  if (menu) menu.classList.remove('show');
+}
+document.addEventListener('click', (e) => {
+  const menu = document.getElementById('dash-context-menu');
+  if (menu && !menu.contains(e.target)) hideDashContextMenu();
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideDashContextMenu(); });
+
+document.getElementById('requests-list').addEventListener('contextmenu', (e) => {
+  const card = e.target.closest('[data-type]');
+  if (!card) return;
+  e.preventDefault();
+  const type = card.dataset.type;
+  const id = card.dataset.id;
+  showDashContextMenu(e.clientX, e.clientY, [
+    { label: type === 'notification' ? 'Hapus notifikasi' : 'Hapus request', icon: '🗑', danger: true, action: () => deleteRequestOrNotification(type, id) }
+  ]);
+});
+
+async function deleteRequestOrNotification(type, id) {
+  const table = type === 'notification' ? 'notifications' : 'app_requests';
+  const label = type === 'notification' ? 'notifikasi ini' : 'request ini';
+  if (!(await gembelConfirm(`Hapus ${label}? Ini gak bisa dibatalin.`))) return;
+  const { error } = await supabase.from(table).delete().eq('id', id);
+  if (error) { await gembelAlert('Gagal hapus: ' + error.message); return; }
+  await loadRequests();
+}
+
 // Pure UI toggle — re-renders from lastRequestsData instead of re-querying Supabase, so
 // expanding/collapsing the list is instant and doesn't cost a network round trip.
 function toggleRequestsExpanded() {
   requestsExpanded = !requestsExpanded;
-  renderRequestsList(lastRequestsData);
+  renderRequestsList();
 }
 
 async function submitRequest() {
@@ -452,6 +534,15 @@ function renderBuiltinApps() {
     .channel('own-requests-' + CURRENT_USER.id)
     .on('postgres_changes',
       { event: '*', schema: 'public', table: 'app_requests', filter: `user_id=eq.${CURRENT_USER.id}` },
+      () => loadRequests()
+    )
+    .subscribe();
+
+  // a new admin broadcast (or one of ours getting deleted from another tab) shows up live too
+  supabase
+    .channel('own-notifications-' + CURRENT_USER.id)
+    .on('postgres_changes',
+      { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${CURRENT_USER.id}` },
       () => loadRequests()
     )
     .subscribe();

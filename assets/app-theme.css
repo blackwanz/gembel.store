@@ -229,6 +229,27 @@ footer.site-footer { border-top: 1px solid var(--border); padding: 32px 6%; text
 .ticket.st-selesai::before { background: var(--success-text); }
 .ticket.st-diproses::before { background: var(--warning-text); }
 .ticket.st-antre::before { background: var(--text-faint); }
+/* Admin announcement card — same ticket shape, distinct accent so it doesn't read as just
+   another app request at a glance. */
+.notif-ticket::before { background: var(--primary); }
+.notif-ticket .ticket-num { color: var(--primary-text); font-weight: 700; }
+
+/* Right-click menu shared by request/notification cards in dashboard.html (see
+   showDashContextMenu in dashboard.html) -- deliberately the only way to reach delete, so a
+   single stray click can never remove anything; the action itself still confirms via
+   gembelConfirm before doing anything. */
+.dash-context-menu {
+  display: none; position: fixed; z-index: 1500; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; box-shadow: var(--shadow-lift); padding: 6px; min-width: 170px; font-size: 13px;
+}
+.dash-context-menu.show { display: block; }
+.dash-context-menu-item {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: none; border: none;
+  padding: 8px 10px; border-radius: 7px; font-size: 13px; font-family: inherit; color: var(--text-main); cursor: pointer;
+}
+.dash-context-menu-item:hover { background: var(--surface-muted); }
+.dash-context-menu-item.danger { color: var(--danger); }
+.dash-context-menu-item.danger:hover { background: rgba(224,82,82,0.12); }
 
 .ticket-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
 .ticket-num { font-family: var(--font-mono); font-size: 11px; color: var(--text-faint); }

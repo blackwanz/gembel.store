@@ -20,6 +20,7 @@
       <div class="dash-tab" data-tab="users" onclick="switchTab('users')">Users</div>
       <div class="dash-tab" data-tab="payments" onclick="switchTab('payments')">Pembayaran</div>
       <div class="dash-tab" data-tab="leaderboard" onclick="switchTab('leaderboard')">Leaderboard</div>
+      <div class="dash-tab" data-tab="notify" onclick="switchTab('notify')">📢 Notifikasi</div>
     </div>
   </div>
   <div style="display:flex;align-items:center;gap:14px;">
@@ -146,6 +147,32 @@
       </div>
     </div>
   </div>
+
+  <!-- ===== TAB: NOTIFIKASI ===== -->
+  <div id="tab-notify" class="tab-panel" style="display:none;">
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Kirim Notifikasi ke Semua Member</h2>
+      </div>
+      <div style="padding:18px 20px;">
+        <p style="color:var(--text-faint);font-size:12.5px;margin-bottom:12px;">Muncul di list "Request App Kamu" tiap member — cocok buat kabar maintenance, promo, atau update sistem. Terkirim sebagai satu salinan per member, jadi kalau ada yang hapus punya dia, punya yang lain nggak ikut ilang.</p>
+
+        <div class="filter-row" style="margin-bottom:14px;">
+          <div class="chip-filter" onclick="fillNotifyTemplate('maintenance')">🛠 Maintenance</div>
+          <div class="chip-filter" onclick="fillNotifyTemplate('promo')">🎉 Promo</div>
+          <div class="chip-filter" onclick="fillNotifyTemplate('update')">📢 Update Sistem</div>
+        </div>
+
+        <label class="field-label" style="display:block;font-size:11.5px;color:var(--text-faint);margin-bottom:4px;">Judul</label>
+        <input type="text" id="notify-title-input" placeholder="Judul singkat" style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text-main);font-family:inherit;font-size:14px;margin-bottom:12px;box-sizing:border-box;">
+
+        <label class="field-label" style="display:block;font-size:11.5px;color:var(--text-faint);margin-bottom:4px;">Pesan</label>
+        <textarea id="notify-message-input" placeholder="Isi pengumuman..." style="width:100%;min-height:110px;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text-main);font-family:inherit;font-size:14px;margin-bottom:16px;box-sizing:border-box;resize:vertical;"></textarea>
+
+        <button class="btn btn-primary" id="notify-blast-btn" onclick="blastNotification()">🚀 Blast ke Semua Member</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- User detail lookup (reuses the payment modal's overlay/card look) -->
@@ -237,7 +264,58 @@ function switchTab(name) {
   document.getElementById('tab-users').style.display = name === 'users' ? 'block' : 'none';
   document.getElementById('tab-payments').style.display = name === 'payments' ? 'block' : 'none';
   document.getElementById('tab-leaderboard').style.display = name === 'leaderboard' ? 'block' : 'none';
+  document.getElementById('tab-notify').style.display = name === 'notify' ? 'block' : 'none';
   if (name === 'requests') markRequestsSeen();
+}
+
+// ---- Notifikasi: blast an announcement to every member ----
+const NOTIFY_TEMPLATES = {
+  maintenance: {
+    title: 'Maintenance Terjadwal',
+    message: 'Sistem bakal maintenance sebentar buat perbaikan. Selama proses ini beberapa fitur mungkin nggak bisa diakses. Makasih buat pengertiannya!',
+  },
+  promo: {
+    title: 'Promo Baru! 🎉',
+    message: 'Ada promo spesial buat member Gembel AI PIK. Cek dashboard buat detailnya sebelum kehabisan slot!',
+  },
+  update: {
+    title: 'Update Sistem',
+    message: 'Ada pembaruan fitur baru di platform. Yuk cek apa aja yang berubah di dashboard lo.',
+  },
+};
+function fillNotifyTemplate(kind) {
+  const t = NOTIFY_TEMPLATES[kind];
+  if (!t) return;
+  document.getElementById('notify-title-input').value = t.title;
+  document.getElementById('notify-message-input').value = t.message;
+}
+
+async function blastNotification() {
+  const title = document.getElementById('notify-title-input').value.trim();
+  const message = document.getElementById('notify-message-input').value.trim();
+  if (!title || !message) { await gembelAlert('Isi judul dan pesan dulu.'); return; }
+
+  const { data: profiles, error: pErr } = await supabase.from('profiles').select('id');
+  if (pErr) { await gembelAlert('Gagal ambil daftar member: ' + pErr.message); return; }
+  if (!profiles || profiles.length === 0) { await gembelAlert('Nggak ada member buat dikirimin.'); return; }
+
+  if (!(await gembelConfirm(`Kirim notifikasi ini ke ${profiles.length} member?\n\n"${title}"`))) return;
+
+  const btn = document.getElementById('notify-blast-btn');
+  btn.disabled = true;
+  btn.textContent = 'Ngirim…';
+
+  const rows = profiles.map(p => ({ user_id: p.id, title, message, created_by: CURRENT_USER.id }));
+  const { error } = await supabase.from('notifications').insert(rows);
+
+  btn.disabled = false;
+  btn.textContent = '🚀 Blast ke Semua Member';
+
+  if (error) { await gembelAlert('Gagal kirim: ' + error.message); return; }
+
+  document.getElementById('notify-title-input').value = '';
+  document.getElementById('notify-message-input').value = '';
+  await gembelAlert(`Terkirim ke ${profiles.length} member.`);
 }
 
 function setFilter(status) {
