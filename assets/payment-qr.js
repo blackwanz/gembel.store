@@ -45,12 +45,16 @@
     if (pending || document.getElementById('pay-qr-fallback')) return;
     pending = true;
 
+    // Short delay, not a real wait -- just long enough that the QR doesn't pop in mid-way
+    // through the waiting panel's own open animation. This has nothing to do with the "05:00"
+    // countdown shown in that panel (that's admin-confirmation turnaround, unrelated to when
+    // the QR itself appears).
     setTimeout(() => {
       pending = false;
       const w = document.getElementById('pay-waiting');
       if (!w || w.style.display === 'none' || document.getElementById('pay-qr-fallback')) return;
       w.appendChild(buildQrBox('Atau scan QRIS ini buat bayar sekarang:'));
-    }, 5000);
+    }, 800);
   }
 
   const observer = new MutationObserver(tryInjectIntoWaiting);
