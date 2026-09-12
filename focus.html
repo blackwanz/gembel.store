@@ -194,7 +194,14 @@
     .gear-btn { background: transparent; border: 1px solid var(--border); color: var(--text-muted); width: 28px; height: 28px; border-radius: 6px; padding: 0; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; }
     .gear-btn:hover { border-color: var(--accent); color: var(--accent); background: transparent; }
     .timeline-current-month { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; margin: 0 0 6px 0; }
-    .timeline-item .del-event { margin-left: 8px; }
+    /* Cancel-one-occurrence button on each Daily Timeline row (see timelineItemHTML). Shares
+       .timeline-check-btn's round outline sizing for visual consistency with the done-checkbox
+       right next to it, but that base class sets color:transparent (it only reveals the ✓ glyph
+       once .done is applied) — override color here so the ✕ is always visible, and hover to the
+       shared --danger token like every other destructive icon-button in this file
+       (.task-mini-btn.delete) rather than inventing a new color. */
+    .timeline-item .del-event { margin-left: 8px; color: var(--text-muted); flex-shrink: 0; }
+    .timeline-item .del-event:hover { border-color: var(--danger); color: var(--danger); }
 
     /* Actual (Focus Tracker) vs Planned toggle + list styling */
     .mini-toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; font-size: 0.72rem; color: var(--text-muted); }
@@ -2057,6 +2064,18 @@
                     </div>
                     ${e.desc ? `<div class="ev-desc">${escapeHTML(e.desc)}</div>` : ''}
                 </div>
+                <!-- Cancel this occurrence directly from the panel, without needing the right-click
+                     menu — deleteScheduleEntry() (already used by that right-click menu's own
+                     "Delete entry" item) already knows how to tell a one-off entry apart from one
+                     that belongs to a repeat series: a plain entry just asks a yes/no confirm, while
+                     a series entry (e.g. a recurring 7pm "Trading" block) opens the existing
+                     occurrence-vs-series modal ("just this one" / "this and following" / "all"), so
+                     clicking ✕ on today's occurrence only cancels today without touching the rest of
+                     the recurring schedule. Nested inside a button, so openExecuteModal's own
+                     evt.target.closest('button') guard (see above) already keeps a double-click
+                     here from also opening the execute-log modal.
+                -->
+                <button type="button" class="timeline-check-btn del-event" onclick="deleteScheduleEntry('${e.id}')" title="Cancel this entry">✕</button>
             </div>`;
     }
 
@@ -3408,7 +3427,11 @@
             `<button type="button" class="tab-btn ${c === activeCategory ? 'active' : ''}" data-cat="${c}">${c}</button>`
         ).join('');
         wrap.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.addEventListener('click', () => { activeCategory = btn.dataset.cat; renderTabs(); renderBoard(); });
+            // Changing the Active Priorities category tab also re-renders Long-Term Goals so the
+            // same category filter "cascades" down to it (focus mode: filtering to e.g. "Kerja"
+            // hides unrelated goals too, not just unrelated tasks) — see the filter applied at the
+            // top of renderGoalsList() for the actual predicate.
+            btn.addEventListener('click', () => { activeCategory = btn.dataset.cat; renderTabs(); renderBoard(); renderGoalsList(); });
         });
     }
 
@@ -4226,7 +4249,20 @@
 
     function renderGoalsList() {
         const wrap = document.getElementById('goals-list');
-        const sortedGoals = [...state.goals].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
+        // ---- Cascade Active Priorities' category filter into Long-Term Goals ("focus mode") ----
+        // Each goal already carries its own direct `category` field (set via the goal-category
+        // dropdown, same taxonomy as tasks — see ALL_CATEGORIES_WITH_OTHER) rather than only being
+        // categorized indirectly through its linked tasks. So the simplest, least-surprising rule
+        // that matches "filter Kerja in Active Priorities -> only show Kerja everywhere" is a
+        // direct g.category === activeCategory match, not a lookup through g.links. This is
+        // intentionally the ONE filter driving both panels — it does not combine (AND) with the
+        // separate goal-focus <select> above the kanban board (that one narrows the *board* to one
+        // goal's linked tasks and is unrelated to category filtering), so the two controls don't
+        // fight each other or produce a confusing double-filtered empty state.
+        const categoryFilteredGoals = activeCategory === 'All'
+            ? state.goals
+            : state.goals.filter(g => g.category === activeCategory);
+        const sortedGoals = [...categoryFilteredGoals].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
         // Always-visible bulk-action bar while 2+ goals are Ctrl/Cmd-click-selected — a guaranteed
         // way to reach "edit timeline for N goals" that doesn't depend on right-clicking exactly
         // one of the selected cards (the right-click menu below still offers the same action too).
@@ -4289,7 +4325,12 @@
                 </div>
             `;
             }).join('')
-            : `<div class="empty-hint">No long-term goals yet. Right-click here to add one.</div>`);
+            // Distinguish "no goals at all" from "the active category filter hid all of them" —
+            // otherwise a user filtering to e.g. "Trading" with zero Trading goals would see the
+            // same message as a brand-new install, and might think the filter is broken.
+            : (activeCategory !== 'All' && state.goals.length > 0)
+                ? `<div class="empty-hint">No "${activeCategory}" goals — switch the Active Priorities filter to "All" to see the rest.</div>`
+                : `<div class="empty-hint">No long-term goals yet. Right-click here to add one.</div>`);
 
         renderAchievementsList();
         // Keep the link-task picker (and its "done"/"linked" suffixes) in sync in case the goal
