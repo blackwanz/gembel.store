@@ -8,10 +8,13 @@
 // it blind was too risky. This works from the outside instead, two ways:
 //
 // 1. Once a payment request was created successfully and the modal is
-//    showing #pay-waiting ("menunggu konfirmasi"), wait 10s then show the
-//    "automatic confirmation is taking too long, pay manually" fallback:
-//    the QRIS image, a "Selesai Transfer" acknowledgement button, and a
-//    "Notify admin" WhatsApp button.
+//    showing #pay-waiting ("menunggu konfirmasi"), add a "Bayar Manual
+//    (QRIS)" button. It stays hidden-behind-a-click on purpose -- the panel
+//    already shows the auto-detected exact amount from payment-saweria.js,
+//    and popping the QRIS image up on a timer read as if two competing
+//    payment methods were both live at once. Clicking it reveals the QRIS
+//    image, a "Selesai Transfer" acknowledgement button, and a "Notify
+//    admin" WhatsApp button.
 // 2. If creating the payment request itself fails (auth.js reports this via
 //    a plain alert(), e.g. "Gagal bikin tagihan: ..." -- happened for real
 //    when public.payment_requests didn't exist yet, see db/migrations/
@@ -44,13 +47,13 @@
     box.innerHTML = `
       <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:10px;">${note}</p>
       <img src="assets/payment-qr.png" alt="QRIS Gembel.id" style="max-width:220px;width:100%;border-radius:12px;border:1px solid var(--border);">
-      <p style="font-size:11.5px;color:var(--text-faint);margin:8px 0 14px;">Setelah bayar, tunggu admin konfirmasi (biasanya &lt;5 menit).</p>
+      <p style="font-size:11.5px;color:var(--text-faint);margin:8px 0 14px;">Setelah bayar, admin bakal konfirmasi manual (bisa sampai 1x24 jam).</p>
       <button type="button" class="btn btn-primary btn-block" id="pay-qr-done-btn" style="margin-bottom:8px;">✅ Selesai Transfer</button>
       ${waUrl ? `<a class="btn btn-ghost btn-block" href="${waUrl}" target="_blank" rel="noopener">📱 Notif Gembel Master (WhatsApp)</a>` : ''}
     `;
     const doneBtn = box.querySelector('#pay-qr-done-btn');
     doneBtn.addEventListener('click', async () => {
-      const msg = 'Sip! Admin bakal cek & konfirmasi transfer kamu manual, biasanya kurang dari 5 menit.';
+      const msg = 'Pembayaran diterima, mohon tunggu konfirmasi admin (maksimal 1x24 jam) ya. Kalau mau lebih cepat, notify Gembel Master langsung lewat WhatsApp.';
       doneBtn.disabled = true;
       doneBtn.textContent = '✅ Oke, ditunggu ya';
       if (window.gembelAlert) await window.gembelAlert(msg); else alert(msg);
@@ -59,24 +62,27 @@
   }
 
   // ---- Path 1: waiting-for-confirmation panel ----
-  // 10s, not a real wait for anything server-side -- just how long the panel's own "menunggu
-  // konfirmasi" state (and its "05:00" admin-turnaround countdown, which is separate and left
-  // alone) gets to look like it might resolve on its own before assuming it won't and offering
-  // the manual-pay fallback instead.
-  const WAITING_FALLBACK_DELAY_MS = 10000;
+  // No auto-timer here on purpose -- QRIS only shows up if the user actively asks for the
+  // manual option, since it's a static amount-less image and mixing it in automatically was
+  // confusing next to the auto-detected exact-amount flow in payment-saweria.js.
   let pending = false;
   function tryInjectIntoWaiting() {
     const waiting = document.getElementById('pay-waiting');
     if (!waiting || waiting.style.display === 'none') { pending = false; return; }
-    if (pending || document.getElementById('pay-qr-fallback')) return;
+    if (pending || document.getElementById('pay-qr-manual-btn') || document.getElementById('pay-qr-fallback')) return;
     pending = true;
 
-    setTimeout(() => {
-      pending = false;
-      const w = document.getElementById('pay-waiting');
-      if (!w || w.style.display === 'none' || document.getElementById('pay-qr-fallback')) return;
-      w.appendChild(buildQrBox('Konfirmasi otomatis kelamaan — bayar manual dulu pake QRIS ini ya:'));
-    }, WAITING_FALLBACK_DELAY_MS);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'pay-qr-manual-btn';
+    btn.className = 'btn btn-ghost btn-block';
+    btn.style.cssText = 'margin-top:14px;';
+    btn.textContent = '🧾 Bayar Manual (QRIS)';
+    btn.addEventListener('click', () => {
+      btn.remove();
+      waiting.appendChild(buildQrBox('Bayar manual pake QRIS ini ya:'));
+    });
+    waiting.appendChild(btn);
   }
 
   const observer = new MutationObserver(tryInjectIntoWaiting);

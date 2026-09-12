@@ -24,6 +24,9 @@
   const CODE_MIN = 0;
   const CODE_MAX = 999;
   const EXPIRES_MS = 15 * 60 * 1000;
+  const PROCESSING_AFTER_MS = 30 * 1000;
+  const STUCK_AFTER_MS = 60 * 1000;
+  const SAWERIA_USERNAME = 'irwanKNTL';
 
   let lastInserted = null; // { amount, base_amount, unique_code, expires_at } for the UI panel below
 
@@ -59,6 +62,14 @@
     return 'Rp ' + Number(n).toLocaleString('id-ID');
   }
 
+  // Shared with payment-qr.js's own copy of this logic -- kept duplicated rather than factored
+  // out since each file is meant to stand alone (see the file-header comments in both).
+  function buildAdminWaUrl(text) {
+    const raw = (window.SITE_CONFIG && window.SITE_CONFIG.whatsappAdminNumber) || '';
+    const digits = raw.replace(/[^0-9]/g, '');
+    return digits ? `https://wa.me/${digits}?text=${encodeURIComponent(text)}` : '';
+  }
+
   function buildAmountBox(info) {
     const box = document.createElement('div');
     box.id = 'pay-saweria-amount';
@@ -68,6 +79,7 @@
       <div style="font-size:22px;font-weight:800;letter-spacing:.3px;" id="pay-saweria-amount-value">${formatRupiah(info.amount)}</div>
       <button type="button" id="pay-saweria-copy-btn" style="margin-top:8px;font-size:11.5px;background:none;border:1px solid var(--border);border-radius:8px;padding:4px 10px;cursor:pointer;color:inherit;">📋 Salin nominal</button>
       <p style="font-size:11px;color:var(--text-faint);margin:8px 0 0;">Kode unik <strong>${info.unique_code}</strong> ditambahin ke harga asli ${formatRupiah(info.base_amount)} biar sistem tau ini tagihan lo. Berlaku <span id="pay-saweria-countdown">15:00</span> lagi.</p>
+      <a href="https://saweria.co/${SAWERIA_USERNAME}" target="_blank" rel="noopener" style="display:inline-block;margin-top:10px;font-size:11.5px;text-decoration:underline;color:inherit;">↗️ Buka Saweria langsung</a>
       <p id="pay-saweria-status" style="font-size:12px;margin:10px 0 0;color:var(--text-muted);">⏳ Nunggu donasi masuk ke Saweria...</p>
     `;
     const copyBtn = box.querySelector('#pay-saweria-copy-btn');
@@ -102,21 +114,58 @@
     const timer = setInterval(tick, 1000);
   }
 
+  // window.PAYMENT_CONTEXT is set inline by index.html ('register') and dashboard.html ('home')
+  // right before this script loads -- it's what decides whether we let the user into the app
+  // early (register) or make them sit and wait (home, where they're already in).
   function watchRowStatus(box, amount) {
     const statusEl = box.querySelector('#pay-saweria-status');
     if (!statusEl) return;
-    const channel = window.supabase
+
+    const context = window.PAYMENT_CONTEXT === 'register' ? 'register' : 'home';
+    function proceedToApp() {
+      if (context === 'register' && typeof window.routeAfterLogin === 'function') window.routeAfterLogin();
+      else location.reload();
+    }
+
+    let channel = null;
+
+    // 30s with no confirmation: tell the user it's still working. For a fresh registration
+    // there's nothing for them to do in this modal anyway, so let them into the app now --
+    // the row keeps confirming in the background via services/saweria-listener and their
+    // tier will just be there next time it's checked. Someone already inside (dashboard)
+    // stays put and keeps watching.
+    const processingTimer = setTimeout(() => {
+      statusEl.textContent = '🔄 Pembayaran sedang diproses...';
+      if (context === 'register') {
+        if (channel) window.supabase.removeChannel(channel);
+        proceedToApp();
+      }
+    }, PROCESSING_AFTER_MS);
+
+    // Only relevant for someone already in the dashboard waiting on the modal -- a minute total
+    // with no confirmation and we assume the automated match failed, point them at the admin.
+    const stuckTimer = context === 'home' ? setTimeout(() => {
+      const waUrl = buildAdminWaUrl('Halo Gembel Master, saya udah transfer tapi belum ke-konfirmasi otomatis. Mohon dicek ya 🙏');
+      statusEl.innerHTML = '❌ Belum ke-konfirmasi otomatis.' +
+        (waUrl ? ` <a href="${waUrl}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">Notify Gembel Master (WhatsApp)</a>` : '');
+    }, STUCK_AFTER_MS) : null;
+
+    channel = window.supabase
       .channel('pay-saweria-' + amount)
       .on('postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'payment_requests', filter: `amount=eq.${amount}` },
         (payload) => {
           const status = payload.new && payload.new.status;
           if (status === 'confirmed') {
-            statusEl.textContent = '✅ Pembayaran ketemu! Ngupgrade akun lo...';
+            clearTimeout(processingTimer);
+            if (stuckTimer) clearTimeout(stuckTimer);
+            statusEl.textContent = '✅ Pembayaran sukses! Ngupgrade akun lo...';
             statusEl.style.color = 'var(--success, #22c55e)';
-            setTimeout(() => location.reload(), 1500);
+            setTimeout(proceedToApp, 1500);
             window.supabase.removeChannel(channel);
           } else if (status === 'rejected' || status === 'expired') {
+            clearTimeout(processingTimer);
+            if (stuckTimer) clearTimeout(stuckTimer);
             statusEl.textContent = status === 'expired' ? '⌛ Kadaluarsa, buka ulang buat kode baru.' : '❌ Ditolak admin.';
             window.supabase.removeChannel(channel);
           }
