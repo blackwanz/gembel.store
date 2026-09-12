@@ -1280,7 +1280,7 @@
         <div class="form-row">
             <div style="max-width:200px;">
                 <label class="field-label">Due date (optional)</label>
-                <input type="date" id="task-due-input">
+                <input type="text" inputmode="numeric" id="task-due-input" placeholder="dd/mm/yyyy" maxlength="10" autocomplete="off">
             </div>
         </div>
         <div class="modal-actions">
@@ -1915,6 +1915,37 @@
     }
 
     function uid(prefix) { return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+
+    // task-due-input is a plain text field (not <input type="date">) on purpose: native date
+    // inputs' per-segment typing only works if the click lands exactly on the leftmost (day)
+    // segment first -- click a pixel into the wrong segment (easy to do, e.g. right on the
+    // pre-filled "yyyy" placeholder) and everything typed next goes into that wrong segment
+    // instead, silently. A masked text field always starts at position 0 regardless of where you
+    // click, so typing "01012026" reliably becomes "01/01/2026" every time.
+    function isoToDdMmYyyy(iso) {
+      if (!iso) return '';
+      const [y, m, d] = iso.split('-');
+      return (y && m && d) ? `${d}/${m}/${y}` : '';
+    }
+    // Returns the ISO "YYYY-MM-DD" string for a complete, valid "DD/MM/YYYY" input, or null for
+    // anything incomplete/invalid (including a real-but-nonexistent date like 31/02/2026).
+    function ddMmYyyyToIso(str) {
+      const digits = String(str || '').replace(/\D/g, '');
+      if (digits.length !== 8) return null;
+      const d = Number(digits.slice(0, 2)), m = Number(digits.slice(2, 4)), y = Number(digits.slice(4, 8));
+      const dt = new Date(y, m - 1, d);
+      if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) return null;
+      return `${digits.slice(4, 8)}-${digits.slice(2, 4)}-${digits.slice(0, 2)}`;
+    }
+    // Live-masks as digits are typed: 2-2-4 groups separated by "/", cursor always kept at the end
+    // (this field is only ever typed start-to-finish, never edited mid-string).
+    function formatLiveDdMmYyyy(input) {
+      const digits = input.value.replace(/\D/g, '').slice(0, 8);
+      let out = digits;
+      if (digits.length > 4) out = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+      else if (digits.length > 2) out = `${digits.slice(0, 2)}/${digits.slice(2)}`;
+      input.value = out;
+    }
     function escapeHTML(str) { const d = document.createElement('div'); d.textContent = str == null ? '' : str; return d.innerHTML; }
     function formatDate(iso) { if (!iso) return ''; const d = new Date(iso); return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); }
     function monthKey(iso) { const d = new Date(iso); return d.toLocaleString(undefined, { month: 'short', year: 'numeric' }); }
@@ -3404,6 +3435,7 @@
     }
     document.getElementById('cancel-task-btn').addEventListener('click', closeTaskModal);
     document.getElementById('close-task-modal-btn').addEventListener('click', closeTaskModal);
+    document.getElementById('task-due-input').addEventListener('input', (e) => formatLiveDdMmYyyy(e.target));
     function resetTaskForm() {
         document.getElementById('task-title-input').value = '';
         document.getElementById('task-duration-input').value = '';
@@ -3422,7 +3454,12 @@
         const status = document.getElementById('task-status-input').value;
         const estMinutes = parseInt(document.getElementById('task-duration-input').value) || null;
         const description = document.getElementById('task-desc-input').value.trim();
-        const dueDate = document.getElementById('task-due-input').value || null;
+        const dueDateRaw = document.getElementById('task-due-input').value.trim();
+        let dueDate = null;
+        if (dueDateRaw) {
+            dueDate = ddMmYyyyToIso(dueDateRaw);
+            if (!dueDate) { customAlert('Due date-nya belum lengkap/valid -- format dd/mm/yyyy, contoh 01/01/2026.'); return; }
+        }
 
         if (editingTaskId) {
             const t = state.tasks.find(x => x.id === editingTaskId);
@@ -3464,24 +3501,21 @@
         document.getElementById('task-category-input').value = t.category;
         document.getElementById('task-priority-input').value = t.priority;
         document.getElementById('task-status-input').value = t.status;
-        document.getElementById('task-due-input').value = t.dueDate || '';
+        document.getElementById('task-due-input').value = isoToDdMmYyyy(t.dueDate);
         document.getElementById('save-task-btn').textContent = 'Update Task';
         document.getElementById('task-modal-title').textContent = 'Edit Task';
         openTaskModal();
     }
 
-    // Same edit popup as editTask(), but focuses (and opens the native date picker on) the due
-    // date field — used by the overdue/due-date badge under a Long-Term Goal's linked tasks, so
-    // fixing a date you just noticed is overdue doesn't require also hunting for the date field
-    // once the popup opens.
+    // Same edit popup as editTask(), but focuses (and selects, ready to retype) the due date
+    // field — used by the overdue/due-date badge under a Long-Term Goal's linked tasks, so fixing
+    // a date you just noticed is overdue doesn't require also hunting for the date field once the
+    // popup opens.
     function editTaskFocusDate(id) {
         editTask(id);
         const dateInput = document.getElementById('task-due-input');
         dateInput.focus();
-        // showPicker() needs a live user-activation window to work at all — wrapped since some
-        // browsers (or a modal not yet done animating in) can throw here; focus() above is the
-        // real requirement, the native picker popping open too is a bonus when it's allowed.
-        try { dateInput.showPicker && dateInput.showPicker(); } catch (err) { /* focus alone is enough */ }
+        dateInput.select();
     }
 
     // ---------- Copy card — opens the same content in the Edit Task popup, pre-filled and
@@ -3498,7 +3532,7 @@
         document.getElementById('task-category-input').value = t.category;
         document.getElementById('task-priority-input').value = t.priority;
         document.getElementById('task-status-input').value = t.status;
-        document.getElementById('task-due-input').value = t.dueDate || '';
+        document.getElementById('task-due-input').value = isoToDdMmYyyy(t.dueDate);
         document.getElementById('save-task-btn').textContent = 'Add Task';
         document.getElementById('task-modal-title').textContent = 'Copy Task';
         openTaskModal();
