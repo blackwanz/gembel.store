@@ -199,32 +199,47 @@
       }
     }
 
+    function handleStatus(status) {
+      if (settled || (status !== 'confirmed' && status !== 'rejected' && status !== 'expired')) return;
+      settled = true;
+      if (processingTimer) clearTimeout(processingTimer);
+      if (stuckTimer) clearTimeout(stuckTimer);
+      if (pollTimer) clearInterval(pollTimer);
+      window.supabase.removeChannel(channel);
+      statusEl.style.display = 'block';
+      if (status === 'confirmed') {
+        statusEl.textContent = '✅ Pembayaran sukses! Ngupgrade akun lo...';
+        statusEl.style.color = 'var(--success, #22c55e)';
+        setTimeout(proceedToApp, 1500);
+      } else {
+        statusEl.textContent = status === 'expired' ? '⌛ Kadaluarsa, buka ulang buat kode baru.' : '❌ Ditolak admin.';
+      }
+    }
+
     const channel = window.supabase
       .channel('pay-saweria-' + amount)
       .on('postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'payment_requests', filter: `amount=eq.${amount}` },
-        (payload) => {
-          const status = payload.new && payload.new.status;
-          if (status === 'confirmed') {
-            settled = true;
-            if (processingTimer) clearTimeout(processingTimer);
-            if (stuckTimer) clearTimeout(stuckTimer);
-            statusEl.style.display = 'block';
-            statusEl.textContent = '✅ Pembayaran sukses! Ngupgrade akun lo...';
-            statusEl.style.color = 'var(--success, #22c55e)';
-            setTimeout(proceedToApp, 1500);
-            window.supabase.removeChannel(channel);
-          } else if (status === 'rejected' || status === 'expired') {
-            settled = true;
-            if (processingTimer) clearTimeout(processingTimer);
-            if (stuckTimer) clearTimeout(stuckTimer);
-            statusEl.style.display = 'block';
-            statusEl.textContent = status === 'expired' ? '⌛ Kadaluarsa, buka ulang buat kode baru.' : '❌ Ditolak admin.';
-            window.supabase.removeChannel(channel);
-          }
-        }
+        (payload) => handleStatus(payload.new && payload.new.status)
       )
       .subscribe();
+
+    // Realtime depends on the table being in the supabase_realtime publication and on the
+    // websocket staying connected -- both have failed silently before (a confirmed payment sat
+    // showing "diproses" forever because payment_requests was never added to the publication,
+    // see db/migrations/0019_payment_requests_realtime.sql). A plain poll every few seconds as a
+    // backstop means a future gap like that can't strand a real payment again.
+    const pollTimer = setInterval(async () => {
+      if (settled) { clearInterval(pollTimer); return; }
+      const { data } = await window.supabase
+        .from('payment_requests')
+        .select('status')
+        .eq('amount', amount)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (data) handleStatus(data.status);
+    }, 5000);
 
     return { reveal };
   }
