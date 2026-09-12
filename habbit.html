@@ -76,6 +76,15 @@ body.theme-light{
 }
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;}
+/* Native form controls (the browser's own popup calendar on our type="date"/type="month"
+   inputs -- period-day/period-month, stats-month, savings-target-month) otherwise render
+   using the OS's light/dark preference, completely ignoring this app's own theme-light
+   toggle below. That's what made the calendar popup look like a jarring, mismatched black
+   box: on an OS set to dark it always rendered dark UA-styled even while the app itself was
+   in light mode (or vice versa). Tying color-scheme to the same class the toggle already
+   flips keeps the native picker in sync with whichever theme the app is actually showing. */
+html{color-scheme:dark;}
+body.theme-light{color-scheme:light;}
 body{
   background:
     radial-gradient(1200px 600px at 15% -10%, #7c6cf61a, transparent 60%),

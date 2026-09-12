@@ -1331,7 +1331,11 @@
      card's Edit action. Same field ids as before, just no longer an inline panel that had to be
      shuffled around the goal list via positionGoalFormBox(). -->
 <div class="modal-overlay" id="goal-modal">
-    <div class="modal-box settings-modal-box" style="max-width:560px;">
+    <!-- Sized to ~60% of the viewport per user request (was a fixed max-width:560px, which felt
+         cramped for a form with the goal-links editor below it) — same width/max-width vw pattern
+         as #task-modal above, so it stays roomy on desktop but still shrinks safely on narrow
+         screens via .modal-box's own width:100% base + .modal-overlay's 1rem padding. -->
+    <div class="modal-box settings-modal-box" style="width:60vw; max-width:900px;">
         <div class="modal-fixed-header">
             <button type="button" class="modal-close-x" id="close-goal-modal-btn" title="Close">✕</button>
             <h3 id="goal-modal-title">Add Goal</h3>
