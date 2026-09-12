@@ -75,9 +75,8 @@
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.id = 'pay-qr-manual-btn';
-    btn.className = 'btn btn-ghost btn-block';
-    btn.style.cssText = 'margin-top:14px;';
-    btn.textContent = '🧾 Bayar Manual (QRIS)';
+    btn.style.cssText = 'display:block;margin:10px auto 0;background:none;border:none;font-size:12px;text-decoration:underline;color:var(--text-muted);cursor:pointer;';
+    btn.textContent = 'atau bayar manual pakai QRIS';
     btn.addEventListener('click', () => {
       btn.remove();
       waiting.appendChild(buildQrBox('Bayar manual pake QRIS ini ya:'));
