@@ -35984,6 +35984,23 @@ function neonFlowAutoSwitch(color) {
       pbState = { active: true, activeColor: null, startTime: now.toISOString(), targetTime: target.toISOString(), segments: [], clickCount: 0, clickTimeout: null };
     }
     if (pbState.activeColor === color) return;
+
+    // BUGFIX: finalize elapsed time on the currently-active segment before switching,
+    // mirroring progbar.html's own syncWithSystemTime(). Without this, every switch
+    // triggered from here just appended a new duration:0 segment and left the previous
+    // one frozen -- progbar.html only ever advances the LAST segment's duration on its
+    // tick, so any segment that stopped being "last" here never got its elapsed time
+    // counted. Net effect: the neon bar only reflected time spent with progbar.html
+    // itself open, so it looked stuck partway (e.g. "only half blue") instead of
+    // reaching full width for the whole tracked day. See focus.html for the matching fix.
+    if (pbState.segments && pbState.segments.length > 0) {
+      const targetTime = new Date(pbState.targetTime);
+      const cappedNow = now > targetTime ? targetTime : now; // same anti-overshoot cap as progbar.html
+      const lastSeg = pbState.segments[pbState.segments.length - 1];
+      const diffInSeconds = (cappedNow - new Date(lastSeg.timestamp)) / 1000;
+      if (diffInSeconds > 0) lastSeg.duration += diffInSeconds;
+    }
+
     pbState.activeColor = color;
     pbState.segments = pbState.segments || [];
     pbState.segments.push({ color, duration: 0, timestamp: now.toISOString() });
