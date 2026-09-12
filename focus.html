@@ -632,6 +632,15 @@
     .goal-link-check.done { color: var(--accent); font-weight: 700; }
     .goal-link-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .goal-link-weight { flex-shrink: 0; font-weight: 600; color: var(--text-muted); }
+    /* Per-row checkbox for the "shift due dates of several linked tasks at once" bulk action --
+       sits before the done-check dot, same accent-colored native checkbox used by the goal-link
+       picker popup elsewhere in this file (goal-link-picker-opt), so it doesn't introduce a new
+       checkbox look. Stops propagation to the row's own click (select/toggle-done) handlers. */
+    .goal-link-shift-checkbox { width: auto; flex-shrink: 0; accent-color: var(--accent); cursor: pointer; }
+    .goal-shift-bar { display: flex; align-items: center; gap: 8px; font-size: 0.74rem; color: var(--text-main); background: rgba(33,150,243,0.12); box-shadow: inset 0 0 0 1px rgba(33,150,243,0.35); border-radius: 6px; padding: 6px 8px; margin-bottom: 6px; }
+    .goal-shift-bar span { font-weight: 600; margin-right: auto; }
+    .goal-shift-presets { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+    .goal-shift-preset-btn { font-size: 0.76rem; padding: 4px 8px; }
 
     /* Expectation status — actual progress vs. where a goal "should" be by now given a straight
        line from creation to its target month (see goalExpectationStatusHTML in script). Shown
@@ -1439,6 +1448,37 @@
         <div class="form-actions">
             <button type="button" class="secondary" id="bulk-goal-timeline-cancel-btn">Cancel</button>
             <button type="button" id="bulk-goal-timeline-apply-btn">Apply to all</button>
+        </div>
+    </div>
+</div>
+
+<!-- Bulk-shift due dates for several tasks linked to ONE Long-Term Goal at once -- reached via
+     checkboxes in that goal's expanded linked-task breakdown (see .goal-link-shift-checkbox),
+     so pushing a batch of reminders forward/back (e.g. "majuin 2 task ke minggu depan") doesn't
+     require opening each task's own Edit Task form one at a time. Intentionally scoped to one
+     goal per use -- see selectedShiftGoalId in script. -->
+<div class="modal-overlay" id="goal-shift-dates-modal">
+    <div class="modal-box" style="max-width:380px;">
+        <button type="button" class="modal-close-x" id="close-goal-shift-dates-btn" title="Close">✕</button>
+        <div>
+            <h3>Geser tanggal reminder</h3>
+            <div class="modal-subtitle" id="goal-shift-dates-desc">for the selected tasks</div>
+        </div>
+        <div class="form-row">
+            <div>
+                <label class="field-label">Geser sebanyak berapa hari? (boleh minus buat mundurin)</label>
+                <input type="number" id="goal-shift-dates-input" placeholder="contoh: 7" step="1">
+                <div class="goal-shift-presets">
+                    <button type="button" class="secondary goal-shift-preset-btn" data-days="3">+3 hari</button>
+                    <button type="button" class="secondary goal-shift-preset-btn" data-days="7">+1 minggu</button>
+                    <button type="button" class="secondary goal-shift-preset-btn" data-days="14">+2 minggu</button>
+                    <button type="button" class="secondary goal-shift-preset-btn" data-days="-7">-1 minggu</button>
+                </div>
+            </div>
+        </div>
+        <div class="form-actions">
+            <button type="button" class="secondary" id="goal-shift-dates-cancel-btn">Cancel</button>
+            <button type="button" id="goal-shift-dates-apply-btn">Geser tanggal</button>
         </div>
     </div>
 </div>
@@ -4280,14 +4320,26 @@
                 // Collapsed by default — a goal with several linked tasks used to always dump the
                 // whole breakdown onto the card, which got long fast with multiple goals in view.
                 // Clicking the card (not a button/row inside it) toggles it open.
+                // Bulk "shift due dates" bar — only shown while this goal has checked rows (see
+                // selectedShiftGoalId/selectedShiftTaskIds below), matching the always-visible-
+                // while-selected pattern already used for the goal-card multi-select bulk bar above.
+                const shiftBarHTML = (selectedShiftGoalId === g.id && selectedShiftTaskIds.size > 0) ? `
+                    <div class="goal-shift-bar">
+                        <span>${selectedShiftTaskIds.size} task${selectedShiftTaskIds.size > 1 ? 's' : ''} dipilih</span>
+                        <button type="button" class="secondary goal-shift-open-btn">📆 Geser tanggal…</button>
+                        <button type="button" class="secondary goal-shift-clear-btn">Batal</button>
+                    </div>` : '';
                 const linksHTML = validLinks.length ? (
                     isExpanded ? `
                     <div class="goal-links-breakdown">
+                        ${shiftBarHTML}
                         ${validLinks.map(link => {
                             const t = state.tasks.find(x => x.id === link.taskId);
                             const done = t.status === 'done';
                             const selected = link.taskId === selectedGoalLinkTaskId;
+                            const shiftChecked = selectedShiftGoalId === g.id && selectedShiftTaskIds.has(t.id);
                             return `<div class="goal-link-row ${selected ? 'selected' : ''}" data-task-id="${t.id}" title="Click to select · double-click to mark ${done ? 'not done' : 'done'} · ✎ to edit">
+                                <input type="checkbox" class="goal-link-shift-checkbox" data-goal-id="${g.id}" data-task-id="${t.id}" ${shiftChecked ? 'checked' : ''} title="Pilih buat geser tanggal reminder bareng task lain">
                                 <span class="goal-link-check ${done ? 'done' : ''}">${done ? '✓' : '○'}</span>
                                 <span class="goal-link-title">${escapeHTML(t.title)}</span>
                                 ${dueBadgeHTML(t)}
@@ -4351,11 +4403,21 @@
     // drives computeGoalProgress() — a fast way to check off a "subtask" without leaving the Goals
     // panel to go find it on the Kanban board.
     let selectedGoalLinkTaskId = null;
+    // Selection state for the "shift due dates" bulk action — scoped to ONE goal at a time (see
+    // the checkbox 'change' handler below for why checking a row in a different goal resets it).
+    let selectedShiftTaskIds = new Set();
+    let selectedShiftGoalId = null;
     document.getElementById('goals-list').addEventListener('click', (e) => {
         // Bulk-action bar buttons (only present while 2+ goals are selected) — handled first
         // since they're the most specific target.
         if (e.target.closest('.goal-bulk-set-timeline-btn')) { openBulkGoalTimelineModal(); return; }
         if (e.target.closest('.goal-bulk-clear-btn')) { selectedGoalIds.clear(); renderGoalsList(); return; }
+        // "Shift due dates" bar buttons (only present while this goal has checked rows).
+        if (e.target.closest('.goal-shift-open-btn')) { openGoalShiftDatesModal(); return; }
+        if (e.target.closest('.goal-shift-clear-btn')) { selectedShiftTaskIds.clear(); selectedShiftGoalId = null; renderGoalsList(); return; }
+        // The per-row checkbox is handled entirely by its own 'change' listener below — bail out
+        // here so a click on it doesn't also fall through to the row's select-highlight toggle.
+        if (e.target.closest('.goal-link-shift-checkbox')) return;
         // The ✎ button opens the task straight in the Active Priorities edit popup — handled
         // first (and returned out of) so it doesn't also toggle the row's select-highlight below.
         const editBtn = e.target.closest('.goal-link-edit-btn');
@@ -4407,6 +4469,97 @@
         renderGoalsList();
         renderBoard();
         renderFocusTaskOptions();
+    });
+
+    // ---------- Bulk-shift due dates: per-row checkbox selection ----------
+    // A 'change' listener (not 'click') so the browser's own checkbox toggling is what drives
+    // state — matches the goal-link-picker popup's checkbox wiring elsewhere in this file.
+    document.getElementById('goals-list').addEventListener('change', (e) => {
+        const cb = e.target.closest('.goal-link-shift-checkbox');
+        if (!cb) return;
+        const goalId = cb.dataset.goalId, taskId = cb.dataset.taskId;
+        // The bulk shift is explicitly "within ONE goal" (that's what was asked for) — checking a
+        // row under a different goal than the current selection starts a fresh selection for that
+        // goal instead of silently mixing tasks from two goals into one shift batch.
+        if (selectedShiftGoalId !== goalId) { selectedShiftTaskIds.clear(); selectedShiftGoalId = goalId; }
+        if (cb.checked) selectedShiftTaskIds.add(taskId); else selectedShiftTaskIds.delete(taskId);
+        if (!selectedShiftTaskIds.size) selectedShiftGoalId = null;
+        renderGoalsList();
+    });
+
+    // ---------- Bulk-shift due dates modal: plain local-date add (no UTC math) ----------
+    // Same "parse as local midnight, .setDate(), read back" approach as dateToStr()/prevDateStr()
+    // elsewhere in this file — avoids the classic toISOString() UTC off-by-one near timezone
+    // boundaries, and month/year rollover + leap years fall out for free from the native Date
+    // object instead of any hand-rolled calendar math.
+    function shiftDateStr(dateStr, days) {
+        const d = new Date(dateStr + 'T00:00:00');
+        d.setDate(d.getDate() + days);
+        return dateToStr(d);
+    }
+    function openGoalShiftDatesModal() {
+        if (!selectedShiftGoalId || !selectedShiftTaskIds.size) return;
+        const g = state.goals.find(x => x.id === selectedShiftGoalId);
+        if (!g) return;
+        document.getElementById('goal-shift-dates-desc').textContent =
+            `for ${selectedShiftTaskIds.size} task${selectedShiftTaskIds.size > 1 ? 's' : ''} in "${g.title}"`;
+        document.getElementById('goal-shift-dates-input').value = '';
+        document.getElementById('goal-shift-dates-modal').classList.add('active');
+    }
+    function closeGoalShiftDatesModal() {
+        document.getElementById('goal-shift-dates-modal').classList.remove('active');
+    }
+    document.getElementById('close-goal-shift-dates-btn').addEventListener('click', closeGoalShiftDatesModal);
+    document.getElementById('goal-shift-dates-cancel-btn').addEventListener('click', closeGoalShiftDatesModal);
+    // Preset buttons just fill the number input (rather than applying immediately) so the user
+    // still sees — and can tweak — the exact value before the confirm step below.
+    document.querySelectorAll('.goal-shift-preset-btn').forEach(btn => {
+        btn.addEventListener('click', () => { document.getElementById('goal-shift-dates-input').value = btn.dataset.days; });
+    });
+    document.getElementById('goal-shift-dates-apply-btn').addEventListener('click', async () => {
+        const daysRaw = document.getElementById('goal-shift-dates-input').value.trim();
+        const days = parseInt(daysRaw, 10);
+        if (!daysRaw || Number.isNaN(days) || days === 0) {
+            customAlert('Masukin dulu jumlah harinya (boleh minus buat mundurin tanggal).');
+            return;
+        }
+
+        const g = state.goals.find(x => x.id === selectedShiftGoalId);
+        if (!g) { closeGoalShiftDatesModal(); return; }
+
+        // Only tasks that already HAVE a due date are shiftable -- "shift nothing by N days" is
+        // meaningless and would invent a due date where the user never set one.
+        const targets = state.tasks.filter(t => selectedShiftTaskIds.has(t.id) && t.dueDate);
+        const skippedCount = selectedShiftTaskIds.size - targets.length;
+        if (!targets.length) {
+            customAlert('Semua task yang dipilih belum punya due date, jadi gak ada yang bisa digeser.');
+            return;
+        }
+
+        const dirLabel = days > 0 ? `maju ${days} hari` : `mundur ${Math.abs(days)} hari`;
+        const perTaskSummary = targets
+            .map(t => `"${t.title}" ${isoToDdMmYyyy(t.dueDate)} → ${isoToDdMmYyyy(shiftDateStr(t.dueDate, days))}`)
+            .join('; ');
+        const skipNote = skippedCount
+            ? ` (${skippedCount} task lain dilewatin karena belum punya due date.)`
+            : '';
+        const confirmed = await customConfirm(
+            `Geser ${targets.length} task ${dirLabel} di goal "${g.title}": ${perTaskSummary}.${skipNote}`,
+            'Geser tanggal reminder',
+            'Geser'
+        );
+        if (!confirmed) return;
+
+        targets.forEach(t => { t.dueDate = shiftDateStr(t.dueDate, days); });
+        saveState();
+
+        // Clear the selection after a successful shift so it doesn't linger stale next time this
+        // goal (or another one) is opened.
+        selectedShiftTaskIds.clear();
+        selectedShiftGoalId = null;
+        closeGoalShiftDatesModal();
+        renderBoard();
+        renderGoalsList();
     });
 
     // ---------- Drag a task card from Active Priorities onto a Long-Term Goal to link it ----------
