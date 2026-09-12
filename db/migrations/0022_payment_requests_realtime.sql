@@ -1,4 +1,4 @@
--- 0019_payment_requests_realtime.sql
+-- 0022_payment_requests_realtime.sql
 -- assets/payment-saweria.js subscribes to postgres_changes UPDATE events on payment_requests so
 -- the payment modal reacts the instant services/saweria-listener (or an admin) confirms a row --
 -- but the table was never added to the supabase_realtime publication, so Postgres's logical
@@ -19,7 +19,7 @@ begin
   end if;
 end $$;
 
-insert into public._migrations (filename) values ('0019_payment_requests_realtime.sql')
+insert into public._migrations (filename) values ('0022_payment_requests_realtime.sql')
   on conflict (filename) do nothing;
 
 commit;
