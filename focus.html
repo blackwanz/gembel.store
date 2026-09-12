@@ -574,6 +574,10 @@
        a distinct blue highlight (not the green .pinned ring) so the two states read separately
        even when a pinned goal is also part of the current selection. */
     .goal-card.multi-selected { box-shadow: inset 0 0 0 1px var(--info); background: rgba(33,150,243,0.1); }
+    /* Dragging a task card over a goal (see the goals-list dragover/drop handlers) — same dashed-
+       outline treatment as .kanban-column.drag-over so "you're about to drop here" reads the same
+       language across both boards. */
+    .goal-card.drag-over { outline: 2px dashed var(--accent); outline-offset: -4px; }
     .goal-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 6px; margin-bottom: 6px; }
     .goal-title { font-size: 0.85rem; font-weight: 600; }
     .goal-actions { display: flex; gap: 4px; flex-shrink: 0; }
@@ -1232,6 +1236,11 @@
         <button type="button" class="modal-close-x" id="close-task-modal-btn" title="Close">✕</button>
         <div>
             <h3 id="task-modal-title">Add Task</h3>
+            <!-- Shown only when this modal was opened via a Long-Term Goal's right-click "+ Task
+                 baru" (see openAddTaskModalForGoal()) -- names which goal the new task will be
+                 auto-linked to on save, since there's no goal-picker field in this modal to show
+                 that pre-selection otherwise. -->
+            <div class="modal-subtitle" id="task-modal-goal-hint" style="display:none;"></div>
         </div>
         <div class="form-row">
             <div style="flex:2;">
@@ -3447,12 +3456,33 @@
     function closeTaskModal() {
         taskModal.classList.remove('active');
         editingTaskId = null;
+        quickLinkGoalId = null;
+        const goalHint = document.getElementById('task-modal-goal-hint');
+        if (goalHint) goalHint.style.display = 'none';
     }
     function openAddTaskModal(defaultStatus) {
         editingTaskId = null;
+        quickLinkGoalId = null;
         resetTaskForm();
         document.getElementById('task-modal-title').textContent = 'Add Task';
         openTaskModal(defaultStatus);
+    }
+    // ---------- Quick "Add Task" from a Long-Term Goal's right-click menu ----------
+    // Opens the exact same Add Task modal/flow as everywhere else, but stashes which goal to
+    // auto-link on save (quickLinkGoalId, consumed by the save-task-btn handler below) so the
+    // user doesn't have to separately open the goal-link picker afterward just to connect the
+    // task they *just* created for this goal.
+    let quickLinkGoalId = null;
+    function openAddTaskModalForGoal(goalId) {
+        const g = state.goals.find(x => x.id === goalId);
+        if (!g) return;
+        openAddTaskModal();
+        quickLinkGoalId = goalId; // set AFTER openAddTaskModal(), which clears it for the plain-Add-Task path
+        const goalHint = document.getElementById('task-modal-goal-hint');
+        if (goalHint) {
+            goalHint.textContent = `Will be linked to goal: "${g.title}"`;
+            goalHint.style.display = 'block';
+        }
     }
     document.getElementById('cancel-task-btn').addEventListener('click', closeTaskModal);
     document.getElementById('close-task-modal-btn').addEventListener('click', closeTaskModal);
@@ -3466,6 +3496,8 @@
         document.getElementById('task-status-input').value = 'todo';
         document.getElementById('task-due-input').value = '';
         document.getElementById('save-task-btn').textContent = 'Add Task';
+        const goalHint = document.getElementById('task-modal-goal-hint');
+        if (goalHint) goalHint.style.display = 'none';
     }
     document.getElementById('save-task-btn').addEventListener('click', () => {
         const title = document.getElementById('task-title-input').value.trim();
@@ -3495,14 +3527,25 @@
                 if (statusChanged) logTaskEvent(status);
             }
         } else {
-            state.tasks.push({
+            const newTask = {
                 id: uid('t'), title, category, priority, status, estMinutes, description, dueDate,
                 order: computeInitialOrder(priority),
                 createdAt: new Date().toISOString(),
                 completedAt: status === 'done' ? new Date().toISOString() : null,
                 archived: false
-            });
+            };
+            state.tasks.push(newTask);
             logTaskEvent(status);
+            // Quick-link from a Long-Term Goal's right-click "+ Task baru" (openAddTaskModalForGoal())
+            // -- link the brand-new task to that goal right away, same shape as a link added through
+            // the normal goal-link picker (default 10% weight, adjustable later like any other link).
+            if (quickLinkGoalId) {
+                const g = state.goals.find(x => x.id === quickLinkGoalId);
+                if (g) {
+                    if (!g.links) g.links = [];
+                    g.links.push({ taskId: newTask.id, weight: 10 });
+                }
+            }
         }
         editingTaskId = null;
         saveState();
@@ -3851,6 +3894,10 @@
             const card = e.target.closest('.task-card');
             if (card) card.classList.remove('dragging');
             document.querySelectorAll('.kanban-column.drag-over').forEach(c => c.classList.remove('drag-over'));
+            // Also clear any goal card left highlighted mid-drag (e.g. the drag ended outside any
+            // valid drop target, so the goals-list 'drop'/'dragleave' handlers never fired) -- see
+            // the goals-list drag-and-drop handlers further below.
+            document.querySelectorAll('.goal-card.drag-over').forEach(c => c.classList.remove('drag-over'));
             draggedTaskId = null;
         });
 
@@ -4321,6 +4368,57 @@
         renderFocusTaskOptions();
     });
 
+    // ---------- Drag a task card from Active Priorities onto a Long-Term Goal to link it ----------
+    // Reuses the exact same native HTML5 drag that already powers the Kanban board's column
+    // reordering (draggedTaskId is set by that dragstart listener in setupDragAndDrop() -- a
+    // task-card dragged from the board carries the same dataTransfer payload no matter which
+    // drop target it lands on, so this only needed dragover/drop handlers on the goal cards
+    // themselves, not a second dragstart wiring).
+    document.getElementById('goals-list').addEventListener('dragover', (e) => {
+        const card = e.target.closest('.goal-card');
+        if (!card || !draggedTaskId) return; // let non-task drags (if any) fall through to native behavior
+        e.preventDefault();
+        card.classList.add('drag-over');
+    });
+    document.getElementById('goals-list').addEventListener('dragleave', (e) => {
+        const card = e.target.closest('.goal-card');
+        if (card) card.classList.remove('drag-over');
+    });
+    document.getElementById('goals-list').addEventListener('drop', async (e) => {
+        const card = e.target.closest('.goal-card');
+        if (!card) return;
+        e.preventDefault();
+        card.classList.remove('drag-over');
+
+        const taskId = draggedTaskId || e.dataTransfer.getData('text/plain');
+        const t = state.tasks.find(x => x.id === taskId);
+        const g = state.goals.find(x => x.id === card.dataset.goalId);
+        if (!t || !g) return;
+
+        if ((g.links || []).some(l => l.taskId === t.id)) {
+            customAlert(`"${t.title}" udah ke-link ke goal "${g.title}".`);
+            return;
+        }
+
+        // Confirm before mutating anything -- naming both the goal and the task, per the user's
+        // request, so a drag that landed on the wrong goal card doesn't silently create a link.
+        // Cancelling leaves state completely untouched (no saveState(), no re-render needed).
+        const confirmed = await customConfirm(
+            `Link task "${t.title}" ke goal "${g.title}"?`,
+            'Link to goal',
+            'Link'
+        );
+        if (!confirmed) return;
+
+        if (!g.links) g.links = [];
+        // Same default weight as a link added through the goal-link picker (its weight input
+        // defaults to 10) -- stays fully adjustable afterward via the goal's own edit form.
+        g.links.push({ taskId: t.id, weight: 10 });
+        saveState();
+        renderGoalsList();
+        renderBoard();
+    });
+
     function renderAchievementsList() {
         const wrap = document.getElementById('achievements-list');
         const countEl = document.getElementById('achievements-count');
@@ -4576,6 +4674,9 @@
             const g = state.goals.find(x => x.id === id);
             showContextMenu(e.clientX, e.clientY, [
                 { label: 'Edit goal', icon: '✎', action: () => editGoal(id) },
+                // Quick add: skips the normal "open Add Task, save, then separately search-and-link
+                // via the picker" flow -- the new task is linked to this goal the moment it's saved.
+                { label: '+ Task baru', icon: '+', action: () => openAddTaskModalForGoal(id) },
                 { label: g && g.pinned ? 'Unpin goal' : 'Pin goal', icon: '📌', action: () => toggleGoalPin(id) },
                 { label: 'Delete goal', icon: '✕', danger: true, action: () => deleteGoal(id) }
             ]);
