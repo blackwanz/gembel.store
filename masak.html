@@ -279,12 +279,14 @@
   async function fetchKitchens(){
     const { data, error } = await supabase
       .from('kitchen_members')
-      .select('role, kitchens(id, name)')
+      // public_share_enabled tagged along here so the Share toggle (owner-only, see renderShare)
+      // always shows the true current state without a separate round trip per kitchen.
+      .select('role, kitchens(id, name, public_share_enabled)')
       .eq('user_id', CURRENT_USER.id);
     if(error){ await gembelAlert('Gagal muat dapur: ' + error.message); return []; }
     return (data || [])
       .filter(row => row.kitchens)
-      .map(row => ({ id: row.kitchens.id, name: row.kitchens.name, role: row.role }));
+      .map(row => ({ id: row.kitchens.id, name: row.kitchens.name, role: row.role, publicShareEnabled: !!row.kitchens.public_share_enabled }));
   }
 
   async function createKitchen(name){
@@ -337,6 +339,7 @@
     renderPlan();
     renderSummary();
     renderMembers();
+    renderShare();
     syncLocationSelect();
     document.getElementById('add-details').style.display = canEdit() ? '' : 'none';
   }
@@ -443,6 +446,7 @@
             <div class="plan-sub2" id="members-sub"></div>
             <div id="member-list"></div>
             <div id="invite-slot"></div>
+            <div id="share-slot"></div>
           </div>
         </div>
       </div>
@@ -728,6 +732,130 @@
     });
   }
 
+  // ---- Public share link (Google-Drive-style "anyone with the link can view") ----
+  // Owner-only toggle. Flipping it just writes kitchens.public_share_enabled -- the actual
+  // access grant lives in the DB migration's new `to anon` policies on kitchens/kitchen_locations/
+  // stock_items, scoped to rows where that flag is true. The kitchen's own uuid doubles as the
+  // share token (already unguessable per 0019's design note), so there's nothing else to store.
+  function renderShare(){
+    const slot = document.getElementById('share-slot');
+    if(!slot) return;
+    if(!isOwner()){ slot.innerHTML = ''; return; }
+    const k = KITCHENS.find(k=>k.id===activeKitchenId);
+    const enabled = !!(k && k.publicShareEnabled);
+    const link = location.origin + location.pathname + '?share=' + activeKitchenId;
+    slot.innerHTML = `
+      <div class="invite-box">
+        <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;cursor:pointer;">
+          <input type="checkbox" id="share-toggle" style="width:auto;flex:none;" ${enabled ? 'checked' : ''}>
+          Aktifkan link publik (siapa aja bisa lihat, gak perlu daftar)
+        </label>
+        ${enabled ? `
+        <div class="invite-code">
+          Link: <span class="code mono" style="word-break:break-all;">${escapeHtml(link)}</span>
+          <br><button type="button" class="btn ghost" id="share-copy-btn" style="margin-top:8px;">Salin link</button>
+        </div>` : ''}
+      </div>`;
+
+    document.getElementById('share-toggle').addEventListener('change', async (e) => {
+      const checked = e.target.checked;
+      e.target.disabled = true;
+      const { error } = await supabase.from('kitchens').update({ public_share_enabled: checked }).eq('id', activeKitchenId);
+      if(error){
+        await gembelAlert('Gagal ubah setelan share: ' + error.message);
+        e.target.checked = !checked; e.target.disabled = false;
+        return;
+      }
+      k.publicShareEnabled = checked;
+      renderShare();
+    });
+
+    const copyBtn = document.getElementById('share-copy-btn');
+    if(copyBtn) copyBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(link);
+        copyBtn.textContent = 'Kesalin!';
+        setTimeout(() => { copyBtn.textContent = 'Salin link'; }, 1500);
+      } catch(e){
+        await gembelAlert('Gagal salin otomatis. Copy manual ya:\n' + link);
+      }
+    });
+  }
+
+  // ---- Public read-only view (?share=<kitchen_id>, no login required) ----
+  // Entirely separate render path from the authenticated app above -- runs before requireAuth()
+  // is ever called (see the bootstrap at the bottom), on the anon Supabase client. Only reachable
+  // data is whatever the new `to anon` RLS policies expose (kitchens/kitchen_locations/stock_items
+  // rows belonging to a kitchen with public_share_enabled = true) -- no member list, no invites,
+  // no write controls of any kind.
+  async function bootPublicShare(kitchenId){
+    const root = document.getElementById('app-root');
+    const { data: kitchen, error } = await supabase
+      .from('kitchens').select('id, name, public_share_enabled').eq('id', kitchenId).maybeSingle();
+    if(error || !kitchen || !kitchen.public_share_enabled){
+      root.innerHTML = `
+        <div class="top-nav"><a class="back-link" href="dashboard.html">&larr; Dashboard</a></div>
+        <div class="panel onboarding">
+          <div class="brand-eyebrow">Warung Kode Digital &middot; Dapur</div>
+          <h2>Link gak ketemu</h2>
+          <p>Dapur ini gak ada, atau pemiliknya belum ngaktifin link publik buat dapur ini.</p>
+        </div>`;
+      return;
+    }
+    const [locRes, itemRes] = await Promise.all([
+      supabase.from('kitchen_locations').select('*').eq('kitchen_id', kitchenId).order('created_at'),
+      supabase.from('stock_items').select('*').eq('kitchen_id', kitchenId),
+    ]);
+    renderPublicKitchen(kitchen, (locRes.data || []).map(l=>l.name), itemRes.data || []);
+  }
+
+  function renderPublicKitchen(kitchen, locations, items){
+    const root = document.getElementById('app-root');
+    const urgentCount = items.filter(i=>daysLeft(i)<=3).length;
+    const rowsHtml = items.length === 0 ? `<div class="empty-list">Belum ada stok di dapur ini.</div>` :
+      items.slice().sort((a,b)=>daysLeft(a)-daysLeft(b)).map(item=>{
+        const dl = daysLeft(item);
+        const st = statusOf(dl);
+        const qty = Number(item.qty) % 1 === 0 ? Number(item.qty) : Number(item.qty).toFixed(1);
+        return `
+        <div class="row ${st} view-only">
+          <div class="stripe"></div>
+          <div class="item-main">
+            <div class="name">${escapeHtml(item.name)}</div>
+            <div class="meta">
+              <span>${qty} ${escapeHtml(item.unit)}</span><span class="dot">&middot;</span>
+              <span>${escapeHtml(item.location)}</span><span class="dot">&middot;</span>
+              <span>beli ${fmtDate(new Date(item.bought_at))}</span>
+            </div>
+          </div>
+          <div class="badge">${badgeText(dl)}</div>
+        </div>`;
+      }).join('');
+
+    root.innerHTML = `
+      <div class="top-nav"><a class="back-link" href="dashboard.html">&larr; Dashboard</a></div>
+      <header>
+        <div>
+          <div class="brand-eyebrow">Warung Kode Digital &middot; Dapur</div>
+          <h1>${escapeHtml(kitchen.name)}</h1>
+          <div class="today" id="today-line"></div>
+        </div>
+        <div class="summary-chip">
+          <div class="num">${urgentCount}</div>
+          <div class="lbl">bahan butuh dimasak dalam 3 hari</div>
+        </div>
+      </header>
+      <div class="panel list-panel" style="padding:18px 18px 8px;">
+        <div class="list-head"><h2>Isi Dapur</h2><div class="list-count">${items.length} bahan</div></div>
+        <div class="viewer-note">Lihat publik &mdash; siapa aja yang pegang link ini bisa liat stok ini. Cuma anggota terdaftar yang bisa nambah/edit. <a href="index.html" style="color:var(--accent);font-weight:600;">Daftar gembel.store</a> kalau mau bikin dapur sendiri.</div>
+        <div id="stock-list">${rowsHtml}</div>
+      </div>
+      <footer class="note">Mode lihat publik &mdash; bukan tampilan anggota dapur.</footer>
+    `;
+    document.getElementById('today-line').textContent =
+      'Hari ini ' + new Date().toLocaleDateString('id-ID', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+  }
+
   // ---- Add-stock form ----
   function wireStaticHandlers(){
     const nameInput = document.getElementById('f-name');
@@ -832,6 +960,14 @@
 
   // ---- Bootstrap ----
   document.addEventListener('DOMContentLoaded', async () => {
+    // ?share=<kitchen_id>: a public share link (see renderShare) -- viewing it must work for
+    // someone with no account at all, so this branch deliberately skips requireAuth()'s
+    // redirect-to-login gate entirely and never touches CURRENT_USER/the authenticated app
+    // state below. A signed-in member opening their own kitchen normally (no ?share= param)
+    // is completely unaffected -- this is purely additive.
+    const shareId = new URLSearchParams(window.location.search).get('share');
+    if(shareId){ await bootPublicShare(shareId); return; }
+
     const authCtx = await requireAuth('index.html');
     if(!authCtx) return;
     CURRENT_USER = authCtx.user;

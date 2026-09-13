@@ -5334,6 +5334,20 @@
         if (!isRunning) onFocusTaskChange();
     });
 
+    // Every other way a session "ends" (timer hits 0, Stop button, Reset) already calls
+    // neonFlowAutoSwitch('blue') above. But isRunning/focusEndAt/pendingFinish are plain
+    // in-memory variables -- nothing persists them -- so closing the tab, navigating away, or
+    // refreshing mid-session skips all of those handlers entirely. Neon Flow's color was written
+    // straight to localStorage/cloud as 'green' and nothing would ever flip it back: it'd stay
+    // stuck green until some unrelated later start/stop happened to touch it again. 'pagehide'
+    // (not 'visibilitychange'/hidden -- tickFocusTimer is explicitly designed to keep a focus
+    // session running while backgrounded, see its comment above, so merely switching tabs must
+    // NOT count as ending it) catches actual tab-close/navigation/reload without needing a modal,
+    // matching ketik-buku.html's 'unload' handler for its own reading sessions.
+    window.addEventListener('pagehide', () => {
+        if (isRunning) neonFlowAutoSwitch('blue');
+    });
+
     // ---------- Completion modal ----------
     const completionModal = document.getElementById('completion-modal');
     const pctInput = document.getElementById('pct-input');
