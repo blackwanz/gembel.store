@@ -74,8 +74,9 @@
   function buildAmountBox(info) {
     const box = document.createElement('div');
     box.id = 'pay-saweria-amount';
-    box.style.cssText = 'margin:14px 0;padding:14px;border-radius:12px;background:var(--surface-2,rgba(127,127,127,.08));text-align:center;';
+    box.style.cssText = 'position:relative;margin:14px 0;padding:14px;border-radius:12px;background:var(--surface-2,rgba(127,127,127,.08));text-align:center;';
     box.innerHTML = `
+      <button type="button" id="pay-saweria-cancel-btn" title="Batalkan" aria-label="Batalkan" style="position:absolute;top:6px;right:6px;width:24px;height:24px;line-height:1;font-size:13px;background:none;border:1px solid var(--border);border-radius:8px;cursor:pointer;color:var(--text-muted);">✕</button>
       <div style="display:flex;align-items:center;justify-content:center;gap:8px;">
         <span style="font-size:17px;font-weight:700;">Bayar ${formatRupiah(info.amount)}</span>
         <button type="button" id="pay-saweria-copy-btn" title="Salin nominal" style="width:26px;height:26px;font-size:13px;line-height:1;background:none;border:1px solid var(--border);border-radius:8px;cursor:pointer;color:inherit;">📋</button>
@@ -136,7 +137,7 @@
   function startCountdown(box, expiresAtIso) {
     const el = box.querySelector('#pay-saweria-countdown');
     const statusEl = box.querySelector('#pay-saweria-status');
-    if (!el) return;
+    if (!el) return () => {};
     const expiresAt = new Date(expiresAtIso).getTime();
     const tick = () => {
       const remaining = expiresAt - Date.now();
@@ -152,6 +153,7 @@
     };
     tick();
     const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
   }
 
   // window.PAYMENT_CONTEXT is set inline by index.html ('register') and dashboard.html ('home')
@@ -164,7 +166,7 @@
   // actually gone and paid, so those are armed later via the returned `reveal()`.
   function watchRowStatus(box, amount) {
     const statusEl = box.querySelector('#pay-saweria-status');
-    if (!statusEl) return { reveal() {} };
+    if (!statusEl) return { reveal() {}, cleanup() {} };
 
     const context = window.PAYMENT_CONTEXT === 'register' ? 'register' : 'home';
     function proceedToApp() {
@@ -241,7 +243,18 @@
       if (data) handleStatus(data.status);
     }, 5000);
 
-    return { reveal };
+    // Used by the "✕ Batalkan" button -- stops every timer/subscription this function started
+    // without touching the payment_requests row itself (it's just left 'pending' and expires on
+    // its own via expires_at, same as closing the tab would've left it).
+    function cleanup() {
+      settled = true; // blocks a stray in-flight postgres_changes/poll response from reviving the UI
+      if (processingTimer) clearTimeout(processingTimer);
+      if (stuckTimer) clearTimeout(stuckTimer);
+      clearInterval(pollTimer);
+      window.supabase.removeChannel(channel);
+    }
+
+    return { reveal, cleanup };
   }
 
   let pending = false;
@@ -264,12 +277,22 @@
 
     const box = buildAmountBox(info);
     waiting.insertBefore(box, waiting.firstChild);
-    startCountdown(box, info.expires_at);
-    const { reveal } = watchRowStatus(box, info.amount);
+    const stopCountdown = startCountdown(box, info.expires_at);
+    const { reveal, cleanup } = watchRowStatus(box, info.amount);
 
     wireBayarHandoff(box, () => {
       nativeChildren.forEach((el, i) => { el.style.display = nativeDisplay[i]; });
       reveal();
+    });
+
+    // "✕ Batalkan" -- stops every timer/subscription this panel started and closes the whole
+    // payment modal, same end state as auth.js's own "Nanti dulu, pakai Free" button (#pay-skip)
+    // produces before a payment request even exists: #pay-modal fully removed from the DOM.
+    box.querySelector('#pay-saweria-cancel-btn').addEventListener('click', () => {
+      stopCountdown();
+      cleanup();
+      const modal = document.getElementById('pay-modal');
+      if (modal) modal.remove();
     });
 
     pending = false;
