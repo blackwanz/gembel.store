@@ -1,0 +1,1583 @@
+<!DOCTYPE html>
+<!--
+============================================================
+ STARGAZER ARCHERY — Log Latihan (CLOUD VERSION)
+============================================================
+ Originally built against window.storage (Claude artifact
+ per-user storage). Ported to this site's own backend:
+ data now lives in Supabase (public.archery_data, one row
+ per user, db/migrations/0024_archery.sql) behind requireAuth()
+ -- same boilerplate every other app on this site uses
+ (assets/supabaseClient.js + assets/auth.js).
+
+ storeGet()/storeSet() below keep their original signature
+ (key, fallback) / (key, value) on purpose: everything else in
+ this file calls them exactly as before, so porting the storage
+ layer didn't require touching any of the app's actual business
+ logic (arrow/bow/session/shot rendering, stats, Excel export).
+============================================================
+-->
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stargazer Archery — Log Latihan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;500;600&family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/dist/umd/supabase.min.js"></script>
+<script src="assets/supabaseClient.js"></script>
+<script src="assets/auth.js"></script>
+<style>
+  :root{
+    --field:#16241a;
+    --field-dark:#0f1a13;
+    --gold:#c9a227;
+    --gold-soft:#e3c76a;
+    --paper:#f6f2e8;
+    --paper-dim:#eae4d4;
+    --ink:#20241d;
+    --ink-soft:#5b6459;
+    --line: rgba(32,36,29,0.14);
+    --miss:#a13d2b;
+    --good:#3d7a4f;
+    --radius: 10px;
+    --serif: 'Fraunces', Georgia, serif;
+    --sans: 'Archivo', -apple-system, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family: var(--sans);
+    background: var(--paper);
+    color: var(--ink);
+    min-height:100vh;
+  }
+  ::selection{ background: var(--gold-soft); }
+
+  header.top{
+    background: var(--field);
+    color: var(--paper);
+    padding: 22px 20px 0 20px;
+  }
+  .top-inner{ max-width: 980px; margin:0 auto; }
+  .brand{
+    display:flex; align-items:baseline; gap:10px; margin-bottom:18px;
+  }
+  .brand .mark{
+    width:30px;height:30px;flex:none;
+  }
+  .brand h1{
+    font-family: var(--serif);
+    font-weight:600;
+    font-size: 1.5rem;
+    margin:0;
+    letter-spacing:0.2px;
+  }
+  .brand .sub{ color: var(--gold-soft); font-size:0.82rem; }
+
+  nav.tabs{ display:flex; gap:4px; }
+  nav.tabs button{
+    appearance:none; border:none; background:transparent;
+    color: rgba(246,242,232,0.6);
+    font-family: var(--sans); font-weight:600; font-size:0.92rem;
+    padding: 10px 16px; cursor:pointer; border-bottom: 2px solid transparent;
+    transition: color .15s ease, border-color .15s ease;
+  }
+  nav.tabs button.active{ color: var(--paper); border-bottom-color: var(--gold); }
+  nav.tabs button:hover{ color: var(--paper); }
+
+  main{ max-width: 980px; margin: 0 auto; padding: 22px 20px 80px; }
+  .view{ display:none; }
+  .view.active{ display:block; }
+
+  .grid{ display:grid; gap:16px; }
+  .grid.cols-2{ grid-template-columns: 1fr 1fr; }
+  .grid.cols-3{ grid-template-columns: repeat(3,1fr); }
+  @media (max-width: 760px){
+    .grid.cols-2, .grid.cols-3{ grid-template-columns: 1fr; }
+  }
+
+  .card{
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+  }
+  .card h2{
+    font-family: var(--serif); font-weight:600; font-size:1.05rem;
+    margin: 0 0 12px 0;
+  }
+  .card h3{
+    font-size:0.78rem; text-transform:none; letter-spacing:0.2px;
+    color: var(--ink-soft); margin: 0 0 8px 0; font-weight:600;
+  }
+
+  /* preset chips for FAST selection */
+  .chip-row{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
+  .chip{
+    border:1.5px solid var(--line); background: var(--paper);
+    border-radius: 999px; padding: 7px 13px; font-size:0.85rem;
+    cursor:pointer; font-weight:600; color: var(--ink);
+    transition: all .1s ease; white-space:nowrap;
+  }
+  .chip:hover{ border-color: var(--gold); }
+  .chip.selected{ background: var(--field); border-color: var(--field); color: var(--paper); }
+  .chip.add{ border-style:dashed; color: var(--ink-soft); }
+
+  .current-pick{
+    font-size:0.82rem; color: var(--ink-soft); margin-top:-4px; margin-bottom:10px;
+  }
+  .current-pick b{ color: var(--ink); }
+
+  button.btn{
+    appearance:none; border:none; border-radius:8px; padding:10px 16px;
+    background: var(--field); color: var(--paper); font-family:var(--sans);
+    font-weight:600; font-size:0.88rem; cursor:pointer;
+  }
+  button.btn.gold{ background: var(--gold); color: var(--field-dark); }
+  button.btn.ghost{ background: transparent; color: var(--ink); border:1.5px solid var(--line); }
+  button.btn.danger{ background: transparent; color: var(--miss); border:1.5px solid var(--miss); }
+  button.btn:disabled{ opacity:0.4; cursor:not-allowed; }
+
+  .field-row{ display:flex; flex-wrap:wrap; gap:10px; margin-bottom:10px; }
+  .field{ display:flex; flex-direction:column; gap:4px; flex:1; min-width:110px; }
+  .field label{ font-size:0.72rem; color: var(--ink-soft); font-weight:600; }
+  .field input, .field select{
+    border:1.5px solid var(--line); border-radius:7px; padding:8px 9px;
+    font-family:var(--sans); font-size:0.88rem; background:#fff; color:var(--ink);
+  }
+  .field input:focus, .field select:focus{ outline:2px solid var(--gold-soft); border-color:var(--gold); }
+
+  /* Arrow builder — diagram sayap (vane) yang bisa diklik untuk tandai hilang */
+  .arrow-builder{ margin: 14px 0 10px 0; display:flex; gap:20px; flex-wrap:wrap; align-items:flex-start; }
+  .fletch-diagram{ width:170px; flex:none; }
+  .fletch-diagram svg{ width:100%; cursor:pointer; }
+  .fletch-side{ flex:1; min-width:210px; }
+  .fletch-table{ width:100%; border-collapse:collapse; font-size:0.82rem; margin-bottom:8px; }
+  .fletch-table th{ text-align:left; color:var(--ink-soft); font-weight:600; font-size:0.68rem; padding:4px 6px; border-bottom:1px solid var(--line); }
+  .fletch-table td{ padding:4px 6px; border-bottom:1px solid var(--line); }
+  .fletch-table tr:last-child td{ border-bottom:none; }
+  .fletch-status-ok{ color: var(--good); font-weight:600; }
+  .fletch-status-missing{ color: var(--miss); font-weight:600; }
+  .fletch-summary{ font-size:0.82rem; font-weight:600; margin-top:2px; }
+  .fletch-summary.warn{ color: var(--miss); }
+
+  /* Target */
+  .target-wrap{ display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap; }
+  .target-svg{ width:280px; flex:none; touch-action:manipulation; }
+  .target-svg svg{ width:100%; cursor:crosshair; }
+  .target-side{ flex:1; min-width:220px; }
+
+  /* Titik incar — target polos (sama layout dgn target tembak), boleh banyak titik, bebas posisi */
+  .aim-target{ width:150px; }
+  .aim-target svg{ width:100%; cursor:crosshair; }
+
+  .env-row{ display:flex; gap:8px; flex-wrap:wrap; }
+  .env-btn{
+    border:1.5px solid var(--line); background:#fff; border-radius:8px; padding:8px 12px;
+    font-size:0.82rem; font-weight:600; cursor:pointer; color: var(--ink-soft);
+    display:flex; align-items:center; gap:6px;
+  }
+  .env-btn.active{ border-color: var(--field); color: var(--field); background: var(--paper); }
+
+  table.log{ width:100%; border-collapse:collapse; font-size:0.85rem; }
+  table.log th{ text-align:left; color:var(--ink-soft); font-weight:600; font-size:0.72rem; padding:6px 8px; border-bottom:1.5px solid var(--line); }
+  table.log td{ padding:7px 8px; border-bottom:1px solid var(--line); }
+  table.log tr:last-child td{ border-bottom:none; }
+  .score-pill{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:26px; height:26px; border-radius:50%; font-weight:700; font-size:0.8rem;
+    color:#fff;
+  }
+  .score-10{ background:#c9a227; color:#20241d; } .score-9{ background:#c9a227; color:#20241d; }
+  .score-8{ background:#3d5a3d; } .score-7{ background:#3d5a3d; }
+  .score-6{ background:#3d6a8a; } .score-5{ background:#3d6a8a; }
+  .score-0{ background: var(--miss); }
+  .del-shot{ background:none; border:none; color: var(--ink-soft); cursor:pointer; font-size:0.9rem; }
+  .del-shot:hover{ color: var(--miss); }
+
+  .stat-big{ font-family: var(--serif); font-size:2.2rem; font-weight:600; line-height:1; }
+  .stat-label{ font-size:0.75rem; color: var(--ink-soft); margin-top:4px; }
+  .stat-card{ text-align:left; }
+
+  .bar-row{ display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+  .bar-row .name{ width:120px; font-size:0.82rem; font-weight:600; flex:none; }
+  .bar-track{ flex:1; height:10px; background: var(--paper-dim); border-radius:6px; overflow:hidden; }
+  .bar-fill{ height:100%; background: var(--field); border-radius:6px; }
+  .bar-val{ width:64px; text-align:right; font-size:0.78rem; color: var(--ink-soft); flex:none; }
+
+  .empty{ color: var(--ink-soft); font-size:0.88rem; padding:10px 0; }
+
+  .drift-box{ display:flex; align-items:center; gap:16px; }
+  .drift-visual{ width:100px; height:100px; flex:none; position:relative; }
+  .drift-text{ font-size:0.88rem; line-height:1.5; }
+  .drift-text b{ color: var(--field); }
+
+  dialog{ border:none; border-radius:var(--radius); padding:0; max-width:420px; width:92%; }
+  dialog::backdrop{ background: rgba(15,26,19,0.5); }
+  .dialog-body{ padding:18px 20px; }
+  .dialog-body h2{ font-family:var(--serif); margin-top:0; }
+  .dialog-actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:14px; }
+
+  .helper{ font-size:0.76rem; color: var(--ink-soft); margin-top:6px; }
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+    background: var(--field); color:#fff; padding:10px 18px; border-radius:8px;
+    font-size:0.85rem; opacity:0; pointer-events:none; transition: opacity .2s ease, transform .2s ease;
+  }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(-4px); }
+
+  /* Tombol cepat kembali ke atas — ganti busur/panah/titik incar tanpa scroll manual */
+  .fab-top{
+    position:fixed; right:18px; bottom:20px; z-index:50;
+    background: var(--gold); color: var(--field-dark);
+    border:none; border-radius:999px; padding:12px 18px;
+    font-family:var(--sans); font-weight:700; font-size:0.82rem;
+    box-shadow: 0 4px 14px rgba(15,26,19,0.28); cursor:pointer;
+    display:none; align-items:center; gap:6px;
+  }
+  .fab-top.show{ display:inline-flex; }
+  .fab-top:active{ transform: translateY(1px); }
+  @media (max-width:760px){
+    .fab-top{ right:12px; bottom:16px; padding:11px 14px; font-size:0.78rem; }
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-inner">
+    <div style="display:flex;justify-content:flex-end;gap:10px;margin-bottom:8px;">
+      <a href="dashboard.html" style="color:rgba(246,242,232,.75);font-size:.78rem;text-decoration:none;">← Dashboard</a>
+      <button type="button" onclick="logout()" style="background:transparent;border:1px solid rgba(246,242,232,.3);color:rgba(246,242,232,.85);border-radius:6px;padding:3px 9px;font-size:.72rem;cursor:pointer;font-family:var(--sans);">Keluar</button>
+    </div>
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 40 40" fill="none">
+        <circle cx="20" cy="20" r="18" stroke="#c9a227" stroke-width="2"/>
+        <circle cx="20" cy="20" r="11" stroke="#c9a227" stroke-width="2"/>
+        <circle cx="20" cy="20" r="4" fill="#c9a227"/>
+      </svg>
+      <h1>Stargazer Archery</h1>
+      <span class="sub">Log &amp; kalkulasi latihan panahan</span>
+    </div>
+    <nav class="tabs">
+      <button data-view="session" class="active">Sesi Latihan</button>
+      <button data-view="gear">Panah &amp; Busur</button>
+      <button data-view="stats">Statistik</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <!-- ================= SESSION VIEW ================= -->
+  <section id="view-session" class="view active">
+    <div class="grid cols-2" style="align-items:start;" id="sessionTopAnchor">
+
+      <div class="card">
+        <h2>1. Kondisi</h2>
+        <h3>Angin</h3>
+        <div class="env-row" id="windRow"></div>
+        <h3 style="margin-top:10px;">Hujan</h3>
+        <div class="env-row" id="rainRow"></div>
+
+        <h2 style="margin-top:16px;">2. Pilih Busur</h2>
+        <div class="chip-row" id="bowChips"></div>
+        <div class="current-pick" id="bowPickInfo">Belum ada busur dipilih.</div>
+
+        <h2 style="margin-top:16px;">3. Pilih Set Panah</h2>
+        <div class="chip-row" id="arrowChips"></div>
+        <div class="current-pick" id="arrowPickInfo">Belum ada panah dipilih.</div>
+      </div>
+
+      <div class="card">
+        <h2>4. Titik Incar (opsional)</h2>
+        <p class="helper" style="margin-top:-6px;">Klik bebas di manapun buat nambah titik incar (boleh lebih dari satu). Klik titik yang sudah ada buat menghapusnya.</p>
+        <div class="aim-target" id="aimTarget"></div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px; max-width:150px;">
+          <span class="helper" id="aimLabel">1 titik incar (tengah)</span>
+        </div>
+        <button class="btn ghost" id="aimResetBtn" style="margin-top:6px; padding:6px 12px; font-size:0.76rem;">Reset ke tengah</button>
+
+        <h2 style="margin-top:18px;">5. Tembak — klik posisi kena panah</h2>
+        <div class="target-wrap">
+          <div class="target-svg"><div id="targetSvg"></div></div>
+          <div class="target-side">
+            <p class="helper">Klik langsung di lingkaran target sesuai posisi panah menancap. Skor &amp; arah otomatis tercatat.</p>
+            <button class="btn ghost" id="missBtn" style="width:100%;">Catat MISS (di luar target)</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <h2 style="margin:0;">Log Sesi Ini</h2>
+        <div style="display:flex; gap:8px;">
+          <span class="helper" id="sessionSummary" style="align-self:center;"></span>
+          <button class="btn danger" id="endSessionBtn">Selesai Sesi</button>
+        </div>
+      </div>
+      <table class="log">
+        <thead><tr><th>#</th><th>Skor</th><th>Panah</th><th>Busur</th><th>Arah</th><th>Kondisi</th><th></th></tr></thead>
+        <tbody id="shotLog"></tbody>
+      </table>
+      <p class="empty" id="shotLogEmpty">Belum ada tembakan di sesi ini.</p>
+    </div>
+  </section>
+
+  <!-- ================= GEAR VIEW ================= -->
+  <section id="view-gear" class="view">
+    <div class="grid cols-2">
+      <div class="card">
+        <h2 id="arrowFormTitle">Set Panah</h2>
+        <div id="arrowVisualBuilder" class="arrow-builder"></div>
+        <div class="field-row">
+          <div class="field"><label>Nama set</label><input id="af_name" placeholder="Panah A"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Jenis material</label>
+            <select id="af_material"></select>
+          </div>
+          <div class="field"><label>Panjang (cm)</label><input id="af_length" type="number" step="0.1"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Diameter (mm)</label><input id="af_diameter" type="number" step="0.1"></div>
+          <div class="field"><label>Berat (grain)</label><input id="af_weight" type="number" step="1"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Jenis sayap (fletching)</label>
+            <select id="af_fletchType"></select>
+          </div>
+          <div class="field"><label>Jumlah sayap</label><input id="af_fletchCount" type="number" min="2" max="6"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Kondisi tip (ujung)</label>
+            <select id="af_tipTight">
+              <option value="tight">Kencang</option>
+              <option value="loose">Longgar</option>
+            </select>
+          </div>
+          <div class="field"><label>Berat tip (grain)</label><input id="af_tipWeight" type="number" step="1" value="100"></div>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn gold" id="saveArrowBtn">Simpan Set Panah</button>
+          <button class="btn ghost" id="cancelEditArrowBtn" style="display:none;">Batal Edit</button>
+        </div>
+        <p class="helper">Pilih jenis material untuk isi otomatis nilai default (diameter &amp; berat), lalu tinggal sesuaikan. Tip yang longgar &amp; berat tip berpengaruh ke keseimbangan (FOC) dan konsistensi tembakan.</p>
+
+        <h3 style="margin-top:18px;">Daftar Set Panah</h3>
+        <div id="arrowList"></div>
+      </div>
+
+      <div class="card">
+        <h2>Busur</h2>
+        <div class="field-row">
+          <div class="field"><label>Nama busur</label><input id="bf_name" placeholder="Busur A"></div>
+          <div class="field"><label>Jenis</label>
+            <select id="bf_type"></select>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Panjang busur (inch)</label><input id="bf_length" type="number" step="1"></div>
+          <div class="field"><label>Draw weight (lbs)</label><input id="bf_weight" type="number" step="0.5"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Draw length (inch)</label><input id="bf_draw" type="number" step="0.25"></div>
+          <div class="field"><label>Jenis tali (string)</label>
+            <select id="bf_string"></select>
+          </div>
+        </div>
+        <button class="btn gold" id="saveBowBtn">Simpan Busur</button>
+
+        <h3 style="margin-top:18px;">Daftar Busur</h3>
+        <div id="bowList"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= STATS VIEW ================= -->
+  <section id="view-stats" class="view">
+    <div class="card" style="margin-bottom:16px;">
+      <h2>Data</h2>
+      <p class="helper" style="margin-top:-6px;">Export semua riwayat tembakan, sesi, set panah &amp; busur ke satu file Excel — buat backup atau dibuka di HP/komputer lain. Import buat gabungin data dari file Excel (data yang sudah ada gak akan ketimpa/dobel).</p>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn gold" id="exportExcelBtn">⬇ Export ke Excel</button>
+        <label class="btn ghost" id="importExcelLabel" style="display:inline-flex; align-items:center; cursor:pointer;">
+          ⬆ Import dari Excel
+          <input type="file" id="importExcelInput" accept=".xlsx,.xls" style="display:none;">
+        </label>
+      </div>
+    </div>
+
+    <div class="grid cols-3">
+      <div class="card stat-card"><div class="stat-big" id="stTotal">0</div><div class="stat-label">Total anak panah ditembakkan</div></div>
+      <div class="card stat-card"><div class="stat-big" id="stAvg">0</div><div class="stat-label">Rata-rata skor</div></div>
+      <div class="card stat-card"><div class="stat-big" id="stBest">0</div><div class="stat-label">Skor tertinggi tercatat</div></div>
+    </div>
+
+    <div class="grid cols-2" style="margin-top:16px;">
+      <div class="card">
+        <h2>Akurasi per Set Panah</h2>
+        <div id="arrowStats"></div>
+        <p class="empty" id="arrowStatsEmpty" style="display:none;">Belum ada data.</p>
+      </div>
+      <div class="card">
+        <h2>Akurasi per Busur</h2>
+        <div id="bowStats"></div>
+        <p class="empty" id="bowStatsEmpty" style="display:none;">Belum ada data.</p>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px;">
+      <h2>Kecenderungan Arah &amp; Saran Bidik</h2>
+      <div class="drift-box">
+        <div class="drift-visual"><svg viewBox="0 0 100 100" width="100" height="100">
+          <circle cx="50" cy="50" r="46" fill="none" stroke="#eae4d4" stroke-width="2"/>
+          <line x1="50" y1="4" x2="50" y2="96" stroke="#eae4d4"/>
+          <line x1="4" y1="50" x2="96" y2="50" stroke="#eae4d4"/>
+          <circle id="driftDot" cx="50" cy="50" r="6" fill="#c9a227"/>
+        </svg></div>
+        <div class="drift-text" id="driftText">Belum cukup data untuk analisa arah.</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px;">
+      <h2>Distribusi Skor (semua sesi)</h2>
+      <div id="scoreDist"></div>
+    </div>
+
+    <div class="card" style="margin-top:16px;">
+      <h2>Riwayat Sesi</h2>
+      <div id="sessionHistory"></div>
+      <p class="empty" id="sessionHistoryEmpty" style="display:none;">Belum ada sesi tersimpan.</p>
+    </div>
+  </section>
+
+</main>
+
+<div class="toast" id="toast"></div>
+<button class="fab-top show" id="fabTop" title="Balik ke atas untuk ganti busur/panah/titik incar">↑ Ganti Busur/Panah/Incar</button>
+
+<dialog id="confirmDialog">
+  <div class="dialog-body">
+    <h2 id="confirmTitle">Konfirmasi</h2>
+    <p id="confirmMsg"></p>
+    <div class="dialog-actions">
+      <button class="btn ghost" id="confirmCancel">Batal</button>
+      <button class="btn danger" id="confirmOk">Ya, lanjutkan</button>
+    </div>
+  </div>
+</dialog>
+
+<script>
+(function(){
+"use strict";
+
+/* ============================================================
+   STORAGE LAYER
+   Backed by public.archery_data (db/migrations/0024_archery.sql) --
+   one row per user, one jsonb column per key this app already uses
+   ("arrows"/"bows"/"shots"/"sessions" -> same-named columns,
+   "lastMaterial" -> last_material). CURRENT_USER_ID and
+   archeryRowCache are set once by bootstrapAuth() below, before
+   init() (and therefore any storeGet call) ever runs.
+
+   Kept the exact same (key, fallback) / (key, value) signature the
+   original window.storage version had, purely so nothing else in
+   this file -- every storeGet/storeSet call site in the app's own
+   business logic -- had to change.
+============================================================ */
+const KEY_TO_COLUMN = { arrows:"arrows", bows:"bows", shots:"shots", sessions:"sessions", lastMaterial:"last_material" };
+let CURRENT_USER_ID = null;
+let archeryRowCache = null;
+
+async function loadArcheryRow(userId){
+  const { data, error } = await supabase.from("archery_data").select("*").eq("user_id", userId).maybeSingle();
+  if(error){ console.error("Gagal memuat data archery dari server:", error); }
+  archeryRowCache = data || { user_id:userId, arrows:[], bows:[], shots:[], sessions:[], last_material:null };
+  return archeryRowCache;
+}
+async function storeGet(key, fallback){
+  const col = KEY_TO_COLUMN[key];
+  if(!col || !archeryRowCache) return fallback;
+  const v = archeryRowCache[col];
+  return (v === null || v === undefined) ? fallback : v;
+}
+async function storeSet(key, value){
+  const col = KEY_TO_COLUMN[key];
+  if(!col) return;
+  archeryRowCache[col] = value;
+  archeryRowCache.user_id = CURRENT_USER_ID;
+  // Single-row upsert -- no delete-reconcile needed like this site's other
+  // apps do for multi-row tables, since every key here is a whole-array
+  // column on the one row this user owns.
+  const { error } = await supabase.from("archery_data").upsert(archeryRowCache);
+  if(error) console.warn("Gagal menyimpan data archery ke server, coba lagi nanti.", error);
+}
+
+/* ============================================================
+   DATA DEFAULT
+============================================================ */
+const ARROW_MATERIALS = {
+  "Kayu":            { diameter: 8.5, weight: 500 },
+  "Aluminium":       { diameter: 6.3, weight: 380 },
+  "Carbon":          { diameter: 5.7, weight: 320 },
+  "Carbon-Aluminium":{ diameter: 5.0, weight: 300 },
+  "Fiberglass":      { diameter: 8.0, weight: 500 }
+};
+const FLETCH_TYPES = ["Plastic Vane","Bulu Alami (Feather)","Spin Wing"];
+const BOW_TYPES = ["Recurve","Compound","Barebow","Longbow"];
+const STRING_TYPES = ["Dacron","FastFlight","Dyneema/BCY-X"];
+const WIND_LEVELS = ["Tenang","Sepoi","Sedang","Kencang"];
+
+const DEFAULT_ARROWS = [
+  { id:"a_default", name:"Panah Standar", material:"Carbon", length:71, diameter:5.7, weight:320, fletchType:"Plastic Vane", fletchCount:3,
+    // Skema 3 sayap: 1 di kiri (270°), 2a & 2b menjepit simetris garis string di kanan (30°/150°) — 0% meleset.
+    fletches:[{num:1,angle:270,pos:"Kiri",present:true},{num:2,angle:30,pos:"Kanan-Atas",present:true},{num:3,angle:150,pos:"Kanan-Bawah",present:true}],
+    rotationOffset:0, tipTight:true, tipWeight:100 }
+];
+const DEFAULT_BOWS = [
+  { id:"b_default", name:"Busur Standar", type:"Recurve", length:68, weight:32, draw:28, string:"Dacron" }
+];
+
+/* ============================================================
+   STATE
+============================================================ */
+let arrows = [];
+let bows = [];
+let shots = [];         // semua shot dari semua sesi tersimpan
+let currentShots = [];  // shot untuk sesi yang sedang berjalan
+let sessions = [];       // sesi yang sudah "diselesaikan"
+
+let selArrow = null, selBow = null;
+let wind = WIND_LEVELS[0];
+let rain = false;
+let aimPoints = [{dx:0,dy:0}]; // titik incar bebas posisi, bisa lebih dari satu
+let currentFletches = [];      // state sayap yang sedang dibangun di form "Set Panah"
+let fletchRotation = 0;        // derajat putaran seluruh sayap relatif ke garis string (0-359)
+let lastMaterial = "Carbon";   // dipakai sebagai default material berikutnya, mengikuti history
+let editingArrowId = null;     // null = mode "buat baru", diisi id = mode "edit set panah tersimpan"
+
+/* ============================================================
+   INIT
+============================================================ */
+async function init(){
+  arrows       = await storeGet("arrows", DEFAULT_ARROWS.slice());
+  bows         = await storeGet("bows", DEFAULT_BOWS.slice());
+  shots        = await storeGet("shots", []);
+  sessions     = await storeGet("sessions", []);
+  lastMaterial = await storeGet("lastMaterial", "Carbon");
+
+  if(arrows.length){ selArrow = arrows[0].id; }
+  if(bows.length){ selBow = bows[0].id; }
+
+  populateSelects();
+  renderArrowChips();
+  renderBowChips();
+  renderEnvRows();
+  renderAimTarget();
+  renderTarget();
+  renderShotLog();
+  renderGearLists();
+  renderStats();
+  wireStaticEvents();
+
+  // form "Set Panah" defaultnya ngikut material terakhir yang dipakai (history)
+  document.getElementById("af_material").value = lastMaterial;
+  applyMaterialDefaults();
+  regenerateFletches(parseInt(document.getElementById("af_fletchCount").value)||3, false);
+  renderFletchDiagram();
+}
+
+function populateSelects(){
+  fillSelect("af_material", Object.keys(ARROW_MATERIALS));
+  fillSelect("af_fletchType", FLETCH_TYPES);
+  fillSelect("bf_type", BOW_TYPES);
+  fillSelect("bf_string", STRING_TYPES);
+}
+function fillSelect(id, arr){
+  const el = document.getElementById(id);
+  el.innerHTML = arr.map(v=>`<option value="${v}">${v}</option>`).join("");
+}
+
+/* ============================================================
+   NAV TABS
+============================================================ */
+document.querySelectorAll("nav.tabs button").forEach(btn=>{
+  btn.addEventListener("click", ()=>{
+    document.querySelectorAll("nav.tabs button").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");
+    document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+    document.getElementById("view-"+btn.dataset.view).classList.add("active");
+    if(btn.dataset.view === "stats") renderStats();
+    document.getElementById("fabTop").classList.toggle("show", btn.dataset.view === "session");
+  });
+});
+
+/* ============================================================
+   TOMBOL CEPAT — balik ke atas (ganti busur/panah/titik incar)
+   supaya gak usah scroll manual tiap abis nembak, soalnya gear
+   & titik incar bisa beda tiap sesi.
+============================================================ */
+document.getElementById("fabTop").addEventListener("click", ()=>{
+  document.getElementById("sessionTopAnchor").scrollIntoView({ behavior:"smooth", block:"start" });
+});
+
+/* ============================================================
+   TOAST
+============================================================ */
+let toastTimer;
+function toast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.classList.remove("show"), 1600);
+}
+
+/* ============================================================
+   CONFIRM DIALOG helper (dipakai untuk hapus data)
+============================================================ */
+function confirmAction(title, msg){
+  return new Promise(resolve=>{
+    const dlg = document.getElementById("confirmDialog");
+    document.getElementById("confirmTitle").textContent = title;
+    document.getElementById("confirmMsg").textContent = msg;
+    dlg.showModal();
+    const ok = document.getElementById("confirmOk");
+    const cancel = document.getElementById("confirmCancel");
+    function cleanup(v){ ok.removeEventListener("click", onOk); cancel.removeEventListener("click", onCancel); dlg.close(); resolve(v); }
+    function onOk(){ cleanup(true); }
+    function onCancel(){ cleanup(false); }
+    ok.addEventListener("click", onOk);
+    cancel.addEventListener("click", onCancel);
+  });
+}
+
+/* ============================================================
+   PRESET CHIPS — pemilihan set panah & busur (klik = instan)
+============================================================ */
+function renderArrowChips(){
+  const wrap = document.getElementById("arrowChips");
+  wrap.innerHTML = "";
+  arrows.forEach(a=>{
+    const c = document.createElement("button");
+    c.className = "chip" + (a.id===selArrow ? " selected":"");
+    c.textContent = a.name;
+    c.addEventListener("click", ()=>{ selArrow = a.id; renderArrowChips(); updatePickInfo(); });
+    wrap.appendChild(c);
+  });
+  const add = document.createElement("button");
+  add.className = "chip add";
+  add.textContent = "+ Kelola set panah";
+  add.addEventListener("click", ()=> switchToView("gear"));
+  wrap.appendChild(add);
+  updatePickInfo();
+}
+function renderBowChips(){
+  const wrap = document.getElementById("bowChips");
+  wrap.innerHTML = "";
+  bows.forEach(b=>{
+    const c = document.createElement("button");
+    c.className = "chip" + (b.id===selBow ? " selected":"");
+    c.textContent = b.name;
+    c.addEventListener("click", ()=>{ selBow = b.id; renderBowChips(); updatePickInfo(); });
+    wrap.appendChild(c);
+  });
+  const add = document.createElement("button");
+  add.className = "chip add";
+  add.textContent = "+ Kelola busur";
+  add.addEventListener("click", ()=> switchToView("gear"));
+  wrap.appendChild(add);
+  updatePickInfo();
+}
+function switchToView(name){
+  document.querySelector(`nav.tabs button[data-view="${name}"]`).click();
+}
+function arrowFletches(a){
+  if(a.fletches && a.fletches.length) return a.fletches;
+  return computeFletchPositions(a.fletchCount||3).map(p=>({...p, present:true}));
+}
+function arrowConditionText(a){
+  const fs = fletchSummary(arrowFletches(a));
+  const align = fletchAlignment(arrowFletches(a), a.rotationOffset||0);
+  const tipTight = a.tipTight!==undefined ? a.tipTight : true;
+  const tipWeight = a.tipWeight!==undefined ? a.tipWeight : 100;
+  const tipText = `Tip ${tipWeight}gr, ${tipTight ? "kencang" : "⚠ longgar"}`;
+  return { fs, align, tipText, tipTight, tipWeight };
+}
+function updatePickInfo(){
+  const a = arrows.find(x=>x.id===selArrow);
+  const b = bows.find(x=>x.id===selBow);
+  if(a){
+    const c = arrowConditionText(a);
+    const alignHtml = c.align.aligned ? c.align.text : `<span style="color:var(--miss);">${c.align.text}</span>`;
+    const tipHtml = c.tipTight ? c.tipText : `<span style="color:var(--miss);">${c.tipText}</span>`;
+    document.getElementById("arrowPickInfo").innerHTML =
+      `Dipilih: <b>${a.name}</b> — ${a.material}, ${a.length}cm, ${a.diameter}mm, ${a.weight}gr, ${a.fletchCount}x ${a.fletchType}<br>${c.fs.text} · ${alignHtml} · ${tipHtml}`;
+  } else {
+    document.getElementById("arrowPickInfo").textContent = "Belum ada panah dipilih.";
+  }
+  document.getElementById("bowPickInfo").innerHTML = b
+    ? `Dipilih: <b>${b.name}</b> — ${b.type}, ${b.length}", ${b.weight}lbs, draw ${b.draw}"`
+    : "Belum ada busur dipilih.";
+}
+
+/* ============================================================
+   ENVIRONMENT — angin & hujan
+============================================================ */
+function renderEnvRows(){
+  const windRow = document.getElementById("windRow");
+  windRow.innerHTML = "";
+  WIND_LEVELS.forEach(w=>{
+    const b = document.createElement("button");
+    b.className = "env-btn" + (w===wind ? " active":"");
+    b.textContent = w;
+    b.addEventListener("click", ()=>{ wind = w; renderEnvRows(); });
+    windRow.appendChild(b);
+  });
+  const rainRow = document.getElementById("rainRow");
+  rainRow.innerHTML = "";
+  [["Tidak Hujan",false],["Hujan",true]].forEach(([label,val])=>{
+    const b = document.createElement("button");
+    b.className = "env-btn" + (rain===val ? " active":"");
+    b.textContent = label;
+    b.addEventListener("click", ()=>{ rain = val; renderEnvRows(); });
+    rainRow.appendChild(b);
+  });
+}
+
+/* ============================================================
+   TITIK INCAR — target polos (tanpa warna), klik bebas nambah titik,
+   klik titik yang sudah ada untuk menghapusnya. Boleh lebih dari satu.
+============================================================ */
+const AIM_SIZE = 150, AIM_CX = 75, AIM_CY = 75, AIM_MAXR = 64;
+
+function renderAimTarget(){
+  let svg = `<svg viewBox="0 0 ${AIM_SIZE} ${AIM_SIZE}" id="aimSvgEl">`;
+  for(let i=1;i<=6;i++){
+    const r = AIM_MAXR - (i-1)*(AIM_MAXR/6);
+    svg += `<circle cx="${AIM_CX}" cy="${AIM_CY}" r="${r}" fill="none" stroke="#c7c1b0" stroke-width="1"/>`;
+  }
+  svg += `<line x1="${AIM_CX}" y1="${AIM_CY-AIM_MAXR-6}" x2="${AIM_CX}" y2="${AIM_CY+AIM_MAXR+6}" stroke="#c7c1b0" stroke-width="1"/>`;
+  svg += `<line x1="${AIM_CX-AIM_MAXR-6}" y1="${AIM_CY}" x2="${AIM_CX+AIM_MAXR+6}" y2="${AIM_CY}" stroke="#c7c1b0" stroke-width="1"/>`;
+  aimPoints.forEach(p=>{
+    const x = AIM_CX + p.dx*AIM_MAXR, y = AIM_CY + p.dy*AIM_MAXR;
+    svg += `<line x1="${x-6}" y1="${y}" x2="${x+6}" y2="${y}" stroke="#20241d" stroke-width="1.5"/>`;
+    svg += `<line x1="${x}" y1="${y-6}" x2="${x}" y2="${y+6}" stroke="#20241d" stroke-width="1.5"/>`;
+    svg += `<circle cx="${x}" cy="${y}" r="9" fill="none" stroke="#20241d" stroke-width="1"/>`;
+  });
+  svg += `</svg>`;
+  document.getElementById("aimTarget").innerHTML = svg;
+  document.getElementById("aimSvgEl").addEventListener("click", onAimClick);
+
+  const label = (aimPoints.length===1 && Math.abs(aimPoints[0].dx)<0.05 && Math.abs(aimPoints[0].dy)<0.05)
+    ? "1 titik incar (tengah)"
+    : `${aimPoints.length} titik incar`;
+  document.getElementById("aimLabel").textContent = label;
+}
+
+function onAimClick(evt){
+  const svg = evt.currentTarget;
+  const rect = svg.getBoundingClientRect();
+  const px = ((evt.clientX - rect.left) / rect.width) * AIM_SIZE;
+  const py = ((evt.clientY - rect.top) / rect.height) * AIM_SIZE;
+
+  const hitIdx = aimPoints.findIndex(p=>{
+    const ex = AIM_CX + p.dx*AIM_MAXR, ey = AIM_CY + p.dy*AIM_MAXR;
+    return Math.hypot(ex-px, ey-py) < 11;
+  });
+  if(hitIdx >= 0){
+    aimPoints.splice(hitIdx, 1);
+  } else {
+    aimPoints.push({ dx: (px-AIM_CX)/AIM_MAXR, dy: (py-AIM_CY)/AIM_MAXR });
+  }
+  renderAimTarget();
+}
+
+document.getElementById("aimResetBtn").addEventListener("click", ()=>{
+  aimPoints = [{dx:0,dy:0}];
+  renderAimTarget();
+});
+
+/* ============================================================
+   TARGET — SVG lingkaran skor 5..10, klik = catat shot
+============================================================ */
+const RING_COLORS = ["#3d6a8a","#3d6a8a","#3d5a3d","#3d5a3d","#c9a227","#e3c76a"]; // 5,6,7,8,9,10
+function renderTarget(){
+  const size = 260, cx = size/2, cy = size/2, maxR = 122;
+  let svg = `<svg viewBox="0 0 ${size} ${size}" id="targetSvgEl">`;
+  // rings from outside (score 5) to inside (score 10)
+  for(let i=0;i<6;i++){
+    const score = 5+i;
+    const r = maxR - i*(maxR/6);
+    svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${RING_COLORS[i]}" stroke="#fff" stroke-width="1.5" data-score="${score}"/>`;
+  }
+  svg += `<line x1="${cx}" y1="${cy-maxR-8}" x2="${cx}" y2="${cy+maxR+8}" stroke="#20241d" stroke-opacity="0.15"/>`;
+  svg += `<line x1="${cx-maxR-8}" y1="${cy}" x2="${cx+maxR+8}" y2="${cy}" stroke="#20241d" stroke-opacity="0.15"/>`;
+  svg += `</svg>`;
+  document.getElementById("targetSvg").innerHTML = svg;
+
+  const el = document.getElementById("targetSvgEl");
+  el.addEventListener("click", onTargetClick);
+}
+
+function onTargetClick(evt){
+  const svg = evt.currentTarget;
+  const rect = svg.getBoundingClientRect();
+  const size = 260, cx = size/2, cy = size/2, maxR = 122;
+  const px = ((evt.clientX - rect.left) / rect.width) * size;
+  const py = ((evt.clientY - rect.top) / rect.height) * size;
+  const dx = px - cx, dy = py - cy;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+  let score;
+  if(dist > maxR){ score = 0; }
+  else{
+    const ring = Math.floor(dist / (maxR/6)); // 0 = outer (score5) .. 5 = inner (score10)
+    score = 10 - ring;
+    if(score < 5) score = 5;
+    if(score > 10) score = 10;
+  }
+  const angleDeg = Math.atan2(dy, dx) * 180/Math.PI; // 0 = kanan, -90 atas, 90 bawah
+  recordShot(score, dx, dy, dist, maxR);
+}
+
+document.getElementById("missBtn").addEventListener("click", ()=> recordShot(0, 0, 0, 999, 122));
+
+function directionLabel(dx,dy,dist,maxR){
+  if(dist < maxR*0.12) return "Tengah";
+  const angle = Math.atan2(dy,dx) * 180/Math.PI; // -180..180
+  const dirs = [
+    {a:0,   n:"Kanan"}, {a:45,  n:"Kanan-Bawah"}, {a:90,  n:"Bawah"},
+    {a:135, n:"Kiri-Bawah"}, {a:180, n:"Kiri"}, {a:-135,n:"Kiri-Atas"},
+    {a:-90, n:"Atas"}, {a:-45, n:"Kanan-Atas"}
+  ];
+  let best = dirs[0], bestDiff = 999;
+  dirs.forEach(d=>{
+    let diff = Math.abs(((angle - d.a + 540) % 360) - 180);
+    if(diff < bestDiff){ bestDiff = diff; best = d; }
+  });
+  return best.n;
+}
+
+/* ============================================================
+   RECORD SHOT
+============================================================ */
+function recordShot(score, dx, dy, dist, maxR){
+  if(!selArrow || !selBow){
+    toast("Pilih set panah & busur dulu ya.");
+    return;
+  }
+  const dir = score===0 ? "-" : directionLabel(dx,dy,dist,maxR);
+  const shot = {
+    id: "s_"+Date.now()+"_"+Math.floor(Math.random()*1000),
+    ts: Date.now(),
+    arrowId: selArrow,
+    bowId: selBow,
+    score, dir,
+    normDx: dist>maxR ? null : dx/maxR,
+    normDy: dist>maxR ? null : dy/maxR,
+    aimPoints: aimPoints.slice(),
+    wind, rain
+  };
+  currentShots.push(shot);
+  renderShotLog();
+  toast(score===0 ? "Miss dicatat." : `Skor ${score} dicatat (${dir}).`);
+}
+
+function deleteCurrentShot(id){
+  currentShots = currentShots.filter(s=>s.id!==id);
+  renderShotLog();
+}
+
+function renderShotLog(){
+  const tbody = document.getElementById("shotLog");
+  const empty = document.getElementById("shotLogEmpty");
+  tbody.innerHTML = "";
+  if(currentShots.length===0){ empty.style.display="block"; }
+  else{ empty.style.display="none"; }
+  currentShots.slice().reverse().forEach((s,idx)=>{
+    const num = currentShots.length - idx;
+    const a = arrows.find(x=>x.id===s.arrowId);
+    const b = bows.find(x=>x.id===s.bowId);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${num}</td>
+      <td><span class="score-pill score-${s.score}">${s.score}</span></td>
+      <td>${a?a.name:"-"}</td>
+      <td>${b?b.name:"-"}</td>
+      <td>${s.dir}</td>
+      <td>${s.wind}${s.rain?" · Hujan":""}</td>
+      <td><button class="del-shot" data-id="${s.id}" title="Hapus">✕</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+  tbody.querySelectorAll(".del-shot").forEach(btn=>{
+    btn.addEventListener("click", ()=> deleteCurrentShot(btn.dataset.id));
+  });
+  const total = currentShots.length;
+  const avg = total ? (currentShots.reduce((a,s)=>a+s.score,0)/total).toFixed(2) : "0";
+  document.getElementById("sessionSummary").textContent = total ? `${total} anak panah · rata-rata ${avg}` : "";
+}
+
+document.getElementById("endSessionBtn").addEventListener("click", async ()=>{
+  if(currentShots.length===0){ toast("Belum ada tembakan untuk disimpan."); return; }
+  const ok = await confirmAction("Selesaikan sesi?", `Menyimpan ${currentShots.length} tembakan sebagai satu sesi. Log akan dikosongkan untuk sesi berikutnya.`);
+  if(!ok) return;
+  const session = { id:"sess_"+Date.now(), ts:Date.now(), shotIds: currentShots.map(s=>s.id) };
+  shots = shots.concat(currentShots);
+  sessions.push(session);
+  await storeSet("shots", shots);
+  await storeSet("sessions", sessions);
+  currentShots = [];
+  renderShotLog();
+  renderStats();
+  toast("Sesi tersimpan.");
+});
+
+/* ============================================================
+   DIAGRAM SAYAP — pandangan dari belakang nock, tiap sayap bisa
+   ditekan untuk menandai hilang/patah. Garis string ada di KANAN
+   (bukan di tengah). Untuk 3 sayap: #1 default di kiri, 2a & 2b
+   menjepit simetris di kanan sama string — itu 0% meleset (perfect).
+============================================================ */
+const COMPASS_8 = ["Atas","Kanan-Atas","Kanan","Kanan-Bawah","Bawah","Kiri-Bawah","Kiri","Kiri-Atas"];
+function angleToCompass(angle){
+  const idx = (Math.round(angle/45) % 8 + 8) % 8;
+  return COMPASS_8[idx];
+}
+// Untuk 3 sayap (paling umum): #1 defaultnya di KIRI (270°) sebagai index/cock-vane,
+// dan dua sayap lainnya otomatis simetris menjepit garis string di KANAN (90°) —
+// itulah kondisi "sejajar sempurna" (0% meleset) sebelum diputar.
+function computeFletchPositions(count){
+  const out = [];
+  const startAngle = (count===3) ? 270 : 0; // 0 = atas, searah jarum jam
+  for(let i=0;i<count;i++){
+    const angle = (startAngle + (360/count)*i + 360) % 360;
+    out.push({ num: i+1, angle, pos: angleToCompass(angle) });
+  }
+  return out;
+}
+// Label tampilan: untuk 3 sayap pakai skema "1, 2a, 2b" (1 = index/kiri, 2a/2b = pasangan
+// yang harus sejajar/menjepit garis string). Jumlah sayap lain tetap 1,2,3,...
+function fletchLabel(f, totalCount){
+  if(totalCount===3){
+    if(f.num===1) return "1";
+    if(f.num===2) return "2a";
+    if(f.num===3) return "2b";
+  }
+  return String(f.num);
+}
+function regenerateFletches(count, keepExisting){
+  const positions = computeFletchPositions(count);
+  currentFletches = positions.map(p=>{
+    const prev = keepExisting ? currentFletches.find(f=>f.num===p.num) : null;
+    return { ...p, present: prev ? prev.present : true };
+  });
+}
+function fletchSummary(fletches){
+  const missing = fletches.filter(f=>!f.present);
+  const total = fletches.length;
+  if(missing.length===0) return { text:`${total}/${total} sayap lengkap.`, warn:false };
+  if(missing.length===total) return { text:`Tanpa sayap sama sekali — lintasan kemungkinan oleng/tidak stabil, akurasi menurun drastis.`, warn:true };
+  const list = missing.map(f=>`${fletchLabel(f,total)} (${f.pos})`).join(", ");
+  return { text:`Hilang: ${list}.`, warn:true };
+}
+
+// Cek apakah susunan sayap "sejajar" dengan garis string. Garis string sekarang di KANAN
+// (sumbu 90°/270°, bukan lagi di tengah/vertikal). Untuk 3 sayap: default-nya #1 di kiri (270°)
+// dan 2a/2b menjepit simetris di kanan (90°) — itu 0% meleset alias "perfect". Kalau susunan
+// habis diputar/diperbaiki (misal bekas re-fletch), 2a/2b bisa geser dan gak lagi menjepit pas.
+function fletchAlignment(fletches, rotation){
+  const tolerance = 4; // derajat toleransi
+  let best = null;
+  fletches.forEach(f=>{
+    const eff = ((f.angle + rotation) % 360 + 360) % 360;
+    const distTo90 = Math.abs(eff-90);
+    const distTo270 = Math.abs(eff-270);
+    const dist = Math.min(distTo90, distTo270);
+    if(best===null || dist < best) best = dist;
+  });
+  if(best <= tolerance) return { aligned:true, text:"Sejajar dengan garis string (0% meleset — perfect)." };
+  return { aligned:false, text:`Tidak sejajar — meleset ±${Math.round(best)}° dari garis string. Kemungkinan bekas perbaikan/re-fletch bergeser.` };
+}
+
+function renderFletchDiagram(){
+  const wrap = document.getElementById("arrowVisualBuilder");
+  const size = 150, cx = 75, cy = 75, r = 50;
+  const total = currentFletches.length;
+  let svg = `<svg viewBox="0 0 ${size} ${size}" id="fletchSvgEl">`;
+  // garis referensi string — di KANAN (bukan di tengah), TETAP tidak ikut berputar
+  svg += `<line x1="${cx}" y1="${cy}" x2="${size-6}" y2="${cy}" stroke="#8a8f87" stroke-width="1.5" stroke-dasharray="4,3"/>`;
+  svg += `<text x="${size-6}" y="${cy-6}" text-anchor="end" font-size="8" fill="#8a8f87" font-family="Archivo, sans-serif">string</text>`;
+  svg += `<circle cx="${cx}" cy="${cy}" r="14" fill="none" stroke="#8a8f87" stroke-width="1.5"/>`; // shaft cross-section
+  currentFletches.forEach(f=>{
+    const effAngle = f.angle + fletchRotation;
+    const rad = (effAngle-90) * Math.PI/180; // -90 supaya 0 derajat = arah atas
+    const x1 = cx + 14*Math.cos(rad), y1 = cy + 14*Math.sin(rad);
+    const x2 = cx + r*Math.cos(rad), y2 = cy + r*Math.sin(rad);
+    const stroke = f.present ? "#c9a227" : "#c7c1b0";
+    const dash = f.present ? "" : `stroke-dasharray="3,3"`;
+    const label = fletchLabel(f, total);
+    svg += `<g class="fletch-clickable" data-num="${f.num}" style="cursor:pointer;">`;
+    svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${stroke}" stroke-width="7" stroke-linecap="round" ${dash}/>`;
+    svg += `<circle cx="${x2}" cy="${y2}" r="10" fill="${f.present ? '#20241d' : '#fff'}" stroke="#20241d" stroke-width="1"/>`;
+    svg += `<text x="${x2}" y="${y2+3.5}" text-anchor="middle" font-size="8" font-family="Archivo, sans-serif" fill="${f.present?'#fff':'#20241d'}">${label}</text>`;
+    svg += `</g>`;
+  });
+  svg += `</svg>`;
+
+  const rows = currentFletches.map(f=>{
+    const effAngle = ((f.angle + fletchRotation) % 360 + 360) % 360;
+    const pos = angleToCompass(effAngle);
+    return `
+    <tr>
+      <td>${fletchLabel(f,total)}</td>
+      <td>${pos}</td>
+      <td class="${f.present?'fletch-status-ok':'fletch-status-missing'}">${f.present ? 'Ada' : 'Hilang'}</td>
+    </tr>`;
+  }).join("");
+  const sum = fletchSummary(currentFletches);
+  const align = fletchAlignment(currentFletches, fletchRotation);
+
+  const schemeHelp = total===3
+    ? `Skema 3 sayap: <b>1</b> = sayap index (default kiri), <b>2a</b> &amp; <b>2b</b> = pasangan yang harus menjepit simetris garis string di kanan. Susunan default (sebelum diputar) sudah 0% meleset alias "perfect".`
+    : `Klik tiap sayap untuk menandai hilang/patah.`;
+
+  wrap.innerHTML = `
+    <div class="fletch-diagram">
+      ${svg}
+      <div style="margin-top:8px;">
+        <label class="helper" style="display:block; margin-bottom:2px;">Putar sayap (cocokkan sama posisi asli di string): ${fletchRotation}°</label>
+        <input type="range" id="fletchRotationInput" min="0" max="359" step="1" value="${fletchRotation}" style="width:100%;">
+        <button class="btn ghost" id="fletchRotationReset" style="margin-top:6px; padding:4px 10px; font-size:0.72rem; width:100%;">Reset ke 0°</button>
+      </div>
+    </div>
+    <div class="fletch-side">
+      <p class="helper" style="margin-top:0;">${schemeHelp} Klik tiap sayap di diagram buat tandai hilang/patah. Putar diagram supaya cocok dengan posisi asli sayap terhadap garis string (garis putus-putus di kanan) — berguna buat cek panah bekas re-fletch/perbaikan yang mungkin jadi tidak sejajar.</p>
+      <table class="fletch-table">
+        <thead><tr><th>Nomor</th><th>Arah</th><th>Status</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div class="fletch-summary${sum.warn?' warn':''}">${sum.text}</div>
+      <div class="fletch-summary${align.aligned?'':' warn'}">${align.text}</div>
+    </div>
+  `;
+
+  wrap.querySelectorAll(".fletch-clickable").forEach(el=>{
+    el.addEventListener("click", ()=>{
+      const num = parseInt(el.dataset.num);
+      const f = currentFletches.find(x=>x.num===num);
+      if(f){ f.present = !f.present; renderFletchDiagram(); }
+    });
+  });
+  document.getElementById("fletchRotationInput").addEventListener("input", (e)=>{
+    fletchRotation = parseInt(e.target.value)||0;
+    renderFletchDiagram();
+  });
+  document.getElementById("fletchRotationReset").addEventListener("click", ()=>{
+    fletchRotation = 0;
+    renderFletchDiagram();
+  });
+}
+
+document.getElementById("af_fletchCount").addEventListener("input", ()=>{
+  const n = Math.max(2, Math.min(6, parseInt(document.getElementById("af_fletchCount").value)||3));
+  regenerateFletches(n, true);
+  renderFletchDiagram();
+});
+
+function applyMaterialDefaults(){
+  const mat = document.getElementById("af_material").value;
+  const d = ARROW_MATERIALS[mat];
+  if(d){
+    document.getElementById("af_diameter").value = d.diameter;
+    document.getElementById("af_weight").value = d.weight;
+  }
+  if(!document.getElementById("af_length").value) document.getElementById("af_length").value = 71;
+  if(!document.getElementById("af_fletchCount").value) document.getElementById("af_fletchCount").value = 3;
+}
+document.getElementById("af_material").addEventListener("change", applyMaterialDefaults);
+
+/* ============================================================
+   EDIT SET PANAH TERSIMPAN — load data arrow yang sudah ada ke
+   form (termasuk rotasi sayap & status tip) supaya bisa dicek
+   ulang (misal: apa masih sejajar setelah re-fletch/perbaikan)
+   dan disimpan kembali ke id yang sama (update in-place, riwayat
+   tembakan lama tetap nyambung).
+============================================================ */
+function loadArrowIntoForm(id){
+  const a = arrows.find(x=>x.id===id);
+  if(!a) return;
+  editingArrowId = id;
+
+  document.getElementById("af_name").value = a.name;
+  document.getElementById("af_material").value = a.material;
+  document.getElementById("af_length").value = a.length;
+  document.getElementById("af_diameter").value = a.diameter;
+  document.getElementById("af_weight").value = a.weight;
+  document.getElementById("af_fletchType").value = a.fletchType;
+  document.getElementById("af_fletchCount").value = a.fletchCount;
+  document.getElementById("af_tipTight").value = (a.tipTight!==undefined ? a.tipTight : true) ? "tight" : "loose";
+  document.getElementById("af_tipWeight").value = a.tipWeight!==undefined ? a.tipWeight : 100;
+
+  fletchRotation = a.rotationOffset||0;
+  currentFletches = arrowFletches(a).map(f=>({...f}));
+
+  renderFletchDiagram();
+  document.getElementById("arrowFormTitle").textContent = `Edit: ${a.name}`;
+  document.getElementById("saveArrowBtn").textContent = "Simpan Perubahan";
+  document.getElementById("cancelEditArrowBtn").style.display = "inline-block";
+  switchToView("gear");
+  document.getElementById("arrowFormTitle").scrollIntoView({behavior:"smooth", block:"start"});
+}
+
+function resetArrowForm(){
+  editingArrowId = null;
+  document.getElementById("af_name").value = "";
+  document.getElementById("arrowFormTitle").textContent = "Set Panah";
+  document.getElementById("saveArrowBtn").textContent = "Simpan Set Panah";
+  document.getElementById("cancelEditArrowBtn").style.display = "none";
+  fletchRotation = 0;
+  document.getElementById("af_material").value = lastMaterial;
+  applyMaterialDefaults();
+  regenerateFletches(parseInt(document.getElementById("af_fletchCount").value)||3, false);
+  renderFletchDiagram();
+}
+
+document.getElementById("cancelEditArrowBtn").addEventListener("click", resetArrowForm);
+
+/* ============================================================
+   GEAR MANAGEMENT — save/list/delete arrows & bows
+============================================================ */
+document.getElementById("saveArrowBtn").addEventListener("click", async ()=>{
+  const name = document.getElementById("af_name").value.trim();
+  if(!name){ toast("Kasih nama set panah dulu."); return; }
+  const fields = {
+    name,
+    material: document.getElementById("af_material").value,
+    length: parseFloat(document.getElementById("af_length").value)||71,
+    diameter: parseFloat(document.getElementById("af_diameter").value)||0,
+    weight: parseFloat(document.getElementById("af_weight").value)||0,
+    fletchType: document.getElementById("af_fletchType").value,
+    fletchCount: parseInt(document.getElementById("af_fletchCount").value)||3,
+    fletches: currentFletches.map(f=>({...f})),
+    rotationOffset: fletchRotation,
+    tipTight: document.getElementById("af_tipTight").value === "tight",
+    tipWeight: parseFloat(document.getElementById("af_tipWeight").value)||0
+  };
+
+  if(editingArrowId){
+    // Update in-place: id tetap sama supaya riwayat tembakan lama & statistik tetap nyambung ke set panah ini.
+    const idx = arrows.findIndex(a=>a.id===editingArrowId);
+    if(idx>=0) arrows[idx] = { ...arrows[idx], ...fields };
+    await storeSet("arrows", arrows);
+    toast("Perubahan set panah tersimpan.");
+    resetArrowForm();
+  } else {
+    const arrow = { id: "a_"+Date.now(), ...fields };
+    arrows.push(arrow);
+    await storeSet("arrows", arrows);
+
+    lastMaterial = arrow.material;
+    await storeSet("lastMaterial", lastMaterial);
+
+    document.getElementById("af_name").value = "";
+    fletchRotation = 0;
+    regenerateFletches(arrow.fletchCount, false); // reset diagram (semua sayap dianggap baru/lengkap)
+    renderFletchDiagram();
+    toast("Set panah tersimpan.");
+  }
+
+  renderArrowChips();
+  renderGearLists();
+  updatePickInfo();
+});
+
+document.getElementById("saveBowBtn").addEventListener("click", async ()=>{
+  const name = document.getElementById("bf_name").value.trim();
+  if(!name){ toast("Kasih nama busur dulu."); return; }
+  const bow = {
+    id: "b_"+Date.now(),
+    name,
+    type: document.getElementById("bf_type").value,
+    length: parseFloat(document.getElementById("bf_length").value)||68,
+    weight: parseFloat(document.getElementById("bf_weight").value)||0,
+    draw: parseFloat(document.getElementById("bf_draw").value)||0,
+    string: document.getElementById("bf_string").value
+  };
+  bows.push(bow);
+  await storeSet("bows", bows);
+  document.getElementById("bf_name").value = "";
+  renderBowChips();
+  renderGearLists();
+  toast("Busur tersimpan.");
+});
+
+function renderGearLists(){
+  const aWrap = document.getElementById("arrowList");
+  aWrap.innerHTML = arrows.map(a=>{
+    const c = arrowConditionText(a);
+    const tipWarn = !c.tipTight;
+    return `
+    <div class="bar-row" style="align-items:center;">
+      <div class="name" style="width:auto;flex:1;">
+        <a href="#" class="edit-arrow-link" data-id="${a.id}" style="color:inherit; text-decoration:underline; text-decoration-style:dotted; cursor:pointer;" title="Klik untuk edit set panah ini">${a.name}</a>
+        <span class="helper">${a.material} · ${a.length}cm · ${a.diameter}mm · ${a.weight}gr · ${a.fletchCount}x ${a.fletchType}</span>
+        <div class="fletch-summary${c.fs.warn?' warn':''}" style="font-size:0.76rem;">${c.fs.text}</div>
+        <div class="fletch-summary${c.align.aligned?'':' warn'}" style="font-size:0.76rem;">${c.align.text}</div>
+        <div class="fletch-summary${tipWarn?' warn':''}" style="font-size:0.76rem;">Tip: ${c.tipWeight}gr, ${c.tipTight ? 'kencang' : '⚠ longgar — cek ulang, bisa pengaruhi konsistensi tembakan'}</div>
+      </div>
+      <button class="del-shot" data-kind="arrow" data-id="${a.id}" title="Hapus">✕</button>
+    </div>`;}).join("") || `<p class="empty">Belum ada set panah.</p>`;
+
+  aWrap.querySelectorAll(".edit-arrow-link").forEach(link=>{
+    link.addEventListener("click", (e)=>{ e.preventDefault(); loadArrowIntoForm(link.dataset.id); });
+  });
+
+  const bWrap = document.getElementById("bowList");
+  bWrap.innerHTML = bows.map(b=>`
+    <div class="bar-row" style="align-items:center;">
+      <div class="name" style="width:auto;flex:1;">${b.name} <span class="helper">${b.type} · ${b.length}" · ${b.weight}lbs · draw ${b.draw}" · ${b.string}</span></div>
+      <button class="del-shot" data-kind="bow" data-id="${b.id}" title="Hapus">✕</button>
+    </div>`).join("") || `<p class="empty">Belum ada busur.</p>`;
+
+  document.querySelectorAll('[data-kind="arrow"]').forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      const ok = await confirmAction("Hapus set panah?", "Data tembakan lama yang memakai set ini tetap tersimpan di riwayat.");
+      if(!ok) return;
+      arrows = arrows.filter(a=>a.id!==btn.dataset.id);
+      if(selArrow===btn.dataset.id) selArrow = arrows[0]?arrows[0].id:null;
+      if(editingArrowId===btn.dataset.id) resetArrowForm();
+      await storeSet("arrows", arrows);
+      renderArrowChips(); renderGearLists(); updatePickInfo();
+    });
+  });
+  document.querySelectorAll('[data-kind="bow"]').forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      const ok = await confirmAction("Hapus busur?", "Data tembakan lama yang memakai busur ini tetap tersimpan di riwayat.");
+      if(!ok) return;
+      bows = bows.filter(b=>b.id!==btn.dataset.id);
+      if(selBow===btn.dataset.id) selBow = bows[0]?bows[0].id:null;
+      await storeSet("bows", bows);
+      renderBowChips(); renderGearLists();
+    });
+  });
+}
+
+/* ============================================================
+   STATISTICS
+============================================================ */
+function renderStats(){
+  const all = shots; // hanya sesi yang sudah "Selesai" masuk statistik jangka panjang
+  const total = all.length;
+  document.getElementById("stTotal").textContent = total;
+  document.getElementById("stAvg").textContent = total ? (all.reduce((a,s)=>a+s.score,0)/total).toFixed(2) : "0";
+  document.getElementById("stBest").textContent = total ? Math.max(...all.map(s=>s.score)) : "0";
+
+  renderGroupStats(all, "arrowId", arrows, "arrowStats", "arrowStatsEmpty");
+  renderGroupStats(all, "bowId", bows, "bowStats", "bowStatsEmpty");
+  renderDrift(all);
+  renderScoreDist(all);
+  renderSessionHistory();
+}
+
+function renderGroupStats(all, key, defs, containerId, emptyId){
+  const wrap = document.getElementById(containerId);
+  const emptyEl = document.getElementById(emptyId);
+  if(all.length===0){ wrap.innerHTML=""; emptyEl.style.display="block"; return; }
+  emptyEl.style.display="none";
+  const groups = {};
+  all.forEach(s=>{
+    const k = s[key];
+    if(!groups[k]) groups[k] = [];
+    groups[k].push(s.score);
+  });
+  const rows = Object.keys(groups).map(k=>{
+    const def = defs.find(d=>d.id===k);
+    const scores = groups[k];
+    const avg = scores.reduce((a,b)=>a+b,0)/scores.length;
+    return { name: def?def.name:"(dihapus)", avg, count: scores.length };
+  }).sort((a,b)=>b.avg-a.avg);
+  const maxAvg = 10;
+  wrap.innerHTML = rows.map(r=>`
+    <div class="bar-row">
+      <div class="name">${r.name}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(r.avg/maxAvg*100).toFixed(0)}%"></div></div>
+      <div class="bar-val">${r.avg.toFixed(2)} (${r.count}x)</div>
+    </div>`).join("");
+}
+
+function renderDrift(all){
+  const withPos = all.filter(s=>s.normDx!==null && s.normDx!==undefined && s.score>0);
+  const dot = document.getElementById("driftDot");
+  const text = document.getElementById("driftText");
+  if(withPos.length < 5){
+    dot.setAttribute("cx",50); dot.setAttribute("cy",50);
+    text.textContent = "Belum cukup data (minimal 5 tembakan bernilai) untuk analisa arah bidikan.";
+    return;
+  }
+  const avgDx = withPos.reduce((a,s)=>a+s.normDx,0)/withPos.length;
+  const avgDy = withPos.reduce((a,s)=>a+s.normDy,0)/withPos.length;
+  const cx = 50 + avgDx*40, cy = 50 + avgDy*40;
+  dot.setAttribute("cx", cx.toFixed(1));
+  dot.setAttribute("cy", cy.toFixed(1));
+
+  const horiz = Math.abs(avgDx) < 0.06 ? null : (avgDx > 0 ? "kanan" : "kiri");
+  const vert  = Math.abs(avgDy) < 0.06 ? null : (avgDy > 0 ? "bawah" : "atas");
+  let msg;
+  if(!horiz && !vert){
+    msg = `Kelompok tembakan cukup <b>terpusat</b>, tidak ada kecenderungan arah yang jelas.`;
+  } else {
+    const parts = [horiz, vert].filter(Boolean).join(" &amp; ");
+    const adjustDir = { kanan:"kiri", kiri:"kanan", atas:"bawah", bawah:"atas" };
+    const adjustParts = [horiz, vert].filter(Boolean).map(d=>adjustDir[d]).join(" &amp; ");
+    msg = `Tembakan cenderung mengelompok ke arah <b>${parts}</b> dari titik tengah.<br>Coba geser sight/bidikan ke arah <b>${adjustParts}</b> sedikit demi sedikit di sesi berikutnya, lalu evaluasi lagi.`;
+  }
+  text.innerHTML = msg;
+}
+
+function renderScoreDist(all){
+  const wrap = document.getElementById("scoreDist");
+  if(all.length===0){ wrap.innerHTML = `<p class="empty">Belum ada data.</p>`; return; }
+  const buckets = {10:0,9:0,8:0,7:0,6:0,5:0,0:0};
+  all.forEach(s=> buckets[s.score] = (buckets[s.score]||0)+1 );
+  const max = Math.max(...Object.values(buckets), 1);
+  wrap.innerHTML = [10,9,8,7,6,5,0].map(score=>{
+    const label = score===0 ? "Miss" : score;
+    const count = buckets[score];
+    return `<div class="bar-row">
+      <div class="name">Skor ${label}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(count/max*100).toFixed(0)}%; background:${score===0?'#a13d2b':'#c9a227'}"></div></div>
+      <div class="bar-val">${count}x</div>
+    </div>`;
+  }).join("");
+}
+
+function renderSessionHistory(){
+  const wrap = document.getElementById("sessionHistory");
+  const emptyEl = document.getElementById("sessionHistoryEmpty");
+  if(sessions.length===0){ wrap.innerHTML=""; emptyEl.style.display="block"; return; }
+  emptyEl.style.display="none";
+  wrap.innerHTML = sessions.slice().reverse().map(sess=>{
+    const sShots = shots.filter(s=> sess.shotIds.includes(s.id));
+    const avg = sShots.length ? (sShots.reduce((a,s)=>a+s.score,0)/sShots.length).toFixed(2) : "0";
+    const date = new Date(sess.ts).toLocaleString("id-ID", { dateStyle:"medium", timeStyle:"short" });
+    return `<div class="bar-row" style="align-items:center;">
+      <div class="name" style="width:auto;flex:1;">${date} <span class="helper">${sShots.length} anak panah</span></div>
+      <div class="bar-val" style="width:auto;">rata-rata ${avg}</div>
+    </div>`;
+  }).join("");
+}
+
+/* ============================================================
+   EXPORT / IMPORT EXCEL — backup & pindah data lewat file .xlsx.
+   Import bersifat ADDITIVE: data yang sudah ada di app (dicocokkan
+   lewat ID, atau nama untuk gear) gak akan ketimpa/dobel.
+============================================================ */
+function fmtDateForExcel(ts){
+  return new Date(ts).toLocaleString("id-ID", { dateStyle:"medium", timeStyle:"short" });
+}
+
+function buildWorkbook(){
+  const wb = XLSX.utils.book_new();
+
+  const shotsRows = shots.concat(currentShots).map(s=>{
+    const a = arrows.find(x=>x.id===s.arrowId);
+    const b = bows.find(x=>x.id===s.bowId);
+    const sess = sessions.find(sn=> sn.shotIds.includes(s.id));
+    return {
+      ShotID: s.id,
+      Tanggal: fmtDateForExcel(s.ts),
+      SesiID: sess ? sess.id : "(sesi berjalan)",
+      Skor: s.score,
+      Arah: s.dir,
+      ArrowID: s.arrowId,
+      ArrowNama: a ? a.name : "(dihapus)",
+      BowID: s.bowId,
+      BowNama: b ? b.name : "(dihapus)",
+      Angin: s.wind,
+      Hujan: s.rain ? "Ya" : "Tidak",
+      NormDx: s.normDx,
+      NormDy: s.normDy,
+      TitikIncarJSON: JSON.stringify(s.aimPoints||[])
+    };
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(shotsRows), "Shots");
+
+  const sessionRows = sessions.map(sess=>{
+    const sShots = shots.filter(s=> sess.shotIds.includes(s.id));
+    const avg = sShots.length ? (sShots.reduce((a,s)=>a+s.score,0)/sShots.length) : 0;
+    return { SesiID: sess.id, Tanggal: fmtDateForExcel(sess.ts), JumlahPanah: sShots.length, RataRata: Number(avg.toFixed(2)) };
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sessionRows), "Sessions");
+
+  const arrowRows = arrows.map(a=>({
+    ArrowID: a.id, Nama: a.name, Material: a.material, PanjangCM: a.length, DiameterMM: a.diameter,
+    BeratGrain: a.weight, JenisFletching: a.fletchType, JumlahSayap: a.fletchCount,
+    RotasiOffsetDerajat: a.rotationOffset||0, TipKencang: (a.tipTight!==undefined?a.tipTight:true) ? "Ya":"Tidak",
+    TipBeratGrain: a.tipWeight!==undefined ? a.tipWeight : 100
+  }));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(arrowRows), "Arrows");
+
+  const bowRows = bows.map(b=>({
+    BowID: b.id, Nama: b.name, Jenis: b.type, PanjangInch: b.length,
+    DrawWeightLbs: b.weight, DrawLengthInch: b.draw, JenisTali: b.string
+  }));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(bowRows), "Bows");
+
+  return wb;
+}
+
+document.getElementById("exportExcelBtn").addEventListener("click", ()=>{
+  if(typeof XLSX === "undefined"){ toast("Gagal memuat modul Excel (perlu koneksi internet)."); return; }
+  const wb = buildWorkbook();
+  const stamp = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `stargazer-archery-${stamp}.xlsx`);
+  toast("File Excel diunduh.");
+});
+
+document.getElementById("importExcelInput").addEventListener("change", async (e)=>{
+  const file = e.target.files[0];
+  e.target.value = ""; // reset supaya bisa pilih file yang sama lagi kalau perlu
+  if(!file) return;
+  if(typeof XLSX === "undefined"){ toast("Gagal memuat modul Excel (perlu koneksi internet)."); return; }
+
+  let wb;
+  try{
+    const buf = await file.arrayBuffer();
+    wb = XLSX.read(buf, { type:"array" });
+  }catch(err){ toast("File Excel tidak terbaca."); return; }
+
+  const sheetJson = (name)=>{
+    const sh = wb.Sheets[name];
+    return sh ? XLSX.utils.sheet_to_json(sh, { defval:"" }) : [];
+  };
+
+  let addedArrows=0, skippedArrows=0, addedBows=0, skippedBows=0, addedShots=0, skippedShots=0, addedSessions=0, skippedSessions=0;
+
+  // --- Arrows: skip kalau ID atau Nama sudah ada, biar gak dobel ---
+  sheetJson("Arrows").forEach(r=>{
+    const id = String(r.ArrowID||"").trim();
+    const name = String(r.Nama||"").trim();
+    if(!id || !name) return;
+    const exists = arrows.some(a=>a.id===id || a.name===name);
+    if(exists){ skippedArrows++; return; }
+    const fletchCount = Math.max(2, Math.min(6, parseInt(r.JumlahSayap)||3));
+    arrows.push({
+      id, name, material: r.Material||"Carbon",
+      length: parseFloat(r.PanjangCM)||71, diameter: parseFloat(r.DiameterMM)||0, weight: parseFloat(r.BeratGrain)||0,
+      fletchType: r.JenisFletching || FLETCH_TYPES[0], fletchCount,
+      fletches: computeFletchPositions(fletchCount).map(p=>({...p, present:true})),
+      rotationOffset: parseFloat(r.RotasiOffsetDerajat)||0,
+      tipTight: String(r.TipKencang).trim().toLowerCase() !== "tidak",
+      tipWeight: parseFloat(r.TipBeratGrain)||100
+    });
+    addedArrows++;
+  });
+
+  // --- Bows: skip kalau ID atau Nama sudah ada ---
+  sheetJson("Bows").forEach(r=>{
+    const id = String(r.BowID||"").trim();
+    const name = String(r.Nama||"").trim();
+    if(!id || !name) return;
+    const exists = bows.some(b=>b.id===id || b.name===name);
+    if(exists){ skippedBows++; return; }
+    bows.push({
+      id, name, type: r.Jenis || BOW_TYPES[0],
+      length: parseFloat(r.PanjangInch)||68, weight: parseFloat(r.DrawWeightLbs)||0,
+      draw: parseFloat(r.DrawLengthInch)||0, string: r.JenisTali || STRING_TYPES[0]
+    });
+    addedBows++;
+  });
+
+  // --- Shots: skip kalau ShotID sudah ada; kalau ArrowID/BowID lama gak ketemu, coba match by nama ---
+  const findArrowRef = (id, nama)=> arrows.find(a=>a.id===id) || arrows.find(a=>a.name===nama) || null;
+  const findBowRef    = (id, nama)=> bows.find(b=>b.id===id)    || bows.find(b=>b.name===nama)    || null;
+  const importedShots = [];
+  sheetJson("Shots").forEach(r=>{
+    const id = String(r.ShotID||"").trim();
+    if(!id) return;
+    const already = shots.some(s=>s.id===id) || currentShots.some(s=>s.id===id);
+    if(already){ skippedShots++; return; }
+    const arrowRef = findArrowRef(String(r.ArrowID||"").trim(), r.ArrowNama);
+    const bowRef = findBowRef(String(r.BowID||"").trim(), r.BowNama);
+    let aimPoints = [{dx:0,dy:0}];
+    try{ if(r.TitikIncarJSON) aimPoints = JSON.parse(r.TitikIncarJSON); }catch(e){}
+    const shot = {
+      id, ts: Date.now(), arrowId: arrowRef?arrowRef.id:(String(r.ArrowID||"")||null),
+      bowId: bowRef?bowRef.id:(String(r.BowID||"")||null),
+      score: parseInt(r.Skor)||0, dir: r.Arah||"-",
+      normDx: r.NormDx===""||r.NormDx===undefined ? null : parseFloat(r.NormDx),
+      normDy: r.NormDy===""||r.NormDy===undefined ? null : parseFloat(r.NormDy),
+      aimPoints, wind: r.Angin||WIND_LEVELS[0], rain: String(r.Hujan).trim().toLowerCase()==="ya",
+      _importSesiId: String(r.SesiID||"").trim()
+    };
+    importedShots.push(shot);
+    addedShots++;
+  });
+  shots = shots.concat(importedShots.map(s=>{ const {_importSesiId, ...rest} = s; return rest; }));
+
+  // --- Sessions: rekonstruksi shotIds dari kolom SesiID di sheet Shots ---
+  sheetJson("Sessions").forEach(r=>{
+    const id = String(r.SesiID||"").trim();
+    if(!id || id==="(sesi berjalan)") return;
+    const already = sessions.some(sn=>sn.id===id);
+    if(already){ skippedSessions++; return; }
+    const shotIds = importedShots.filter(s=>s._importSesiId===id).map(s=>s.id);
+    sessions.push({ id, ts: Date.now(), shotIds });
+    addedSessions++;
+  });
+
+  await storeSet("arrows", arrows);
+  await storeSet("bows", bows);
+  await storeSet("shots", shots);
+  await storeSet("sessions", sessions);
+
+  renderArrowChips(); renderBowChips(); renderGearLists(); renderStats(); updatePickInfo();
+
+  toast(`Import selesai: +${addedArrows} panah, +${addedBows} busur, +${addedShots} tembakan, +${addedSessions} sesi (lewati data dobel).`);
+});
+
+/* ============================================================
+   MISC WIRING
+============================================================ */
+function wireStaticEvents(){}
+
+/* ============================================================
+   AUTH GUARD + BOOTSTRAP
+   No guest/demo mode -- straight bounce to login if there's no
+   real session, same as every other data-owning app on this site.
+============================================================ */
+async function bootstrapAuth(){
+  const authCtx = await requireAuth("index.html");
+  if(!authCtx) return; // requireAuth already redirected
+  CURRENT_USER_ID = authCtx.user.id;
+  await loadArcheryRow(CURRENT_USER_ID);
+  await init();
+
+  // Realtime: pick up changes made from another device/tab without a manual refresh.
+  supabase
+    .channel("archery_own_sync_" + CURRENT_USER_ID)
+    .on("postgres_changes", { event: "*", schema: "public", table: "archery_data", filter: `user_id=eq.${CURRENT_USER_ID}` }, async () => {
+      await loadArcheryRow(CURRENT_USER_ID);
+      arrows = await storeGet("arrows", []);
+      bows = await storeGet("bows", []);
+      shots = await storeGet("shots", []);
+      sessions = await storeGet("sessions", []);
+      populateSelects();
+      renderArrowChips(); renderBowChips(); renderGearLists(); renderStats();
+    })
+    .subscribe();
+}
+// Called directly, not via a DOMContentLoaded listener: this script tag sits
+// right before </body>, so the DOM is already parsed by the time it runs --
+// same reason the original code just called init() directly at this exact
+// spot. A DOMContentLoaded listener attached this late would never fire.
+bootstrapAuth();
+})();
+</script>
+</body>
+</html>

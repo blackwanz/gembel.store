@@ -67,4 +67,12 @@ window.GEMBEL_APPS = [
     url: 'masak.html',
     enabled: true,
   },
+  {
+    id: 'archery',
+    name: 'Stargazer Archery',
+    desc: 'Log latihan panahan — catat sesi, setup panah/busur per anak panah (sayap, rotasi), titik incar, dan statistik akurasi. Data tersimpan di akun lo.',
+    icon: '🏹',
+    url: 'archery.html',
+    enabled: true,
+  },
 ];
