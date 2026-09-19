@@ -109,6 +109,20 @@
   .viewer-note{font-size:12px;color:var(--muted);background:var(--surface-2);border-radius:10px;padding:9px 12px;margin-bottom:14px;}
   .hint-row{font-size:11.5px;color:var(--faint);margin-bottom:10px;}
 
+  /* Quick-add/consume command bar -- terminal-flavored ("nama qty" to add, "mkn/masak/buang nama
+     qty" to subtract) so restocking a common item is one line instead of opening the full form. */
+  .cmd-row{display:flex;align-items:center;gap:8px;background:var(--ink);border-radius:10px;padding:8px 12px;margin-bottom:6px;}
+  .cmd-row .cmd-prompt{font-family:'JetBrains Mono',monospace;color:#7ee787;font-weight:700;font-size:13px;}
+  .cmd-row input{flex:1;background:none;border:none;color:#e6edf3;font-family:'JetBrains Mono',monospace;font-size:13px;padding:4px 0;}
+  .cmd-row input::placeholder{color:#6e7681;}
+  .cmd-row input:focus{outline:none;}
+  .cmd-row .cmd-run{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#7ee787;border:1px solid #2a3a2f;background:rgba(126,231,135,0.08);border-radius:6px;padding:5px 10px;flex-shrink:0;}
+  .cmd-row .cmd-run:hover{background:rgba(126,231,135,0.18);}
+  .cmd-feedback{font-size:12px;margin:-2px 0 10px;min-height:0;display:none;padding:6px 10px;border-radius:8px;}
+  .cmd-feedback.show{display:block;}
+  .cmd-feedback.ok{background:var(--accent-tint);color:var(--accent);}
+  .cmd-feedback.err{background:#fde8e8;color:#c0392b;}
+
   .context-menu{position:fixed;z-index:50;min-width:200px;background:var(--surface);border:1px solid var(--border);border-radius:11px;box-shadow:var(--shadow);padding:6px;display:none;}
   .context-menu.open{display:block;}
   .context-menu button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:none;font-family:'Public Sans';font-size:13px;font-weight:600;color:var(--ink);padding:9px 10px;border-radius:7px;cursor:pointer;}
@@ -230,6 +244,23 @@
     'ayam':2,'daging sapi':3,'ikan':2,'udang':2,'tahu':4,'tempe':5,'telur':21,
     'susu cair':5,'keju':14,'yogurt':14,'mentega':60,'santan':2,
     'nasi':1,'jamur':3,'kecap manis':180,'saus sambal':90
+  };
+  // Category + default unit guesses for the quick-add command bar (see wireQuickCommandBar) --
+  // only needs to cover the same names SHELF_LIFE already knows about; anything else falls back
+  // to category "Lainnya" and unit "buah", both editable afterward via the normal Tambah form.
+  const NAME_CATEGORY = {
+    'daun bawang':'Sayur','seledri':'Sayur','kemangi':'Sayur','kangkung':'Sayur','bayam':'Sayur','sawi':'Sayur','kol':'Sayur',
+    'tomat':'Sayur','wortel':'Sayur','kentang':'Karbohidrat','timun':'Sayur','terong':'Sayur','buncis':'Sayur',
+    'cabai merah':'Bumbu','cabai rawit':'Bumbu','bawang merah':'Bumbu','bawang putih':'Bumbu','jahe':'Bumbu',
+    'ayam':'Protein','daging sapi':'Protein','ikan':'Protein','udang':'Protein','tahu':'Protein','tempe':'Protein','telur':'Dairy & Telur',
+    'susu cair':'Dairy & Telur','keju':'Dairy & Telur','yogurt':'Dairy & Telur','mentega':'Dairy & Telur','santan':'Bumbu',
+    'nasi':'Karbohidrat','jamur':'Sayur','kecap manis':'Bumbu','saus sambal':'Bumbu'
+  };
+  const NAME_UNIT = {
+    'daun bawang':'ikat','seledri':'ikat','kemangi':'ikat','kangkung':'ikat','bayam':'ikat',
+    'telur':'butir','susu cair':'liter','santan':'liter','kecap manis':'bungkus','saus sambal':'bungkus',
+    'bawang merah':'siung','bawang putih':'siung','jahe':'siung','tahu':'papan','tempe':'papan',
+    'nasi':'kg','beras':'kg','ayam':'kg','daging sapi':'kg','ikan':'kg','udang':'kg'
   };
   const COOK_HINTS = {
     'Sayur':'Tumis cepat atau masuk ke sup sebelum layu.',
@@ -389,12 +420,18 @@
               <h2 id="list-title">Isi Dapur</h2>
               <div class="list-count" id="list-count"></div>
             </div>
+            <div class="cmd-row" id="cmd-row">
+              <span class="cmd-prompt">&gt;</span>
+              <input type="text" id="cmd-input" placeholder="telur 5  &middot;  mkn telur 1  &middot;  buang tomat 2" autocomplete="off">
+              <button type="button" class="btn ghost cmd-run" id="cmd-run">Jalankan</button>
+            </div>
+            <div class="cmd-feedback" id="cmd-feedback"></div>
             <div class="search-row" id="search-row">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
               <input type="text" id="search-input" placeholder="Cari bahan...">
               <button type="button" class="clear-search" id="clear-search">&times;</button>
             </div>
-            <div class="hint-row">Klik kanan di area ini buat tambah stok cepat.</div>
+            <div class="hint-row">Klik kanan di area ini buat tambah stok cepat, atau pake command bar di atas: "nama qty" buat nambah, "mkn/masak/buang nama qty" buat ngurangin.</div>
             <div id="viewer-note-slot"></div>
             <div id="stock-list"></div>
           </div>
@@ -956,6 +993,123 @@
     document.addEventListener('click', (e) => { if(!menu.contains(e.target)) closeMenu(); });
     document.addEventListener('keydown', (e) => { if(e.key === 'Escape') closeMenu(); });
     document.addEventListener('scroll', closeMenu, true);
+
+    wireQuickCommandBar();
+  }
+
+  // ---- Quick-add/consume command bar ----
+  // "telur 5"            -> add 5 telur (existing item with that name gets its qty bumped
+  //                          instead of a duplicate row; a brand-new item inherits its
+  //                          category/unit/shelf-life guess from NAME_CATEGORY/NAME_UNIT/
+  //                          SHELF_LIFE, same defaults the manual Tambah form would suggest).
+  // "mkn telur 1"          -> subtract 1 from the existing telur (whichever row expires
+  // "masak telur 1"           soonest, if there's more than one) -- drops the row entirely
+  // "buang telur 1"           once its qty hits 0, same as the existing "Habis"/"Buang" buttons.
+  const CMD_CONSUME_PREFIXES = ['mkn', 'makan', 'masak', 'abis', 'habis', 'buang'];
+  const CMD_KNOWN_UNITS = ['ikat', 'butir', 'kg', 'gram', 'liter', 'papan', 'buah', 'bungkus', 'siung'];
+
+  function parseQuickCommand(raw) {
+    const words = String(raw || '').trim().split(/\s+/).filter(Boolean);
+    if (!words.length) return null;
+    let isConsume = false;
+    if (CMD_CONSUME_PREFIXES.includes(words[0].toLowerCase())) {
+      isConsume = true;
+      words.shift();
+    }
+    if (!words.length) return null;
+    let rest = words.slice();
+    let unit = null;
+    if (rest.length >= 2 && CMD_KNOWN_UNITS.includes(rest[rest.length - 1].toLowerCase())) {
+      unit = rest[rest.length - 1].toLowerCase();
+      rest = rest.slice(0, -1);
+    }
+    let qty = null;
+    if (rest.length >= 2) {
+      const n = Number(String(rest[rest.length - 1]).replace(',', '.'));
+      if (Number.isFinite(n) && n > 0) {
+        qty = n;
+        rest = rest.slice(0, -1);
+      }
+    }
+    const name = rest.join(' ').trim();
+    if (!name) return null;
+    return { isConsume, name, qty: qty == null ? 1 : qty, unit };
+  }
+
+  function wireQuickCommandBar() {
+    const input = document.getElementById('cmd-input');
+    const runBtn = document.getElementById('cmd-run');
+    const feedback = document.getElementById('cmd-feedback');
+    if (!input) return;
+
+    function showFeedback(text, ok) {
+      feedback.textContent = text;
+      feedback.className = 'cmd-feedback show ' + (ok ? 'ok' : 'err');
+    }
+
+    async function run() {
+      const raw = input.value;
+      if (!raw.trim()) return;
+      if (!canEdit()) { showFeedback('Kamu cuma bisa lihat dapur ini.', false); return; }
+      const parsed = parseQuickCommand(raw);
+      if (!parsed) { showFeedback('Format gak kebaca. Contoh: "telur 5" atau "mkn telur 1".', false); return; }
+
+      const nameLower = parsed.name.toLowerCase();
+      const displayName = parsed.name.replace(/\b\w/g, c => c.toUpperCase());
+      const matches = ACTIVE.items
+        .filter(i => i.name.trim().toLowerCase() === nameLower)
+        .sort((a, b) => daysLeft(a) - daysLeft(b)); // soonest-expiring first -- use that one up first
+      const existing = matches[0] || null;
+
+      runBtn.disabled = true;
+      try {
+        if (parsed.isConsume) {
+          if (!existing) { showFeedback(`"${displayName}" gak ada di stok.`, false); return; }
+          const newQty = Number(existing.qty) - parsed.qty;
+          if (newQty <= 0) {
+            const { error } = await supabase.from('stock_items').delete().eq('id', existing.id);
+            if (error) { showFeedback('Gagal update: ' + error.message, false); return; }
+            ACTIVE.items = ACTIVE.items.filter(i => i.id !== existing.id);
+            showFeedback(`${displayName} abis, dihapus dari stok.`, true);
+          } else {
+            const { error } = await supabase.from('stock_items').update({ qty: newQty }).eq('id', existing.id);
+            if (error) { showFeedback('Gagal update: ' + error.message, false); return; }
+            existing.qty = newQty;
+            showFeedback(`${displayName} dikurangi ${parsed.qty} -> sisa ${newQty} ${existing.unit}.`, true);
+          }
+        } else {
+          if (existing) {
+            const newQty = Number(existing.qty) + parsed.qty;
+            const { error } = await supabase.from('stock_items').update({ qty: newQty }).eq('id', existing.id);
+            if (error) { showFeedback('Gagal update: ' + error.message, false); return; }
+            existing.qty = newQty;
+            showFeedback(`${displayName} ditambah ${parsed.qty} -> total ${newQty} ${existing.unit} (expiry ikut yang udah ada).`, true);
+          } else {
+            const shelf = SHELF_LIFE[nameLower] != null ? SHELF_LIFE[nameLower] : 7;
+            const category = NAME_CATEGORY[nameLower] || 'Lainnya';
+            const unit = parsed.unit || NAME_UNIT[nameLower] || 'buah';
+            const loc = activeLocation !== 'Semua' ? activeLocation : (ACTIVE.locations[0] || 'Kulkas');
+            const { data, error } = await supabase.from('stock_items').insert({
+              kitchen_id: activeKitchenId, name: displayName, category, location: loc,
+              qty: parsed.qty, unit, bought_at: isoDate(new Date()), shelf_life_days: shelf,
+              created_by: CURRENT_USER.id,
+            }).select().single();
+            if (error) { showFeedback('Gagal nambah: ' + error.message, false); return; }
+            ACTIVE.items.push(data);
+            showFeedback(`${displayName} ditambah baru, ${parsed.qty} ${unit}.`, true);
+          }
+        }
+        input.value = '';
+        render();
+        document.getElementById('cmd-input').focus();
+      } finally {
+        runBtn.disabled = false;
+      }
+    }
+
+    runBtn.addEventListener('click', run);
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') run(); });
+    input.addEventListener('input', () => feedback.classList.remove('show'));
   }
 
   // ---- Bootstrap ----
