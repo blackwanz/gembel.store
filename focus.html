@@ -105,7 +105,7 @@
         background: transparent; border: none; color: var(--text-main); font-size: 0.82rem; font-weight: 500;
         text-align: left; cursor: pointer; width: 100%;
     }
-    .context-menu-item:hover { background: #3a3a3a; }
+    .context-menu-item:hover, .context-menu-item.kbd-focus { background: #3a3a3a; }
     /* border/padding repeated here (not just color) because the pre-existing global
        `button.danger` rule (element+class) otherwise outranks the plain `.context-menu-item`
        base rule (single class) on those two properties specifically, leaking its red border
@@ -2572,18 +2572,24 @@
         setBrowseMode('day', dateStr);
     }
 
+    // Browsing to a different day/week/month while an entry is mid-edit used to wipe the edit
+    // outright (resetEntryForm() clears editingEntryId + the whole form) — so typing a new date
+    // straight into the edit form worked, but navigating via these pickers silently discarded
+    // whatever was being edited. Skip the reset while an edit is active; the list re-render below
+    // still reflects the newly-browsed day (the edited row just won't be in it if it's on a
+    // different date), but the edit itself — and Save — stays intact until explicitly cancelled.
     dayPicker.addEventListener('change', () => {
         if (!dayPicker.value) return;
-        resetEntryForm();
+        if (!editingEntryId) resetEntryForm();
         renderScheduleEntryList();
     });
     monthPicker.addEventListener('change', () => {
         if (monthPicker.value) settingsMonth = monthPicker.value;
-        resetEntryForm();
+        if (!editingEntryId) resetEntryForm();
         renderScheduleEntryList();
     });
     weekPicker.addEventListener('change', () => {
-        resetEntryForm();
+        if (!editingEntryId) resetEntryForm();
         renderScheduleEntryList();
     });
 
@@ -3520,12 +3526,14 @@
         taskModal.classList.remove('active');
         editingTaskId = null;
         quickLinkGoalId = null;
+        duplicateSourceTaskId = null;
         const goalHint = document.getElementById('task-modal-goal-hint');
         if (goalHint) goalHint.style.display = 'none';
     }
     function openAddTaskModal(defaultStatus) {
         editingTaskId = null;
         quickLinkGoalId = null;
+        duplicateSourceTaskId = null;
         resetTaskForm();
         document.getElementById('task-modal-title').textContent = 'Add Task';
         openTaskModal(defaultStatus);
@@ -3536,6 +3544,11 @@
     // user doesn't have to separately open the goal-link picker afterward just to connect the
     // task they *just* created for this goal.
     let quickLinkGoalId = null;
+    // ---------- Copy card auto-inherits its source's goal link(s) ----------
+    // Set by duplicateTask() below, consumed by the save-task-btn handler: a copy of a task that's
+    // already linked to a goal should land linked to the same goal(s) automatically -- only a task
+    // that has NO existing link needs the goal-link picker used manually afterward.
+    let duplicateSourceTaskId = null;
     function openAddTaskModalForGoal(goalId) {
         const g = state.goals.find(x => x.id === goalId);
         if (!g) return;
@@ -3609,8 +3622,21 @@
                     g.links.push({ taskId: newTask.id, weight: 10 });
                 }
             }
+            // Copying a task that was already linked to one or more goals carries those links
+            // over to the copy at the same weight -- a task with no link stays unlinked, same as
+            // before, so it's still added to a goal manually like any freshly-created task.
+            if (duplicateSourceTaskId) {
+                state.goals.forEach(g => {
+                    (g.links || []).forEach(link => {
+                        if (link.taskId === duplicateSourceTaskId) {
+                            g.links.push({ taskId: newTask.id, weight: link.weight });
+                        }
+                    });
+                });
+            }
         }
         editingTaskId = null;
+        duplicateSourceTaskId = null;
         saveState();
         closeTaskModal();
         renderBoard();
@@ -3653,6 +3679,7 @@
         const t = state.tasks.find(x => x.id === id);
         if (!t) return;
         editingTaskId = null;
+        duplicateSourceTaskId = id;
         document.getElementById('task-title-input').value = t.title + ' (copy)';
         document.getElementById('task-duration-input').value = t.estMinutes || '';
         document.getElementById('task-desc-input').value = t.description || '';
@@ -3777,6 +3804,18 @@
     // items: [{ label, icon, danger, action }]. Reused for both card actions (Edit/Delete) and
     // column actions (Add Task) — showContextMenu() just swaps what's in the menu.
     const contextMenu = document.getElementById('context-menu');
+    // Tracks which item is highlighted for keyboard use (ArrowUp/Down to move, Enter to activate)
+    // -- lets a right-click be followed by "roll down a bit + Enter" straight to e.g. Edit,
+    // without having to actually move the mouse onto the item first.
+    let contextMenuKbdIdx = -1;
+    function contextMenuItems() { return Array.from(contextMenu.querySelectorAll('.context-menu-item')); }
+    function setContextMenuKbdIdx(idx) {
+        const els = contextMenuItems();
+        if (!els.length) return;
+        contextMenuKbdIdx = (idx + els.length) % els.length;
+        els.forEach((el, i) => el.classList.toggle('kbd-focus', i === contextMenuKbdIdx));
+        els[contextMenuKbdIdx].scrollIntoView({ block: 'nearest' });
+    }
     function showContextMenu(x, y, items) {
         contextMenu.innerHTML = items.map((it, i) =>
             `<button type="button" class="context-menu-item ${it.danger ? 'danger' : ''}" data-idx="${i}">${it.icon || ''} ${escapeHTML(it.label)}</button>`
@@ -3793,9 +3832,18 @@
                 hideContextMenu();
                 items[Number(btn.dataset.idx)].action();
             });
+            btn.addEventListener('mouseenter', () => setContextMenuKbdIdx(Number(btn.dataset.idx)));
         });
+        contextMenuKbdIdx = -1;
+        setContextMenuKbdIdx(0);
     }
-    function hideContextMenu() { contextMenu.classList.remove('active'); }
+    function hideContextMenu() { contextMenu.classList.remove('active'); contextMenuKbdIdx = -1; }
+    document.addEventListener('keydown', (e) => {
+        if (!contextMenu.classList.contains('active')) return;
+        if (e.key === 'ArrowDown') { e.preventDefault(); setContextMenuKbdIdx(contextMenuKbdIdx + 1); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); setContextMenuKbdIdx(contextMenuKbdIdx - 1); }
+        else if (e.key === 'Enter') { e.preventDefault(); const els = contextMenuItems(); if (els[contextMenuKbdIdx]) els[contextMenuKbdIdx].click(); }
+    });
     document.addEventListener('click', (e) => { if (!contextMenu.contains(e.target)) hideContextMenu(); });
     // Escape: closes the right-click menu, plus whichever modal popup is currently open — every
     // modal-overlay has its own "✕" close button already wired with that modal's own cleanup
