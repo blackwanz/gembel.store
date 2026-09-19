@@ -380,7 +380,7 @@ input:focus{border-color:var(--accent);}
 .consent-icon{font-size:26px;text-align:center;margin-bottom:10px;}
 .consent-statement{
   font-family:'Sora',sans-serif;font-weight:700;font-size:15px;line-height:1.5;text-align:center;
-  color:var(--text);margin-bottom:14px;
+  color:var(--text);margin-bottom:14px;white-space:pre-line;
 }
 .consent-summary{
   background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);
@@ -776,6 +776,13 @@ input:focus{border-color:var(--accent);}
         <button class="btn-save" id="save-monthly-target">Simpan</button>
       </div>
       <div id="monthly-target-progress"></div>
+
+      <h2 style="margin-top:18px;">Pernyataan Validasi Expenses</h2>
+      <p class="hint">Ini yang harus lo ketik ulang tiap mau nyatet pengeluaran -- tulis versi lo sendiri, atau biarin default. Perubahan cuma berlaku buat entry berikutnya.</p>
+      <div class="target-row" style="align-items:flex-start;">
+        <textarea id="input-consent-statement" rows="3" style="flex:1;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:var(--radius-sm);padding:11px 13px;font-size:13.5px;font-family:inherit;resize:vertical;" placeholder="Gw consent: budget ini gw pake secukupnya..."></textarea>
+        <button class="btn-save" id="save-consent-statement">Simpan</button>
+      </div>
     </div>
 
     <div class="card">
@@ -933,10 +940,7 @@ input:focus{border-color:var(--accent);}
 <div class="consent-overlay" id="consent-overlay">
   <div class="consent-box">
     <div class="consent-icon">🛑</div>
-    <div class="consent-statement" id="consent-statement">
-      Gw consent: budget ini gw pake secukupnya &amp; berarti.<br>
-      Gw gak overspend, gak trading ugal-ugalan, gak foya-foya.
-    </div>
+    <div class="consent-statement" id="consent-statement"></div>
     <div class="consent-summary" id="consent-summary"></div>
     <div class="field" id="f-consent-word" style="margin-top:4px;margin-bottom:6px;">
       <label>Ketik ulang pernyataan di atas buat lanjut (gak harus persis, typo/besar-kecil santai aja)</label>
@@ -946,6 +950,29 @@ input:focus{border-color:var(--accent);}
     <div class="consent-actions">
       <button type="button" class="btn btn-consent-cancel" id="consent-cancel-btn">Batal</button>
       <button type="button" class="btn btn-finance" id="consent-confirm-btn">Gw Consent, Lanjut</button>
+    </div>
+  </div>
+</div>
+
+<!-- First-time expense-validation setup: shown instead of the retype gate above the very first
+     time a brand-new user (no consent_statement saved yet) records an expense -- they write (or
+     keep the prefilled default as-is) their own commitment statement and confirm it once. That
+     confirm IS both "setting up validation" and their "Y" sign-off in one step; every expense
+     after this one goes through the normal retype gate using whatever they saved here. An
+     existing user's habbit_settings row already has a consent_statement backfilled by migration
+     (their current default statement, unchanged), so this never fires for them. -->
+<div class="consent-overlay" id="consent-setup-overlay">
+  <div class="consent-box">
+    <div class="consent-icon">✍️</div>
+    <div class="consent-statement" style="margin-bottom:8px;">Sebelum nyatet pengeluaran pertama lo, bikin dulu pernyataan validasi expenses lo sendiri.</div>
+    <div class="consent-summary" style="margin-bottom:10px;">Boleh dipake apa adanya (default), atau edit jadi kalimat lo sendiri. Ini yang bakal lo ketik ulang tiap mau nyatet pengeluaran nanti -- bisa diganti kapan aja lewat halaman Pengaturan.</div>
+    <div class="field" id="f-consent-setup-word" style="margin-top:4px;margin-bottom:6px;">
+      <label>Pernyataan validasi lo</label>
+      <textarea id="in-consent-setup-word" rows="3" autocomplete="off" spellcheck="false"></textarea>
+      <div class="err-text" id="consent-setup-err-text">Tulis pernyataannya dulu ya (minimal beberapa kata).</div>
+    </div>
+    <div class="consent-actions">
+      <button type="button" class="btn btn-finance" id="consent-setup-confirm-btn" style="flex:1;">Gw Setuju &amp; Simpan (Y)</button>
     </div>
   </div>
 </div>
@@ -1030,18 +1057,19 @@ input:focus{border-color:var(--accent);}
         if (!Number.isFinite(parsed.salary)) parsed.salary = null;
         if (!parsed.categoryTargetMode || typeof parsed.categoryTargetMode !== 'object') parsed.categoryTargetMode = {};
         if (!parsed.categoryTargetPercent || typeof parsed.categoryTargetPercent !== 'object') parsed.categoryTargetPercent = {};
+        if (parsed.consentStatement === undefined) parsed.consentStatement = null;
         return parsed;
       }
     } catch (e) { console.error('Targets corrupt, resetting.', e); }
     return {
       monthlyBudget: null, categoryTargets: {}, savings: {}, monthCutoffDay: 1,
-      salary: null, categoryTargetMode: {}, categoryTargetPercent: {},
+      salary: null, categoryTargetMode: {}, categoryTargetPercent: {}, consentStatement: null,
     };
   }
   function saveTargets() { localStorage.setItem(TARGETS_KEY, JSON.stringify(targets)); queueCloudSync(); }
   let targets = {
     monthlyBudget: null, categoryTargets: {}, savings: {}, monthCutoffDay: 1,
-    salary: null, categoryTargetMode: {}, categoryTargetPercent: {},
+    salary: null, categoryTargetMode: {}, categoryTargetPercent: {}, consentStatement: null,
   }; // real value loaded in DOMContentLoaded, after the cloud pull
 
   /* ============================================================
@@ -1120,6 +1148,7 @@ input:focus{border-color:var(--accent);}
         monthlyBudget: settings ? settings.monthly_budget : null,
         salary: settings ? settings.salary : null,
         monthCutoffDay: settings && Number.isFinite(settings.month_cutoff_day) ? settings.month_cutoff_day : 1,
+        consentStatement: settings ? (settings.consent_statement || null) : null,
         categoryTargets, categoryTargetMode, categoryTargetPercent, savings,
       }));
     } catch (e) {
@@ -1190,6 +1219,7 @@ input:focus{border-color:var(--accent);}
         monthly_budget: targets.monthlyBudget ?? null,
         salary: targets.salary ?? null,
         month_cutoff_day: targets.monthCutoffDay || 1,
+        consent_statement: targets.consentStatement || null,
       });
       if (settingsErr) throw settingsErr;
 
@@ -2429,6 +2459,12 @@ input:focus{border-color:var(--accent);}
       salaryInput.value = targets.salary ? formatCommaAmount(targets.salary) : '';
     }
 
+    // expense validation statement
+    const consentStmtInput = document.getElementById('input-consent-statement');
+    if (document.activeElement !== consentStmtInput) {
+      consentStmtInput.value = targets.consentStatement || DEFAULT_CONSENT_STATEMENT;
+    }
+
     // financial month cutoff day
     const cutoffInput = document.getElementById('input-month-cutoff');
     if (document.activeElement !== cutoffInput) {
@@ -2950,7 +2986,11 @@ input:focus{border-color:var(--accent);}
     // this is specifically about catching impulsive spending, not gating
     // every action in the app.
     if (isFinance && financeType === 'expense' && !skipConsent) {
-      openExpenseConsentModal(payload, () => commitActivitySubmit(payload));
+      if (!targets.consentStatement) {
+        openConsentSetupModal(payload, () => commitActivitySubmit(payload));
+      } else {
+        openExpenseConsentModal(payload, () => commitActivitySubmit(payload));
+      }
     } else {
       await commitActivitySubmit(payload);
     }
@@ -2982,6 +3022,11 @@ input:focus{border-color:var(--accent);}
      re-engage with the words," not spelling precision.
      ============================================================ */
   const CONSENT_MATCH_THRESHOLD = 0.8;
+  // Grandfathered default for existing users (backfilled server-side by migration 0027 into
+  // their habbit_settings.consent_statement, unchanged from what they always saw) and the
+  // starting point new users see prefilled in the first-time setup modal, editable before they
+  // confirm it as their own.
+  const DEFAULT_CONSENT_STATEMENT = 'Gw consent: budget ini gw pake secukupnya & berarti.\nGw gak overspend, gak trading ugal-ugalan, gak foya-foya.';
 
   // Levenshtein edit distance -- used to forgive small typos ("bbudget" ->
   // "budget", "gk" -> "gak") without accepting genuinely different words.
@@ -3048,6 +3093,7 @@ input:focus{border-color:var(--accent);}
 
   function openExpenseConsentModal(payload, onConfirm) {
     pendingConsentConfirm = onConfirm;
+    document.getElementById('consent-statement').textContent = targets.consentStatement || DEFAULT_CONSENT_STATEMENT;
     document.getElementById('consent-summary').innerHTML =
       `<span class="cs-amt">${fmtRupiah(payload.amount)}</span> — ${escapeHtml(payload.activity)}`;
     const input = document.getElementById('in-consent-word');
@@ -3060,6 +3106,46 @@ input:focus{border-color:var(--accent);}
   function closeExpenseConsentModal() {
     document.getElementById('consent-overlay').classList.remove('show');
     pendingConsentConfirm = null;
+  }
+
+  /* ============================================================
+     FIRST-TIME VALIDATION SETUP (new users only)
+     Fires in place of the retype gate above when targets.consentStatement is still null -- a
+     brand-new user (or a pre-existing account never migrated/backfilled) writes their own
+     commitment statement once; saving it here doubles as their "Y" sign-off, so the pending
+     expense commits immediately afterward instead of also demanding an extra retype.
+     ============================================================ */
+  let pendingConsentSetupPayload = null;
+  let pendingConsentSetupConfirm = null;
+
+  function openConsentSetupModal(payload, onConfirm) {
+    pendingConsentSetupPayload = payload;
+    pendingConsentSetupConfirm = onConfirm;
+    document.getElementById('in-consent-setup-word').value = DEFAULT_CONSENT_STATEMENT;
+    setFieldInvalid('f-consent-setup-word', false);
+    document.getElementById('consent-setup-overlay').classList.add('show');
+    setTimeout(() => document.getElementById('in-consent-setup-word').focus(), 30);
+  }
+
+  function closeConsentSetupModal() {
+    document.getElementById('consent-setup-overlay').classList.remove('show');
+    pendingConsentSetupPayload = null;
+    pendingConsentSetupConfirm = null;
+  }
+
+  async function attemptConsentSetupConfirm() {
+    const input = document.getElementById('in-consent-setup-word');
+    const text = input.value.trim();
+    if (consentNormalizeWords(text).length < 4) {
+      setFieldInvalid('f-consent-setup-word', true);
+      input.focus();
+      return;
+    }
+    targets.consentStatement = text;
+    saveTargets();
+    const confirmFn = pendingConsentSetupConfirm;
+    closeConsentSetupModal();
+    if (confirmFn) await confirmFn();
   }
 
   async function attemptConsentConfirm() {
@@ -3168,6 +3254,31 @@ input:focus{border-color:var(--accent);}
       if (e.key === 'Escape' && document.getElementById('consent-overlay').classList.contains('show')) {
         closeExpenseConsentModal();
       }
+    });
+
+    document.getElementById('consent-setup-confirm-btn').addEventListener('click', attemptConsentSetupConfirm);
+    document.getElementById('in-consent-setup-word').addEventListener('input', () => setFieldInvalid('f-consent-setup-word', false));
+    document.getElementById('in-consent-setup-word').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        attemptConsentSetupConfirm();
+      }
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && document.getElementById('consent-setup-overlay').classList.contains('show')) {
+        closeConsentSetupModal();
+      }
+    });
+
+    document.getElementById('save-consent-statement').addEventListener('click', () => {
+      const val = document.getElementById('input-consent-statement').value.trim();
+      if (consentNormalizeWords(val).length < 4) {
+        showToast('Pernyataannya kependekan -- tulis minimal beberapa kata ya.', 'err');
+        return;
+      }
+      targets.consentStatement = val;
+      saveTargets();
+      showToast('Pernyataan validasi tersimpan.');
     });
 
     document.getElementById('overbudget-confirm-btn').addEventListener('click', attemptOverbudgetConfirm);
