@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FAQ — Gembel AI PIK</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27%3E%3Cdefs%3E%3ClinearGradient id=%27g%27 x1=%270%27 y1=%270%27 x2=%271%27 y2=%271%27%3E%3Cstop offset=%270%27 stop-color=%27%234f7cff%27/%3E%3Cstop offset=%271%27 stop-color=%27%232338a8%27/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width=%2764%27 height=%2764%27 rx=%2716%27 fill=%27url(%23g)%27/%3E%3Ctext x=%2732%27 y=%2746%27 font-family=%27Arial,sans-serif%27 font-weight=%27800%27 font-size=%2740%27 fill=%27white%27 text-anchor=%27middle%27%3EG%3C/text%3E%3Ccircle cx=%2750%27 cy=%2715%27 r=%276%27 fill=%27%23ffd166%27/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/app-theme.css">
+<style>
+  /* No login required to read this page -- assets/app-theme.css's shared tokens/buttons are
+     reused for visual consistency with the rest of the site, but the page itself skips the
+     dash-top/requireAuth shell every other app page uses, since a visitor deciding whether to
+     sign up is exactly who needs this before they have an account. */
+  .faq-top{
+    display:flex;align-items:center;justify-content:space-between;padding:16px 24px;
+    border-bottom:1px solid var(--border);
+  }
+  .faq-wrap{ max-width:760px;margin:0 auto;padding:32px 20px 80px; }
+  .faq-head{ text-align:center;margin-bottom:28px; }
+  .faq-head h1{ font-family:var(--font-display);font-size:28px;font-weight:800;margin-bottom:8px; }
+  .faq-head p{ color:var(--text-muted);font-size:14px; }
+  .faq-search{
+    width:100%;padding:12px 16px;border-radius:var(--radius-md);border:1px solid var(--border);
+    background:var(--surface);color:var(--text-main);font-family:inherit;font-size:14px;
+    margin-bottom:16px;box-sizing:border-box;
+  }
+  .faq-cats{ display:flex;gap:8px;flex-wrap:wrap;margin-bottom:22px; }
+  .faq-cat-chip{
+    border:1px solid var(--border);background:var(--surface);color:var(--text-muted);
+    padding:6px 14px;border-radius:100px;font-size:12.5px;font-weight:600;cursor:pointer;
+  }
+  .faq-cat-chip.active{ background:var(--primary);color:#fff;border-color:var(--primary); }
+  .faq-item{
+    border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface);
+    margin-bottom:10px;overflow:hidden;
+  }
+  .faq-q{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;
+    padding:15px 18px;background:none;border:none;text-align:left;cursor:pointer;
+    font-family:inherit;font-size:14.5px;font-weight:700;color:var(--text-main);
+  }
+  .faq-q .chev{ transition:transform .15s;color:var(--text-faint);flex-shrink:0; }
+  .faq-item.open .chev{ transform:rotate(180deg); }
+  .faq-a{ max-height:0;overflow:hidden;transition:max-height .2s ease; }
+  .faq-a-inner{ padding:0 18px 16px;color:var(--text-muted);font-size:13.5px;line-height:1.6;white-space:pre-wrap; }
+  .faq-empty{ text-align:center;color:var(--text-faint);padding:40px 0;font-size:13.5px; }
+  mark{ background:var(--primary-soft);color:inherit;border-radius:3px; }
+  .faq-footer{
+    text-align:center;margin-top:40px;color:var(--text-faint);font-size:11.5px;
+  }
+  .faq-footer .motto{ margin-top:8px;font-family:'Sora',serif;font-style:italic;font-size:10.5px;letter-spacing:.04em;opacity:.45; }
+</style>
+</head>
+<body>
+
+<div class="faq-top">
+  <a href="index.html" style="text-decoration:none;color:inherit;display:flex;align-items:center;gap:10px;">
+    <div class="logo display" style="font-size:15px;"><span class="g">GEMBEL</span> <span class="e">AI PIK</span></div>
+  </a>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <button class="theme-toggle" onclick="toggleTheme()" title="Ganti tema">🌙</button>
+    <a href="dashboard.html" class="btn btn-ghost btn-sm" style="text-decoration:none;">Dashboard</a>
+  </div>
+</div>
+
+<div class="faq-wrap">
+  <div class="faq-head">
+    <h1>Pertanyaan yang Sering Ditanya</h1>
+    <p>Cari cepat, atau scroll aja per kategori.</p>
+  </div>
+
+  <input type="text" class="faq-search" id="faq-search" placeholder="🔍 Cari pertanyaan...">
+  <div class="faq-cats" id="faq-cats"></div>
+  <div id="faq-list"></div>
+  <div class="faq-empty" id="faq-empty" style="display:none;">Gak ada yang cocok sama pencarian itu.</div>
+
+  <div class="faq-footer">
+    Gak nemu jawabannya? Chat admin lewat tombol WhatsApp di halaman pembayaran, atau ajukan lewat "Request App" di dashboard.
+    <div class="motto">Salus Populi Suprema Lex Esto</div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/dist/umd/supabase.min.js"></script>
+<script src="assets/supabaseClient.js"></script>
+<script>
+  let ENTRIES = [];
+  let activeCategory = 'Semua';
+  let query = '';
+
+  function escapeHtml(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function highlight(text, q){
+    if(!q) return escapeHtml(text);
+    const esc = escapeHtml(text);
+    const escQ = escapeHtml(q).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return esc.replace(new RegExp('(' + escQ + ')', 'ig'), '<mark>$1</mark>');
+  }
+
+  function renderCategories(){
+    const cats = ['Semua', ...Array.from(new Set(ENTRIES.map(e => e.category || 'Umum')))];
+    document.getElementById('faq-cats').innerHTML = cats.map(c =>
+      `<button type="button" class="faq-cat-chip ${c === activeCategory ? 'active' : ''}" data-cat="${escapeHtml(c)}">${escapeHtml(c)}</button>`
+    ).join('');
+    document.querySelectorAll('.faq-cat-chip').forEach(btn => {
+      btn.addEventListener('click', () => { activeCategory = btn.dataset.cat; render(); });
+    });
+  }
+
+  function render(){
+    renderCategories();
+    const q = query.trim().toLowerCase();
+    const filtered = ENTRIES.filter(e => {
+      if (activeCategory !== 'Semua' && (e.category || 'Umum') !== activeCategory) return false;
+      if (!q) return true;
+      return e.question.toLowerCase().includes(q) || e.answer.toLowerCase().includes(q);
+    });
+    const list = document.getElementById('faq-list');
+    const emptyEl = document.getElementById('faq-empty');
+    emptyEl.style.display = filtered.length ? 'none' : 'block';
+    emptyEl.textContent = ENTRIES.length === 0 ? 'Belum ada FAQ buat ditampilkan.' : 'Gak ada yang cocok sama pencarian itu.';
+    list.innerHTML = filtered.map((e, i) => `
+      <div class="faq-item" data-idx="${i}">
+        <button type="button" class="faq-q">
+          <span>${highlight(e.question, q)}</span>
+          <span class="chev">▾</span>
+        </button>
+        <div class="faq-a"><div class="faq-a-inner">${highlight(e.answer, q)}</div></div>
+      </div>
+    `).join('');
+    list.querySelectorAll('.faq-item').forEach(item => {
+      const q_ = item.querySelector('.faq-q');
+      const a = item.querySelector('.faq-a');
+      q_.addEventListener('click', () => {
+        const wasOpen = item.classList.contains('open');
+        list.querySelectorAll('.faq-item.open').forEach(o => { o.classList.remove('open'); o.querySelector('.faq-a').style.maxHeight = ''; });
+        if (!wasOpen) { item.classList.add('open'); a.style.maxHeight = a.scrollHeight + 'px'; }
+      });
+    });
+    // Search auto-opens matches so the highlighted text is actually visible, not just findable.
+    if (q) list.querySelectorAll('.faq-item').forEach(item => {
+      item.classList.add('open');
+      item.querySelector('.faq-a').style.maxHeight = item.querySelector('.faq-a').scrollHeight + 'px';
+    });
+  }
+
+  document.getElementById('faq-search').addEventListener('input', (e) => { query = e.target.value; render(); });
+
+  async function boot(){
+    const { data, error } = await supabase.from('faq_entries').select('*').eq('published', true).order('category').order('sort_order');
+    if (error) { console.error('Gagal memuat FAQ:', error); ENTRIES = []; }
+    else ENTRIES = data || [];
+    render();
+  }
+  boot();
+</script>
+</body>
+</html>

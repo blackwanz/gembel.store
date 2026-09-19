@@ -21,6 +21,7 @@
       <div class="dash-tab" data-tab="payments" onclick="switchTab('payments')">Pembayaran</div>
       <div class="dash-tab" data-tab="leaderboard" onclick="switchTab('leaderboard')">Leaderboard</div>
       <div class="dash-tab" data-tab="notify" onclick="switchTab('notify')">📢 Notifikasi</div>
+      <div class="dash-tab" data-tab="faq" onclick="switchTab('faq')">❓ FAQ</div>
     </div>
   </div>
   <div style="display:flex;align-items:center;gap:14px;">
@@ -173,6 +174,53 @@
       </div>
     </div>
   </div>
+
+  <!-- ===== TAB: FAQ (CMS) ===== -->
+  <div id="tab-faq" class="tab-panel" style="display:none;">
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Kelola FAQ</h2>
+        <button class="btn btn-primary btn-sm" onclick="openFaqForm(null)">+ Entry Baru</button>
+      </div>
+      <p style="color:var(--text-faint);font-size:12.5px;padding:0 20px 12px;">Tampil publik di faq.html (gak perlu login buat baca) -- draft (unpublish) dulu kalau belum siap ditampilkan. Urutan dalam satu kategori mengikuti angka "Urutan", kecil ke besar.</p>
+      <div style="overflow-x:auto;">
+        <table class="data-table">
+          <thead><tr><th>Kategori</th><th>Pertanyaan</th><th>Status</th><th>Urutan</th><th>Aksi</th></tr></thead>
+          <tbody id="faq-tbody">
+            <tr><td colspan="5" style="color:var(--text-faint);">Memuat…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- FAQ entry editor -->
+<div class="pay-overlay" id="faq-form-overlay" style="display:none;" onclick="if(event.target===this) closeFaqForm()">
+  <div class="pay-card" style="max-width:520px;">
+    <div class="pay-body">
+      <h3 id="faq-form-title" style="margin-bottom:14px;">Entry Baru</h3>
+      <label class="field-label" style="display:block;font-size:11.5px;color:var(--text-faint);margin-bottom:4px;">Kategori</label>
+      <input type="text" id="faq-cat-input" placeholder="Umum" style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text-main);font-family:inherit;font-size:14px;margin-bottom:12px;box-sizing:border-box;">
+      <label class="field-label" style="display:block;font-size:11.5px;color:var(--text-faint);margin-bottom:4px;">Pertanyaan</label>
+      <input type="text" id="faq-q-input" placeholder="Gimana cara..." style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text-main);font-family:inherit;font-size:14px;margin-bottom:12px;box-sizing:border-box;">
+      <label class="field-label" style="display:block;font-size:11.5px;color:var(--text-faint);margin-bottom:4px;">Jawaban</label>
+      <textarea id="faq-a-input" placeholder="Jawabannya..." style="width:100%;min-height:110px;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text-main);font-family:inherit;font-size:14px;margin-bottom:12px;box-sizing:border-box;resize:vertical;"></textarea>
+      <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">
+        <div>
+          <label class="field-label" style="display:block;font-size:11.5px;color:var(--text-faint);margin-bottom:4px;">Urutan</label>
+          <input type="number" id="faq-order-input" value="0" style="width:90px;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text-main);font-family:inherit;font-size:14px;box-sizing:border-box;">
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-main);margin-top:18px;">
+          <input type="checkbox" id="faq-published-input" checked> Publish (tampil di faq.html)
+        </label>
+      </div>
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-ghost" onclick="closeFaqForm()">Batal</button>
+        <button class="btn btn-primary" id="faq-save-btn" onclick="saveFaqEntry()" style="flex:1;">Simpan</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- User detail lookup (reuses the payment modal's overlay/card look) -->
@@ -273,7 +321,9 @@ function switchTab(name) {
   document.getElementById('tab-payments').style.display = name === 'payments' ? 'block' : 'none';
   document.getElementById('tab-leaderboard').style.display = name === 'leaderboard' ? 'block' : 'none';
   document.getElementById('tab-notify').style.display = name === 'notify' ? 'block' : 'none';
+  document.getElementById('tab-faq').style.display = name === 'faq' ? 'block' : 'none';
   if (name === 'requests') markRequestsSeen();
+  if (name === 'faq' && !FAQ_LOADED) loadFaqEntries();
 }
 
 // ---- Notifikasi: blast an announcement to every member ----
@@ -324,6 +374,92 @@ async function blastNotification() {
   document.getElementById('notify-title-input').value = '';
   document.getElementById('notify-message-input').value = '';
   await gembelAlert(`Terkirim ke ${profiles.length} member.`);
+}
+
+// ---- FAQ (CMS): admin-only CRUD over public.faq_entries, rendered publicly by faq.html ----
+let FAQ_LOADED = false;
+let ALL_FAQ = [];
+let editingFaqId = null;
+
+async function loadFaqEntries() {
+  const { data, error } = await supabase.from('faq_entries').select('*').order('category').order('sort_order');
+  if (error) { await gembelAlert('Gagal memuat FAQ: ' + error.message); return; }
+  ALL_FAQ = data || [];
+  FAQ_LOADED = true;
+  renderFaqTable();
+}
+
+function renderFaqTable() {
+  const tbody = document.getElementById('faq-tbody');
+  if (!ALL_FAQ.length) { tbody.innerHTML = `<tr><td colspan="5" style="color:var(--text-faint);">Belum ada entry FAQ.</td></tr>`; return; }
+  tbody.innerHTML = ALL_FAQ.map(f => `
+    <tr>
+      <td>${escapeHtml(f.category)}</td>
+      <td style="max-width:320px;">${escapeHtml(f.question)}</td>
+      <td>
+        <span class="role-badge ${f.published ? 'admin' : ''}" style="cursor:pointer;" onclick="toggleFaqPublished('${f.id}', ${!f.published})" title="Klik buat toggle">
+          ${f.published ? 'PUBLISHED' : 'DRAFT'}
+        </span>
+      </td>
+      <td>${f.sort_order}</td>
+      <td>
+        <button class="btn btn-ghost btn-sm" onclick="openFaqForm('${f.id}')">Edit</button>
+        <button class="btn btn-ghost btn-sm" onclick="deleteFaqEntry('${f.id}')">Hapus</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function toggleFaqPublished(id, newVal) {
+  const { error } = await supabase.from('faq_entries').update({ published: newVal, updated_at: new Date().toISOString() }).eq('id', id);
+  if (error) { await gembelAlert('Gagal update: ' + error.message); return; }
+  const f = ALL_FAQ.find(x => x.id === id);
+  if (f) f.published = newVal;
+  renderFaqTable();
+}
+
+function openFaqForm(id) {
+  editingFaqId = id;
+  const f = id ? ALL_FAQ.find(x => x.id === id) : null;
+  document.getElementById('faq-form-title').textContent = id ? 'Edit Entry' : 'Entry Baru';
+  document.getElementById('faq-cat-input').value = f ? f.category : '';
+  document.getElementById('faq-q-input').value = f ? f.question : '';
+  document.getElementById('faq-a-input').value = f ? f.answer : '';
+  document.getElementById('faq-order-input').value = f ? f.sort_order : 0;
+  document.getElementById('faq-published-input').checked = f ? f.published : true;
+  document.getElementById('faq-form-overlay').style.display = 'flex';
+}
+function closeFaqForm() {
+  document.getElementById('faq-form-overlay').style.display = 'none';
+  editingFaqId = null;
+}
+async function saveFaqEntry() {
+  const category = document.getElementById('faq-cat-input').value.trim() || 'Umum';
+  const question = document.getElementById('faq-q-input').value.trim();
+  const answer = document.getElementById('faq-a-input').value.trim();
+  const sort_order = parseInt(document.getElementById('faq-order-input').value) || 0;
+  const published = document.getElementById('faq-published-input').checked;
+  if (!question || !answer) { await gembelAlert('Isi pertanyaan dan jawaban dulu.'); return; }
+
+  const btn = document.getElementById('faq-save-btn');
+  btn.disabled = true; btn.textContent = 'Nyimpen…';
+  let error;
+  if (editingFaqId) {
+    ({ error } = await supabase.from('faq_entries').update({ category, question, answer, sort_order, published, updated_at: new Date().toISOString() }).eq('id', editingFaqId));
+  } else {
+    ({ error } = await supabase.from('faq_entries').insert({ category, question, answer, sort_order, published, created_by: CURRENT_USER.id }));
+  }
+  btn.disabled = false; btn.textContent = 'Simpan';
+  if (error) { await gembelAlert('Gagal simpan: ' + error.message); return; }
+  closeFaqForm();
+  await loadFaqEntries();
+}
+async function deleteFaqEntry(id) {
+  if (!(await gembelConfirm('Hapus entry FAQ ini?'))) return;
+  const { error } = await supabase.from('faq_entries').delete().eq('id', id);
+  if (error) { await gembelAlert('Gagal hapus: ' + error.message); return; }
+  ALL_FAQ = ALL_FAQ.filter(x => x.id !== id);
+  renderFaqTable();
 }
 
 function setFilter(status) {
