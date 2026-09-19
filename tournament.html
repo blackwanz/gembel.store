@@ -1,0 +1,2161 @@
+<!DOCTYPE html>
+<!--
+============================================================
+ RALLY BRACKET — Manajemen Turnamen Bulutangkis (CLOUD VERSION)
+============================================================
+ Ported from a self-contained prototype (in-memory-only, fake
+ client-side role-switch toggle, no persistence) onto this
+ site's own Supabase backend -- same boilerplate every other
+ app here uses (assets/supabaseClient.js + assets/auth.js
+ behind requireAuth()).
+
+ Unlike every other app on this site (archery.html, habbit.html,
+ progbar.html, ...) this data is NOT per-user: one admin runs a
+ tournament, many players register into it, everyone watches the
+ same bracket. So instead of one row per user it's:
+   - public.tournaments        one row per tournament, `data` jsonb
+                                holds categories' format/settings/
+                                groups/bracket (NOT the teams --
+                                those are normalized out below so a
+                                non-admin can be granted just enough
+                                write access to register/withdraw
+                                their own team, nothing else).
+   - public.tournament_teams   one row per registered team.
+ See db/migrations/0028_tournaments.sql for the schema, RLS, and
+ the register_tournament_team() RPC that self-registration goes
+ through instead of a raw insert.
+
+ Admin detection is real: S.isAdmin comes from requireAuth()'s
+ profile.role === 'admin', not a client-side toggle. The
+ prototype's role-switch buttons are gone; the topbar shows a
+ read-only badge for the role that was actually detected.
+
+ The prototype's own bracket-generation/scoring/rendering engine
+ (generateKnockoutBracket, setMatchWinner, assignGroups,
+ computeStandings, etc.) is left untouched -- only WHERE state is
+ read from / written to changed.
+============================================================
+-->
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rally Bracket — Gembel AI PIK</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/dist/umd/supabase.min.js"></script>
+<script src="assets/supabaseClient.js"></script>
+<script src="assets/auth.js"></script>
+<style>
+  :root{
+    --bg:#f3f5fb;
+    --bg-elev:#ffffff;
+    --surface: rgba(20,30,70,0.045);
+    --surface-strong: rgba(20,30,70,0.085);
+    --border: rgba(20,30,70,0.14);
+    --line: rgba(20,30,70,0.22);
+    --text:#161b30;
+    --text-dim:#5c6482;
+    --text-faint:#8891ab;
+    --accent:#a66a00;
+    --accent-bg: rgba(255,181,69,0.22);
+    --accent-ink:#3a2500;
+    --accent-solid:#c9821a;
+    --accent2:#3d52c7;
+    --accent2-bg: rgba(61,82,199,0.12);
+    --success:#1f8a5f;
+    --success-bg: rgba(31,138,95,0.14);
+    --warning:#a8690a;
+    --warning-bg: rgba(168,105,10,0.14);
+    --danger:#c8384f;
+    --danger-bg: rgba(200,56,79,0.13);
+    --shadow: 0 12px 32px rgba(20,30,70,0.10);
+    --radius-lg:18px;
+    --radius-md:12px;
+    --radius-sm:9px;
+    --font-display:'Big Shoulders Display', 'Arial Narrow', sans-serif;
+    --font-body:'Manrope', system-ui, -apple-system, sans-serif;
+    --font-mono:'IBM Plex Mono', ui-monospace, 'SFMono-Regular', monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0c1226;
+      --bg-elev:#141b38;
+      --surface: rgba(255,255,255,0.055);
+      --surface-strong: rgba(255,255,255,0.09);
+      --border: rgba(255,255,255,0.10);
+      --line: rgba(255,255,255,0.16);
+      --text:#eef1fb;
+      --text-dim:#a6adc9;
+      --text-faint:#727aa0;
+      --accent:#ffb545;
+      --accent-bg: rgba(255,181,69,0.16);
+      --accent-ink:#2a1a00;
+      --accent-solid:#ffb545;
+      --accent2:#8ba0ff;
+      --accent2-bg: rgba(139,160,255,0.14);
+      --success:#4fd39a;
+      --success-bg: rgba(79,211,154,0.14);
+      --warning:#ffbf5f;
+      --warning-bg: rgba(255,191,95,0.14);
+      --danger:#ff7d92;
+      --danger-bg: rgba(255,125,146,0.14);
+      --shadow: 0 16px 40px rgba(0,0,0,0.45);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0c1226;
+    --bg-elev:#141b38;
+    --surface: rgba(255,255,255,0.055);
+    --surface-strong: rgba(255,255,255,0.09);
+    --border: rgba(255,255,255,0.10);
+    --line: rgba(255,255,255,0.16);
+    --text:#eef1fb;
+    --text-dim:#a6adc9;
+    --text-faint:#727aa0;
+    --accent:#ffb545;
+    --accent-bg: rgba(255,181,69,0.16);
+    --accent-ink:#2a1a00;
+    --accent-solid:#ffb545;
+    --accent2:#8ba0ff;
+    --accent2-bg: rgba(139,160,255,0.14);
+    --success:#4fd39a;
+    --success-bg: rgba(79,211,154,0.14);
+    --warning:#ffbf5f;
+    --warning-bg: rgba(255,191,95,0.14);
+    --danger:#ff7d92;
+    --danger-bg: rgba(255,125,146,0.14);
+    --shadow: 0 16px 40px rgba(0,0,0,0.45);
+  }
+
+  *,*::before,*::after{ box-sizing:border-box; }
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--font-body);
+    font-size:15px;
+    line-height:1.45;
+    -webkit-font-smoothing:antialiased;
+    padding-inline:16px;
+  }
+  h1,h2,h3,h4{ font-family:var(--font-display); font-weight:800; margin:0; text-wrap:balance; letter-spacing:0.01em; }
+  button,input,select,textarea{ font-family:inherit; color:inherit; }
+  input,select,textarea{
+    background:var(--bg-elev); border:1px solid var(--border); border-radius:var(--radius-sm);
+    padding:9px 11px; font-size:14px; color:var(--text); width:100%;
+  }
+  input:focus,select:focus,textarea:focus,button:focus-visible{
+    outline:2px solid var(--accent2); outline-offset:1px;
+  }
+  textarea{ resize:vertical; font-family:var(--font-body); }
+  table{ border-collapse:collapse; width:100%; }
+  .mono{ font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
+
+  .shell{ max-width:1240px; margin:0 auto; padding-block:16px 64px; }
+
+  /* Topbar */
+  .topbar{
+    position:sticky; top:env(safe-area-inset-top,0px); z-index:65;
+    display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+    padding:12px 16px; margin-bottom:14px;
+    background:var(--surface); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+    border:1px solid var(--border); border-radius:var(--radius-lg); box-shadow:var(--shadow);
+  }
+  .brand{ display:flex; align-items:center; gap:10px; margin-right:auto; }
+  .brand-mark{ width:34px; height:34px; flex:none; }
+  .brand-mark svg{ width:100%; height:100%; display:block; }
+  .brand-text{ display:flex; flex-direction:column; line-height:1.05; }
+  .brand-title{ font-family:var(--font-display); font-size:22px; font-weight:900; letter-spacing:0.01em; }
+  .brand-sub{ font-size:10.5px; text-transform:uppercase; letter-spacing:0.12em; color:var(--text-faint); font-weight:700; }
+
+  .role-switch{ display:flex; background:var(--surface-strong); border:1px solid var(--border); border-radius:999px; padding:3px; gap:2px; }
+  .role-btn{ border:none; background:transparent; padding:7px 16px; border-radius:999px; font-weight:700; font-size:13px; cursor:pointer; color:var(--text-dim); }
+  .role-btn.active{ background:var(--accent); color:var(--accent-ink); }
+
+  .icon-btn{ display:inline-flex; align-items:center; gap:7px; border:1px solid var(--border); background:var(--surface-strong); color:var(--text); padding:8px 13px; border-radius:999px; font-weight:700; font-size:13px; cursor:pointer; }
+  .icon-btn svg{ width:16px; height:16px; flex:none; }
+  .icon-btn:hover{ border-color:var(--line); }
+
+  /* Category tabs */
+  .cat-tabs-row{ display:flex; align-items:center; gap:8px; overflow-x:auto; padding:2px 2px 10px; margin-bottom:10px; }
+  .cat-tab{
+    flex:none; border:1px solid var(--border); background:var(--surface); color:var(--text-dim);
+    padding:9px 16px; border-radius:var(--radius-md); font-weight:700; font-size:13.5px; cursor:pointer; white-space:nowrap;
+    display:flex; align-items:center; gap:8px;
+  }
+  .cat-tab.active{ background:var(--bg-elev); color:var(--text); border-color:var(--accent2); box-shadow:0 0 0 1px var(--accent2) inset; }
+  .cat-tab .fmt-dot{ width:7px; height:7px; border-radius:50%; background:var(--accent2); flex:none; }
+  .cat-tab .fmt-dot.groups{ background:var(--accent); }
+  .cat-tab-add{ flex:none; border:1px dashed var(--line); background:transparent; color:var(--text-faint); padding:9px 14px; border-radius:var(--radius-md); font-weight:700; cursor:pointer; display:flex; gap:6px; align-items:center; }
+  .add-cat-form{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md); padding:10px; margin-bottom:12px; }
+  .add-cat-form input{ width:220px; }
+  .add-cat-form select{ width:180px; }
+
+  /* Panels */
+  .panel{
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg);
+    backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    padding:20px; box-shadow:var(--shadow);
+  }
+  .panel + .panel{ margin-top:14px; }
+  .panel-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:14px; flex-wrap:wrap; }
+  .panel-title{ font-size:19px; }
+  .panel-desc{ color:var(--text-dim); font-size:13px; margin-top:3px; }
+
+  .banner{
+    display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap;
+    background:var(--accent2-bg); border:1px solid var(--accent2); color:var(--text);
+    padding:12px 16px; border-radius:var(--radius-md); margin-bottom:14px; font-size:13.5px;
+  }
+
+  /* Subnav */
+  .subnav{ display:flex; gap:6px; overflow-x:auto; margin-bottom:14px; border-bottom:1px solid var(--border); padding-bottom:0; }
+  .subnav-btn{ flex:none; border:none; background:transparent; color:var(--text-dim); padding:10px 14px; font-weight:700; font-size:13.5px; cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; }
+  .subnav-btn.active{ color:var(--text); border-bottom-color:var(--accent); }
+
+  /* Buttons */
+  .btn{ display:inline-flex; align-items:center; gap:7px; border-radius:var(--radius-sm); border:1px solid var(--border); background:var(--surface-strong); color:var(--text); padding:10px 16px; font-weight:700; font-size:13.5px; cursor:pointer; white-space:nowrap; }
+  .btn svg, .cat-tab-add svg, .toast svg{ flex:none; }
+  .btn:hover{ border-color:var(--line); }
+  .btn-primary{ background:var(--accent); color:var(--accent-ink); border-color:transparent; }
+  .btn-secondary{ background:var(--accent2); color:#fff; border-color:transparent; }
+  .btn-ghost{ background:transparent; }
+  .btn-danger{ background:var(--danger-bg); color:var(--danger); border-color:transparent; }
+  .btn-sm{ padding:6px 11px; font-size:12.5px; border-radius:8px; }
+  .btn[disabled]{ opacity:0.45; cursor:not-allowed; }
+  .btn-block{ width:100%; justify-content:center; }
+
+  /* Stat grid */
+  .stat-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:14px; }
+  .stat-tile{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md); padding:14px 16px; }
+  .stat-value{ font-family:var(--font-display); font-size:32px; font-weight:800; line-height:1; }
+  .stat-label{ font-size:11.5px; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-faint); font-weight:700; margin-top:6px; }
+
+  .cat-summary-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px; }
+  .cat-summary-card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md); padding:14px 16px; display:flex; flex-direction:column; gap:8px; }
+  .cat-summary-title{ font-family:var(--font-display); font-size:19px; font-weight:800; }
+  .cat-summary-meta{ font-size:12px; color:var(--text-dim); display:flex; gap:10px; flex-wrap:wrap; }
+
+  /* Fields */
+  .field{ display:flex; flex-direction:column; gap:5px; }
+  .field label{ font-size:12px; font-weight:700; color:var(--text-dim); }
+  .field-row{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; }
+  .field-inline{ display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; }
+  .hint{ font-size:12px; color:var(--text-faint); }
+  .radio-group{ display:flex; gap:10px; flex-wrap:wrap; }
+  .radio-card{ flex:1; min-width:180px; border:1px solid var(--border); background:var(--surface-strong); border-radius:var(--radius-md); padding:12px 14px; cursor:pointer; display:flex; gap:10px; align-items:flex-start; }
+  .radio-card.checked{ border-color:var(--accent2); box-shadow:0 0 0 1px var(--accent2) inset; }
+  .radio-card input{ width:auto; margin-top:2px; }
+  .radio-card-title{ font-weight:800; font-size:13.5px; }
+  .radio-card-desc{ font-size:12px; color:var(--text-dim); margin-top:2px; }
+
+  /* Search */
+  .search-box{ position:relative; flex:1; min-width:180px; }
+  .search-box svg{ position:absolute; left:11px; top:50%; transform:translateY(-50%); width:15px; height:15px; color:var(--text-faint); }
+  .search-box input{ padding-left:32px; }
+  .toolbar{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+
+  /* Table */
+  .table-wrap{ overflow-x:auto; }
+  .data-table{ font-size:13px; }
+  .data-table th{ text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-faint); padding:8px 10px; border-bottom:1px solid var(--border); white-space:nowrap; }
+  .data-table td{ padding:10px; border-bottom:1px solid var(--border); vertical-align:middle; }
+  .data-table tr:last-child td{ border-bottom:none; }
+  .team-cell-name{ font-weight:800; }
+  .players-cell{ font-size:12px; color:var(--text-dim); line-height:1.5; }
+  .players-cell .em{ color:var(--text-faint); }
+
+  .pill{ display:inline-flex; align-items:center; padding:4px 10px; border-radius:999px; font-size:11.5px; font-weight:800; }
+  .pill-active{ background:var(--success-bg); color:var(--success); }
+  .pill-withdrawn{ background:var(--warning-bg); color:var(--warning); }
+  .pill-disqualified{ background:var(--danger-bg); color:var(--danger); }
+
+  .dots{ display:flex; gap:4px; }
+  .dot{ width:9px; height:9px; border-radius:50%; background:var(--border); }
+  .dot.done{ background:var(--success); }
+
+  .status-select{ width:auto; padding:6px 8px; font-size:12px; font-weight:700; }
+
+  .pagination{ display:flex; gap:4px; align-items:center; flex-wrap:wrap; margin-top:14px; }
+  .page-btn{ border:1px solid var(--border); background:var(--surface-strong); color:var(--text-dim); border-radius:8px; padding:6px 11px; font-size:12.5px; font-weight:700; cursor:pointer; font-family:var(--font-mono); }
+  .page-btn.active{ background:var(--accent2); color:#fff; border-color:transparent; }
+  .page-btn[disabled]{ opacity:0.4; cursor:not-allowed; }
+  .page-ellipsis{ color:var(--text-faint); padding:0 4px; }
+
+  .empty-state{ text-align:center; padding:36px 16px; color:var(--text-dim); }
+  .empty-state svg{ width:34px; height:34px; color:var(--text-faint); margin-bottom:10px; }
+
+  /* Groups */
+  .group-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:14px; }
+  .group-card{ padding:16px; }
+  .group-card-header{ font-family:var(--font-display); font-size:18px; font-weight:800; margin-bottom:10px; }
+  .standings-table th, .standings-table td{ padding:6px 8px; font-size:12.5px; }
+  .qualify-row td{ background:var(--success-bg); }
+  .qualify-row td:first-child{ border-radius:8px 0 0 8px; }
+  .qualify-row td:last-child{ border-radius:0 8px 8px 0; }
+  .rank-cell{ font-family:var(--font-mono); color:var(--text-faint); }
+  .grp-matches{ margin-top:12px; display:flex; flex-direction:column; gap:6px; }
+  .grp-match{ display:flex; align-items:center; gap:6px; font-size:12px; flex-wrap:wrap; padding:6px 8px; border-radius:8px; background:var(--surface-strong); }
+  .grp-match.done{ opacity:0.75; }
+  .grp-match-team{ flex:1; min-width:70px; font-weight:700; }
+  .grp-vs{ color:var(--text-faint); }
+  .score-input.sm{ width:48px; padding:5px 6px; text-align:center; }
+
+  /* Bracket */
+  .round-chips-wrap{ overflow-x:auto; margin-bottom:14px; }
+  .round-chips{ display:flex; gap:6px; }
+  .round-chip{ flex:none; border:1px solid var(--border); background:var(--surface-strong); color:var(--text-dim); padding:8px 14px; border-radius:999px; font-weight:700; font-size:12.5px; cursor:pointer; display:flex; gap:6px; align-items:center; }
+  .round-chip.active{ background:var(--accent); color:var(--accent-ink); border-color:transparent; }
+  .chip-count{ font-family:var(--font-mono); opacity:0.75; font-size:11px; }
+
+  .match-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(236px,1fr)); gap:14px; }
+
+  .view-toggle{ display:flex; background:var(--surface-strong); border:1px solid var(--border); border-radius:999px; padding:3px; gap:2px; flex:none; }
+  .view-toggle button{ border:none; background:transparent; padding:8px 15px; border-radius:999px; font-weight:700; font-size:12.5px; cursor:pointer; color:var(--text-dim); }
+  .view-toggle button.active{ background:var(--accent2); color:#fff; }
+
+  .zoom-bar{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+  .zoom-bar input[type="range"]{ width:150px; accent-color:var(--accent2); }
+  .zoom-bar .zoom-label{ font-family:var(--font-mono); font-size:12px; color:var(--text-dim); min-width:44px; text-align:center; }
+  .zoom-hint{ font-size:11.5px; color:var(--text-faint); }
+
+  .bracket-scroll{ overflow:auto; max-height:72vh; padding:14px; background:var(--surface-strong); border:1px solid var(--border); border-radius:var(--radius-md); }
+  .bracket-canvas{ position:relative; }
+  .bracket-canvas .bracket-tree{ position:absolute; top:0; left:0; transform-origin:top left; }
+  .bracket-tree{ display:flex; align-items:stretch; gap:56px; min-width:max-content; padding:6px 30px 6px 2px; }
+  .round-col{ display:flex; flex-direction:column; min-width:236px; }
+  .round-header{ font-size:11.5px; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-faint); font-weight:800; margin-bottom:12px; text-align:center; }
+  .round-body{ flex:1; display:flex; flex-direction:column; justify-content:space-around; }
+  .pair{ position:relative; display:flex; flex-direction:column; gap:14px; }
+  .pair::after{ content:''; position:absolute; right:-28px; top:37px; bottom:37px; width:0; border-right-style:solid; border-right-color:var(--line); border-right-width:var(--conn-w,2px); }
+  .pair::before{ content:''; position:absolute; right:-28px; top:calc(50% - 1px); width:28px; height:0; border-top-style:solid; border-top-color:var(--line); border-top-width:var(--conn-w,2px); }
+  .round-col:not(:last-child) .match-card::after{ content:''; position:absolute; right:-28px; top:calc(50% - 1px); width:28px; height:0; border-top-style:solid; border-top-color:var(--line); border-top-width:var(--conn-w,2px); }
+  .final-wrap{ flex:1; display:flex; align-items:center; justify-content:center; }
+
+  .match-card{ position:relative; width:236px; background:var(--bg-elev); border:1px solid var(--border); border-left:3px solid var(--line); border-radius:var(--radius-md); padding:9px 12px; }
+  .match-card.mc-live{ border-left-color:var(--accent2); }
+  .match-card.mc-done{ border-left-color:var(--success); }
+  .match-card.mc-pending{ opacity:0.55; }
+  .match-card[data-action]{ cursor:pointer; }
+  .match-card.highlight{ box-shadow:0 0 0 2px var(--accent); }
+  .mc-round-tag{ font-size:10px; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-faint); font-weight:700; margin-bottom:6px; }
+  .mc-team{ display:flex; align-items:center; gap:6px; padding:3px 0; font-size:13px; font-weight:700; }
+  .mc-team.tbd{ color:var(--text-faint); font-weight:600; font-style:italic; }
+  .mc-team.winner{ color:var(--success); }
+  .mc-name{ flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mc-score{ font-family:var(--font-mono); font-weight:700; }
+  .tag{ font-size:9.5px; font-weight:800; padding:1px 6px; border-radius:6px; text-transform:uppercase; }
+  .tag-withdrawn{ background:var(--warning-bg); color:var(--warning); }
+  .tag-dq{ background:var(--danger-bg); color:var(--danger); }
+  .mc-editor{ margin-top:8px; padding-top:8px; border-top:1px dashed var(--line); display:flex; flex-direction:column; gap:8px; }
+  .mc-editor-scores{ display:flex; align-items:center; gap:8px; }
+  .mc-vs{ color:var(--text-faint); font-size:11px; }
+  .mc-editor-actions{ display:flex; flex-direction:column; gap:6px; }
+  .wo-check{ display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--text-dim); }
+  .wo-check input{ width:auto; }
+
+  /* Rules drawer */
+  .drawer-overlay{ position:fixed; inset:0; background:rgba(6,10,24,0.5); backdrop-filter:blur(2px); z-index:60; opacity:0; pointer-events:none; transition:opacity 0.2s ease; }
+  .drawer-overlay.open{ opacity:1; pointer-events:auto; }
+  .rules-drawer{ position:fixed; top:0; right:0; height:100%; width:min(380px,88vw); background:var(--bg-elev); border-left:1px solid var(--border); z-index:61; transform:translateX(100%); transition:transform 0.25s ease; padding:20px; padding-top:calc(20px + env(safe-area-inset-top,0px)); overflow-y:auto; display:flex; flex-direction:column; gap:14px; }
+  .rules-drawer.open{ transform:translateX(0); }
+  .rules-head{ display:flex; align-items:center; justify-content:space-between; }
+  .rules-body{ font-size:13.5px; color:var(--text-dim); white-space:pre-wrap; line-height:1.7; }
+  .rules-textarea{ min-height:320px; font-size:13px; }
+
+  /* Toasts */
+  .toast-stack{ position:fixed; bottom:18px; left:50%; transform:translateX(-50%); z-index:80; display:flex; flex-direction:column; gap:8px; align-items:center; padding-bottom:env(safe-area-inset-bottom,0px); }
+  .toast{ background:var(--bg-elev); border:1px solid var(--border); box-shadow:var(--shadow); padding:11px 18px; border-radius:999px; font-size:13px; font-weight:700; display:flex; align-items:center; gap:8px; animation:toastIn 0.25s ease; }
+  .toast.success{ color:var(--success); }
+  .toast.error{ color:var(--danger); }
+  @keyframes toastIn{ from{ opacity:0; transform:translateY(8px);} to{opacity:1; transform:translateY(0);} }
+
+  /* Archive-to-PDF print document. Hidden on screen; shown exclusively via
+     @media print, which also hides the live app, so "Save as PDF" in the
+     browser's print dialog captures only this clean summary. */
+  .archive-doc{ display:none; }
+  @media print{
+    #app{ display:none !important; }
+    .toast-stack{ display:none !important; }
+    .archive-doc{
+      display:block !important; background:#fff; color:#1a1a2e;
+      font-family:'Manrope', Arial, sans-serif; padding:0; margin:0;
+    }
+    .archive-doc h1,.archive-doc h2,.archive-doc h3{ font-family:'Big Shoulders Display', Arial, sans-serif; color:#1a1a2e; }
+  }
+  .archive-brand{ font-size:11px; text-transform:uppercase; letter-spacing:0.1em; color:#6a6f8c; font-weight:800; }
+  .archive-header h1{ font-size:30px; margin:4px 0 6px; }
+  .archive-meta{ font-size:12.5px; color:#4a4f6a; margin-bottom:18px; }
+  .archive-champion{ border:2px solid #d19a2b; border-radius:14px; padding:18px 22px; margin:10px 0 22px; background:#fdf6e6; }
+  .archive-champion-label{ font-size:11px; font-weight:800; letter-spacing:0.12em; color:#a67818; }
+  .archive-champion-name{ font-size:26px; font-weight:800; margin:4px 0; }
+  .archive-champion-players{ font-size:13.5px; color:#3a3f5a; }
+  .archive-runner{ font-size:12.5px; color:#6a6f8c; margin-top:8px; }
+  .archive-note{ font-size:13px; color:#6a6f8c; font-style:italic; margin:12px 0 20px; }
+  .archive-section-title{ font-size:16px; margin:22px 0 10px; padding-top:10px; border-top:1px solid #e2e4ee; }
+  .archive-group{ margin-bottom:16px; break-inside:avoid; }
+  .archive-group h3{ font-size:13.5px; margin-bottom:6px; }
+  .archive-table{ width:100%; border-collapse:collapse; font-size:12px; }
+  .archive-table th,.archive-table td{ border:1px solid #d7d9e6; padding:4px 8px; text-align:left; }
+  .archive-table th{ background:#f2f3f9; }
+  .archive-round{ margin-bottom:14px; break-inside:avoid; }
+  .archive-round h3{ font-size:13px; text-transform:uppercase; letter-spacing:0.06em; color:#4a4f6a; margin-bottom:6px; }
+  .archive-matches{ display:flex; flex-direction:column; gap:4px; }
+  .archive-match{ display:flex; align-items:center; gap:10px; font-size:12.5px; padding:4px 8px; border:1px solid #e2e4ee; border-radius:6px; }
+  .archive-match span:first-child,.archive-match span:last-child{ flex:1; }
+  .archive-match span:last-child{ text-align:right; }
+  .archive-winner{ font-weight:800; }
+  .archive-score{ font-family:'IBM Plex Mono', monospace; font-size:11.5px; color:#6a6f8c; min-width:52px; text-align:center; }
+  .archive-footer{ margin-top:26px; padding-top:10px; border-top:1px solid #e2e4ee; font-size:11px; color:#8a8fa8; text-align:center; }
+
+  /* Confirm modal */
+  .modal-overlay{ position:fixed; inset:0; background:rgba(6,10,24,0.55); z-index:70; display:flex; align-items:center; justify-content:center; padding:20px; }
+  .confirm-box{ background:var(--bg-elev); border:1px solid var(--border); border-radius:var(--radius-lg); padding:22px; max-width:380px; width:100%; box-shadow:var(--shadow); }
+  .confirm-actions{ display:flex; gap:10px; margin-top:18px; justify-content:flex-end; }
+
+  /* Registration */
+  .reg-grid{ display:grid; grid-template-columns:1.2fr 0.8fr; gap:16px; align-items:flex-start; }
+  .player-block{ border:1px solid var(--border); background:var(--surface-strong); border-radius:var(--radius-md); padding:14px; display:flex; flex-direction:column; gap:10px; }
+  .player-block-head{ display:flex; justify-content:space-between; align-items:center; }
+  .player-block-title{ font-weight:800; font-size:14px; }
+  .verify-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px; }
+  .verify-card{ border:1px solid var(--border); background:var(--surface-strong); border-radius:var(--radius-md); padding:12px; display:flex; flex-direction:column; gap:8px; }
+  .verify-card-head{ display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  .verify-card-title{ font-weight:800; font-size:12.5px; }
+  .verify-badge{ width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:var(--border); flex:none; }
+  .verify-badge svg{ width:14px; height:14px; }
+  .verify-badge.verifying svg{ animation:spin 0.8s linear infinite; color:var(--accent2); }
+  .verify-badge.verified{ background:var(--success-bg); }
+  .verify-badge.verified svg{ color:var(--success); }
+  .verify-badge.verified path{ stroke-dasharray:20; stroke-dashoffset:20; animation:draw 0.35s ease forwards; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  @keyframes draw{ to{ stroke-dashoffset:0; } }
+  .status-bar{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; background:var(--surface-strong); border:1px solid var(--border); border-radius:var(--radius-md); padding:12px 14px; }
+  .status-bar-ready{ border-color:var(--success); background:var(--success-bg); }
+  .my-teams-list{ display:flex; flex-direction:column; gap:8px; }
+  .my-team-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; background:var(--surface-strong); border:1px solid var(--border); border-radius:var(--radius-md); padding:10px 12px; font-size:13px; }
+
+  @media (max-width:820px){
+    .reg-grid{ grid-template-columns:1fr; }
+  }
+  @media (max-width:640px){
+    .data-table thead{ display:none; }
+    .data-table, .data-table tbody, .data-table tr, .data-table td{ display:block; width:100%; }
+    .data-table tr{ border:1px solid var(--border); border-radius:var(--radius-md); margin-bottom:10px; padding:8px 10px; }
+    .data-table td{ border-bottom:none; display:flex; justify-content:space-between; gap:10px; padding:6px 2px; text-align:right; }
+    .data-table td::before{ content:attr(data-label); font-size:11px; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-faint); font-weight:700; text-align:left; }
+    .brand-sub{ display:none; }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:0.01ms !important; animation-iteration-count:1 !important; transition-duration:0.01ms !important; }
+  }
+  .rb-loading{ display:flex; align-items:center; justify-content:center; min-height:60vh; color:var(--text-dim); font-family:var(--font-body); font-size:14px; }
+  .rb-role-badge{ display:flex; align-items:center; padding:7px 16px; border-radius:999px; font-weight:800; font-size:12.5px; background:var(--accent); color:var(--accent-ink); }
+  .rb-role-badge.player{ background:var(--accent2); color:#fff; }
+</style>
+</head>
+<body>
+
+<a href="dashboard.html" style="position:fixed;top:14px;left:14px;z-index:99;color:var(--text-dim);text-decoration:none;font-size:12px;letter-spacing:0.06em;border:1px solid var(--border);padding:6px 12px;border-radius:999px;background:var(--bg-elev);">&larr; DASHBOARD</a>
+
+<div id="app"><div class="rb-loading">Memuat turnamen...</div></div>
+
+<script>
+(function(){
+  "use strict";
+  var app = document.getElementById('app');
+
+  /* ---------------- ICONS ---------------- */
+  /* Every icon carries explicit width/height attributes. Inline SVGs with only
+     a viewBox (no intrinsic size) can collapse to 0x0 inside an inline-flex
+     button that has no other content to size against - explicit attributes
+     sidestep that entirely; CSS rules elsewhere may still override the size. */
+  var ICONS = {
+    shuttle: '<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="24" cy="34" r="8" fill="var(--accent-solid)"/><path d="M24 26 L14 6 L24 12 L34 6 L24 26" fill="var(--accent2)" opacity="0.85"/></svg>',
+    check: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 12.5 L9.5 18 L20 6" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    spinner: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-dasharray="30 60"/></svg>',
+    dot: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="4" fill="currentColor"/></svg>',
+    search: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21 L16.5 16.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+    book: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 5.5c0-1 1-1.5 2-1.5h6v16H6c-1 0-2 .5-2 1.5z" stroke="currentColor" stroke-width="1.8"/><path d="M20 5.5c0-1-1-1.5-2-1.5h-6v16h6c1 0 2 .5 2 1.5z" stroke="currentColor" stroke-width="1.8"/></svg>',
+    plus: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
+    close: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
+    trash: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0 1 13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    empty: '<svg width="34" height="34" viewBox="0 0 24 24" fill="none"><path d="M4 20V10l8-6 8 6v10a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z" stroke="currentColor" stroke-width="1.6"/></svg>',
+    user: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3.4" stroke="currentColor" stroke-width="1.8"/><path d="M5 20c1-4 4-6 7-6s6 2 7 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>'
+  };
+
+  /* ---------------- NAME / DUMMY DATA POOLS ---------------- */
+  var FIRST_NAMES = ["Budi","Andi","Dedi","Rudi","Agus","Bambang","Joko","Wahyu","Dimas","Fajar","Rian","Yoga","Adit","Bayu","Fikri","Galih","Hendra","Irfan","Kevin","Lukman","Made","Nanda","Oscar","Putra","Reza","Satria","Taufik","Umar","Vino","Wisnu","Yusuf","Zaki","Ayu","Bella","Citra","Dian","Eka","Fitri","Gita","Hana","Indah","Julia","Kirana","Larasati","Maya","Nadia","Olivia","Putri","Rina","Sari","Tania","Utari","Vina","Wulan","Yuni","Zahra"];
+  var LAST_NAMES = ["Saputra","Pratama","Wijaya","Kusuma","Santoso","Setiawan","Nugroho","Hidayat","Permana","Firmansyah","Gunawan","Hakim","Iswanto","Junaedi","Kurniawan","Lesmana","Mahendra","Nurdin","Octavian","Prasetyo","Rahman","Suryadi","Tanoto","Utomo","Wibowo","Yulianto","Zulkarnain"];
+  var TEAM_WORD_A = ["Smash","Kilat","Garuda","Elang","Petir","Badai","Rajawali","Netra","Cakra","Baja","Angin","Komet","Falcon","Harimau","Naga","Drop","Rally","Cepat"];
+  var TEAM_WORD_B = ["Jaya","Perkasa","Muda","Utama","Sakti","Prima","Nusantara","Abadi","Gemilang","Mandiri","Bersatu","Tangguh","Champion","Legenda","Unggul","Raya","Putra"];
+  var EMAIL_DOMAINS = ["gmail.com","yahoo.com","outlook.com"];
+  var teamComboCount = {};
+
+  function randInt(min,max){ return Math.floor(Math.random()*(max-min+1))+min; }
+  function pick(arr){ return arr[randInt(0,arr.length-1)]; }
+  function shuffle(arr){
+    var a = arr.slice();
+    for(var i=a.length-1;i>0;i--){ var j=randInt(0,i); var t=a[i]; a[i]=a[j]; a[j]=t; }
+    return a;
+  }
+  function randomPersonName(){ return pick(FIRST_NAMES) + " " + pick(LAST_NAMES); }
+  function slugForEmail(name){ return name.toLowerCase().replace(/[^a-z\s]/g,'').trim().replace(/\s+/g,'.'); }
+  function randomEmail(name){ return slugForEmail(name) + randInt(1,99) + "@" + pick(EMAIL_DOMAINS); }
+  function randomTeamName(){
+    var a = pick(TEAM_WORD_A), b = pick(TEAM_WORD_B);
+    var combo = a+"-"+b;
+    teamComboCount[combo] = (teamComboCount[combo]||0) + 1;
+    var n = teamComboCount[combo];
+    return n===1 ? (a+" "+b) : (a+" "+b+" "+n);
+  }
+  function uidFactory(){
+    var c = 1;
+    return function(prefix){ return prefix + "_" + (c++) + "_" + Math.random().toString(36).slice(2,7); };
+  }
+  var uid = uidFactory();
+
+  function createDummyTeam(randomizeStatus){
+    var p1 = randomPersonName(), p2 = randomPersonName();
+    var fullVerified = Math.random() < 0.5;
+    var partial = !fullVerified && Math.random() < 0.6;
+    var checks = {
+      dob: fullVerified || (partial && Math.random()<0.5),
+      email: fullVerified || (partial && Math.random()<0.7),
+      gopay: fullVerified || (partial && Math.random()<0.4),
+      rekening: fullVerified || (partial && Math.random()<0.3)
+    };
+    var status = 'active';
+    if(randomizeStatus!==false){
+      var roll = Math.random();
+      status = roll<0.88 ? 'active' : (roll<0.95 ? 'withdrawn' : 'disqualified');
+    }
+    return {
+      id: uid('team'),
+      name: randomTeamName(),
+      status: status,
+      createdAt: Date.now(),
+      players: [
+        { name:p1, email: randomEmail(p1) },
+        { name:p2, email: randomEmail(p2), partnerVerified: checks.email }
+      ],
+      checks: checks,
+      dob:'', gopayNumber:'', bankName:'', bankAccount:''
+    };
+  }
+
+  function escapeHtml(s){
+    return String(s==null?'':s).replace(/[&<>"']/g, function(c){
+      return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
+    });
+  }
+  function val(id){ var el = document.getElementById(id); return el ? el.value : ''; }
+
+  /* ---------------- BRACKET ENGINE ---------------- */
+  function nextPow2(n){ var p=1; while(p<n) p*=2; return Math.max(p,2); }
+  function seedOrder(size){
+    var seeds=[1];
+    while(seeds.length<size){
+      var s = seeds.length*2;
+      var next=[];
+      for(var i=0;i<seeds.length;i++){ next.push(seeds[i]); next.push(s+1-seeds[i]); }
+      seeds = next;
+    }
+    return seeds;
+  }
+  function makeMatch(a,b){
+    return { id: uid('m'), teamAId: a?a.id:null, teamBId: b?b.id:null, winnerId:null, scoreA:null, scoreB:null, walkover:false, isBye:false };
+  }
+  function generateKnockoutBracket(teams){
+    var n = teams.length;
+    var size = nextPow2(n);
+    var order = seedOrder(size);
+    var slots = order.map(function(seedNum){ return seedNum<=n ? teams[seedNum-1] : null; });
+    var round0 = [];
+    for(var i=0;i<slots.length;i+=2){
+      var a = slots[i], b = slots[i+1];
+      var m = makeMatch(a,b);
+      if(a && !b){ m.winnerId = a.id; m.isBye = true; }
+      if(b && !a){ m.winnerId = b.id; m.isBye = true; }
+      round0.push(m);
+    }
+    var rounds = [round0];
+    var prevCount = round0.length;
+    while(prevCount>1){
+      var r=[];
+      for(var k=0;k<prevCount/2;k++) r.push(makeMatch(null,null));
+      rounds.push(r);
+      prevCount = r.length;
+    }
+    for(var ri=0; ri<rounds.length-1; ri++){
+      for(var mi=0; mi<rounds[ri].length; mi++){
+        var mm = rounds[ri][mi];
+        if(mm.winnerId){
+          var next = rounds[ri+1][Math.floor(mi/2)];
+          if(mi%2===0) next.teamAId = mm.winnerId; else next.teamBId = mm.winnerId;
+        }
+      }
+    }
+    return { size:size, rounds:rounds };
+  }
+  function clearDownstream(bracket, r, i){
+    var m = bracket.rounds[r][i];
+    if(m.winnerId){
+      m.winnerId=null; m.scoreA=null; m.scoreB=null; m.walkover=false;
+      if(r+1 < bracket.rounds.length){
+        var next = bracket.rounds[r+1][Math.floor(i/2)];
+        var slot = (i%2===0) ? 'teamAId' : 'teamBId';
+        next[slot] = null;
+        clearDownstream(bracket, r+1, Math.floor(i/2));
+      }
+    }
+  }
+  function setMatchWinner(bracket, r, i, winnerId, walkover){
+    var m = bracket.rounds[r][i];
+    m.winnerId = winnerId;
+    m.walkover = !!walkover;
+    if(r+1 < bracket.rounds.length){
+      var next = bracket.rounds[r+1][Math.floor(i/2)];
+      var slot = (i%2===0) ? 'teamAId' : 'teamBId';
+      if(next[slot] !== winnerId){
+        next[slot] = winnerId;
+        clearDownstream(bracket, r+1, Math.floor(i/2));
+      }
+    }
+  }
+  function handleWithdrawalInBracket(bracket, teamId){
+    for(var r=0; r<bracket.rounds.length; r++){
+      for(var i=0; i<bracket.rounds[r].length; i++){
+        var m = bracket.rounds[r][i];
+        if(m.teamAId===teamId || m.teamBId===teamId){
+          var oppId = (m.teamAId===teamId) ? m.teamBId : m.teamAId;
+          if(m.winnerId===teamId){
+            if(oppId){ setMatchWinner(bracket, r, i, oppId, true); }
+          } else if(!m.winnerId && oppId){
+            setMatchWinner(bracket, r, i, oppId, true);
+          }
+        }
+      }
+    }
+  }
+  function allPairs(ids){
+    var res=[];
+    for(var i=0;i<ids.length;i++) for(var j=i+1;j<ids.length;j++) res.push([ids[i], ids[j]]);
+    return res;
+  }
+  function assignGroups(cat){
+    var activeTeams = cat.teams.filter(function(t){ return t.status==='active'; });
+    var groupSize = cat.groupSize || 4;
+    var numGroups = Math.max(1, Math.ceil(activeTeams.length / groupSize));
+    var groups = [];
+    for(var g=0; g<numGroups; g++) groups.push({ id: uid('grp'), name:'Grup '+(g+1), teamIds:[], matches:[] });
+    var mixed = shuffle(activeTeams);
+    mixed.forEach(function(t,i){ groups[i % numGroups].teamIds.push(t.id); });
+    groups.forEach(function(g){
+      g.matches = allPairs(g.teamIds).map(function(pair){
+        return { id: uid('gm'), teamAId: pair[0], teamBId: pair[1], scoreA:null, scoreB:null, winnerId:null, walkover:false };
+      });
+    });
+    cat.groups = groups;
+    cat.groupsLocked = false;
+    cat.bracket = null;
+  }
+  function computeStandings(g){
+    var table = g.teamIds.map(function(id){ return { teamId:id, played:0, won:0, lost:0, pointsFor:0, pointsAgainst:0, pts:0 }; });
+    function rowOf(id){ for(var i=0;i<table.length;i++) if(table[i].teamId===id) return table[i]; return null; }
+    g.matches.forEach(function(m){
+      if(m.winnerId==null) return;
+      var a = rowOf(m.teamAId), b = rowOf(m.teamBId);
+      if(!a||!b) return;
+      a.played++; b.played++;
+      if(m.scoreA!=null) a.pointsFor+=m.scoreA;
+      if(m.scoreB!=null) a.pointsAgainst+=m.scoreB;
+      if(m.scoreB!=null) b.pointsFor+=m.scoreB;
+      if(m.scoreA!=null) b.pointsAgainst+=m.scoreA;
+      if(m.winnerId===a.teamId){ a.won++; b.lost++; a.pts+=3; } else { b.won++; a.lost++; b.pts+=3; }
+    });
+    table.sort(function(x,y){
+      if(y.pts!==x.pts) return y.pts-x.pts;
+      var dx = x.pointsFor-x.pointsAgainst, dy = y.pointsFor-y.pointsAgainst;
+      if(dy!==dx) return dy-dx;
+      return y.pointsFor-x.pointsFor;
+    });
+    return table;
+  }
+  function handleWithdrawalInGroups(cat, teamId){
+    if(!cat.groups) return;
+    cat.groups.forEach(function(g){
+      g.matches.forEach(function(m){
+        if((m.teamAId===teamId || m.teamBId===teamId) && !m.winnerId){
+          var opp = (m.teamAId===teamId) ? m.teamBId : m.teamAId;
+          if(opp){ m.winnerId=opp; m.walkover=true; }
+        }
+      });
+    });
+  }
+  function advanceGroupsToKnockout(cat){
+    var advanceN = cat.advancePerGroup || 2;
+    var perGroupTables = cat.groups.map(function(g){ return computeStandings(g); });
+    var seededIds = [];
+    for(var rank=0; rank<advanceN; rank++){
+      var rankRow = [];
+      perGroupTables.forEach(function(t){ if(t[rank]) rankRow.push(t[rank]); });
+      if(rank%2===1) rankRow.reverse();
+      rankRow.forEach(function(row){ seededIds.push(row.teamId); });
+    }
+    var teams = seededIds.map(function(id){ return cat.teams.filter(function(t){return t.id===id;})[0]; }).filter(Boolean);
+    cat.bracket = generateKnockoutBracket(teams);
+    cat.groupsLocked = true;
+  }
+
+  /* ---------------- STATE ---------------- */
+  var S = {
+    // role is set for real after requireAuth() resolves (see boot()) -- 'admin' only when
+    // profile.role==='admin' server-side, never a client-side choice. Default to 'player' (the
+    // safer, more-restricted view) until we know better.
+    role: 'player',
+    isAdmin: false,
+    tournamentId: null,
+    tournamentName: '',
+    registrationOpen: false,
+    currentUserId: null,
+    activeCategoryId: null,
+    categories: [],
+    rulesText: "PERATURAN TURNAMEN\n\n1. Sistem Pertandingan\n   - Format mengikuti pengaturan tiap kategori: gugur langsung atau fase grup dilanjutkan babak gugur.\n   - Setiap pertandingan memakai sistem rally point, best of 3 game, tiap game hingga 21 poin (deuce maksimal 30 poin).\n\n2. Kehadiran & Walkover (W.O.)\n   - Pemain wajib hadir di lapangan maksimal 15 menit setelah nama tim dipanggil.\n   - Keterlambatan lebih dari 15 menit dinyatakan kalah W.O. dan lawan otomatis melaju ke babak berikutnya.\n\n3. Pendaftaran Tim\n   - Satu tim terdiri dari 2 pemain (ganda) yang wajib mengisi data diri lengkap dan email aktif.\n   - Verifikasi tanggal lahir, email, GoPay, dan rekening bank wajib diselesaikan sebelum pendaftaran ditutup.\n   - Panitia berhak mendiskualifikasi tim jika data yang diberikan tidak valid.\n\n4. Pengunduran Diri & Diskualifikasi\n   - Tim yang mengundurkan diri sebelum bertanding dicatat sebagai W.O.; lawan melaju otomatis.\n   - Tim yang terbukti melanggar ketentuan dapat didiskualifikasi panitia kapan saja selama turnamen berlangsung.\n\n5. Perlengkapan\n   - Shuttlecock disediakan panitia, menggunakan bulu angsa standar pertandingan.\n   - Pemain wajib memakai sepatu indoor non-marking.\n\n6. Keputusan Wasit\n   - Keputusan wasit dan panitia bersifat final dan mengikat.",
+    rulesOpen: false,
+    ui: {
+      adminTab: 'ringkasan',
+      playerTab: 'daftar',
+      showAddCategory: false,
+      bannerDismissed: false,
+      teamsSearch: '', teamsPage:1, teamsPerPage:10,
+      groupsPage: 1,
+      bracketRound: {}, bracketPage: {}, bracketSearch: {}, bracketHighlight: {},
+      bracketMode: {}, bracketZoom: {}, bracketScrollTo: null,
+      openMatch: null,
+      rulesEditing: false,
+      confirmOpen: false, confirmMsg: '', confirmCb: null,
+      registrationChecks: { dob:false, email:false, gopay:false, rekening:false, partnerEmail:false },
+      myTeamIds: [],
+      lastDummyCount: 16
+    }
+  };
+
+  function getCat(){
+    for(var i=0;i<S.categories.length;i++) if(S.categories[i].id===S.activeCategoryId) return S.categories[i];
+    return S.categories[0];
+  }
+  function teamById(cat, id){
+    if(!id) return null;
+    for(var i=0;i<cat.teams.length;i++) if(cat.teams[i].id===id) return cat.teams[i];
+    return null;
+  }
+
+  /* ---------------- CLOUD PERSISTENCE (Supabase) ----------------
+     Two tables back this app (db/migrations/0028_tournaments.sql):
+       - tournaments: one row, `data` jsonb = everything below EXCEPT the teams themselves
+         (category format/settings/groups/bracket -- brackets/groups reference team ids, which
+         stay stable because they ARE tournament_teams.id).
+       - tournament_teams: one row per team, normalized out so RLS can let a non-admin insert
+         (via the register_tournament_team RPC) / delete only their OWN row, without ever
+         touching the shared tournament blob.
+     The bracket-generation/scoring engine above (generateKnockoutBracket, setMatchWinner,
+     assignGroups, computeStandings, ...) is untouched -- it still just reads/writes S.categories
+     in memory; these functions only change where that state is loaded from / persisted to. */
+  function serializeCategoriesForCloud(){
+    // Strip `teams` out of each category before persisting -- those live in tournament_teams,
+    // not in the tournament's jsonb blob.
+    return S.categories.map(function(c){
+      return {
+        id: c.id, name: c.name, format: c.format, groupSize: c.groupSize,
+        advancePerGroup: c.advancePerGroup, groups: c.groups, groupsLocked: c.groupsLocked,
+        bracket: c.bracket, sample: c.sample
+      };
+    });
+  }
+  var cloudSyncTimer = null;
+  function queueCloudSync(){
+    if(!S.isAdmin || !S.tournamentId) return; // only admins own the tournament row; RLS would reject anyway
+    clearTimeout(cloudSyncTimer);
+    cloudSyncTimer = setTimeout(async function(){
+      try{
+        await supabase.from('tournaments').update({
+          name: S.tournamentName,
+          data: { rulesText: S.rulesText, categories: serializeCategoriesForCloud() }
+        }).eq('id', S.tournamentId);
+      }catch(e){ console.warn('Cloud sync skip:', e.message); }
+    }, 900);
+  }
+  async function setRegistrationOpen(open){
+    if(!S.isAdmin || !S.tournamentId) return;
+    S.registrationOpen = open;
+    render();
+    try{
+      await supabase.from('tournaments').update({ registration_open: open }).eq('id', S.tournamentId);
+      toast(open ? 'Pendaftaran dibuka' : 'Pendaftaran ditutup');
+    }catch(e){
+      toast('Gagal menyimpan status pendaftaran: '+e.message, 'error');
+    }
+  }
+  function teamRowToTeam(row){
+    var p = row.payload || {};
+    return {
+      id: row.id,
+      name: row.name,
+      status: p.status || 'active',
+      createdAt: row.created_at ? Date.parse(row.created_at) : Date.now(),
+      players: p.players || [{name:'',email:''},{name:'',email:''}],
+      checks: p.checks || { dob:false, email:false, gopay:false, rekening:false },
+      dob: p.dob||'', gopayNumber: p.gopayNumber||'', bankName: p.bankName||'', bankAccount: p.bankAccount||'',
+      registeredBy: row.registered_by,
+      categoryId: row.category_id
+    };
+  }
+  function teamToPayload(t){
+    return {
+      status: t.status, players: t.players, checks: t.checks,
+      dob: t.dob, gopayNumber: t.gopayNumber, bankName: t.bankName, bankAccount: t.bankAccount
+    };
+  }
+  // Admin-only direct writes (dummy teams, manual add, status change, delete) -- a non-admin
+  // never calls these; their writes go through registerTeamCloud()/withdrawTeamCloud() instead,
+  // which is all RLS allows them to do anyway.
+  async function createTeamRowAdmin(catId, team){
+    try{
+      var res = await supabase.from('tournament_teams').insert({
+        tournament_id: S.tournamentId, category_id: catId, name: team.name, payload: teamToPayload(team)
+      }).select().single();
+      if(res.error) throw res.error;
+      team.id = res.data.id;
+      return team;
+    }catch(e){
+      toast('Gagal menyimpan tim: '+e.message, 'error');
+      return null;
+    }
+  }
+  async function bulkCreateDummyTeams(cat, n){
+    // Used by the admin "Data Contoh" panel to preview the UI at scale. Batched into a single
+    // insert (rather than n sequential round-trips) since n can be up to 4000.
+    var drafts = [];
+    for(var i=0;i<n;i++) drafts.push(createDummyTeam());
+    var rows = drafts.map(function(t){
+      return { tournament_id: S.tournamentId, category_id: cat.id, name: t.name, payload: teamToPayload(t) };
+    });
+    try{
+      var res = await supabase.from('tournament_teams').insert(rows).select();
+      if(res.error) throw res.error;
+      res.data.forEach(function(row){ cat.teams.push(teamRowToTeam(row)); });
+      toast(n+' tim contoh ditambahkan');
+    }catch(e){
+      toast('Gagal menambah tim contoh: '+e.message, 'error');
+    }
+    render();
+  }
+  async function updateTeamRowAdmin(team){
+    if(!S.isAdmin) return;
+    try{
+      await supabase.from('tournament_teams').update({ name: team.name, payload: teamToPayload(team) }).eq('id', team.id);
+    }catch(e){ console.warn('Team update sync skip:', e.message); }
+  }
+  async function deleteTeamRowAdmin(teamId){
+    try{
+      await supabase.from('tournament_teams').delete().eq('id', teamId);
+    }catch(e){ toast('Gagal menghapus tim: '+e.message, 'error'); }
+  }
+  async function registerTeamCloud(catId, name, payload){
+    var res = await supabase.rpc('register_tournament_team', {
+      p_tournament_id: S.tournamentId, p_category_id: catId, p_name: name, p_payload: payload
+    });
+    if(res.error) throw res.error;
+    return res.data;
+  }
+  async function withdrawTeamCloud(teamId){
+    var res = await supabase.from('tournament_teams').delete().eq('id', teamId);
+    if(res.error) throw res.error;
+  }
+  async function loadTournamentTeams(){
+    var res = await supabase.from('tournament_teams').select('*').eq('tournament_id', S.tournamentId);
+    if(res.error){ console.warn('Load teams failed:', res.error.message); return; }
+    var rows = res.data || [];
+    S.categories.forEach(function(c){ c.teams = []; });
+    S.ui.myTeamIds = [];
+    rows.forEach(function(row){
+      var cat = S.categories.filter(function(c){ return c.id===row.category_id; })[0];
+      if(!cat) return; // team belongs to a category that no longer exists locally
+      var team = teamRowToTeam(row);
+      cat.teams.push(team);
+      if(team.registeredBy && team.registeredBy===S.currentUserId) S.ui.myTeamIds.push(team.id);
+    });
+  }
+  async function loadTournament(){
+    var res = await supabase.from('tournaments').select('*').order('created_at', { ascending:false }).limit(1).maybeSingle();
+    if(res.error){ console.warn('Load tournament failed:', res.error.message); return false; }
+    if(!res.data) return false;
+    var row = res.data;
+    S.tournamentId = row.id;
+    S.tournamentName = row.name;
+    S.registrationOpen = !!row.registration_open;
+    var data = row.data || {};
+    S.rulesText = data.rulesText || S.rulesText;
+    S.categories = (data.categories || []).map(function(c){ c.teams = []; return c; });
+    S.activeCategoryId = S.categories.length ? S.categories[0].id : null;
+    await loadTournamentTeams();
+    return true;
+  }
+  async function createTournamentAdmin(name){
+    var res = await supabase.from('tournaments').insert({
+      name: name || 'Turnamen Baru', created_by: S.currentUserId, registration_open: false,
+      data: { rulesText: S.rulesText, categories: [] }
+    }).select().single();
+    if(res.error){ toast('Gagal membuat turnamen: '+res.error.message, 'error'); return false; }
+    S.tournamentId = res.data.id;
+    S.tournamentName = res.data.name;
+    S.registrationOpen = false;
+    S.categories = [];
+    S.activeCategoryId = null;
+    return true;
+  }
+  var realtimeChannel = null;
+  function subscribeRealtime(){
+    if(realtimeChannel) return;
+    realtimeChannel = supabase.channel('tournament_sync_'+S.tournamentId)
+      .on('postgres_changes', { event:'*', schema:'public', table:'tournaments', filter:'id=eq.'+S.tournamentId }, async function(){
+        var wasAdmin = S.isAdmin;
+        await loadTournament();
+        S.isAdmin = wasAdmin; // loadTournament doesn't touch role
+        if(!S.categories.some(function(c){ return c.id===S.activeCategoryId; })) S.activeCategoryId = S.categories[0] ? S.categories[0].id : null;
+        render();
+      })
+      .on('postgres_changes', { event:'*', schema:'public', table:'tournament_teams', filter:'tournament_id=eq.'+S.tournamentId }, async function(){
+        await loadTournamentTeams();
+        render();
+      })
+      .subscribe();
+  }
+
+  /* ---------------- ARCHIVE TO PDF ----------------
+     No backend, so "export as PDF" means: render a clean, print-only
+     summary (champion, group standings, full bracket) into a hidden node,
+     then call window.print() so the browser's own "Save as PDF" produces
+     the file. @media print (see CSS) hides the live app and shows only
+     this node while printing. */
+  var archiveEl = null;
+  function ensureArchiveEl(){
+    if(!archiveEl){
+      archiveEl = document.createElement('div');
+      archiveEl.className = 'archive-doc';
+      document.body.appendChild(archiveEl);
+    }
+    return archiveEl;
+  }
+  function buildArchiveHTML(cat){
+    var dateStr = new Date().toLocaleDateString('id-ID', { day:'numeric', month:'long', year:'numeric' });
+    var fmtLabel = cat.format==='groups' ? 'Grup lalu Gugur' : 'Langsung Gugur';
+    var html = '<div class="archive-header">' +
+      '<div class="archive-brand">Rally Bracket &middot; Arsip Turnamen</div>' +
+      '<h1>'+escapeHtml(cat.name)+'</h1>' +
+      '<div class="archive-meta">Format: '+fmtLabel+' &middot; Diarsipkan: '+dateStr+' &middot; Total tim terdaftar: '+cat.teams.length+'</div>' +
+      '</div>';
+
+    var champion=null, runnerUp=null, decided=false;
+    if(cat.bracket && cat.bracket.rounds && cat.bracket.rounds.length){
+      var finalMatch = cat.bracket.rounds[cat.bracket.rounds.length-1][0];
+      if(finalMatch && finalMatch.winnerId){
+        decided = true;
+        champion = teamById(cat, finalMatch.winnerId);
+        var loserId = finalMatch.winnerId===finalMatch.teamAId ? finalMatch.teamBId : finalMatch.teamAId;
+        runnerUp = teamById(cat, loserId);
+      }
+    }
+    if(decided && champion){
+      html += '<div class="archive-champion">' +
+        '<div class="archive-champion-label">JUARA</div>' +
+        '<div class="archive-champion-name">'+escapeHtml(champion.name)+'</div>' +
+        '<div class="archive-champion-players">'+champion.players.map(function(p){return escapeHtml(p.name);}).join(' &amp; ')+'</div>' +
+        (runnerUp ? '<div class="archive-runner">Runner-up: '+escapeHtml(runnerUp.name)+(runnerUp.players?' ('+runnerUp.players.map(function(p){return escapeHtml(p.name);}).join(' &amp; ')+')':'')+'</div>' : '') +
+        '</div>';
+    } else {
+      html += '<div class="archive-note">Turnamen ini belum memiliki juara final &mdash; arsip berikut adalah cuplikan hasil sejauh ini.</div>';
+    }
+
+    if(cat.format==='groups' && cat.groups && cat.groups.length){
+      html += '<h2 class="archive-section-title">Klasemen Grup</h2>';
+      cat.groups.forEach(function(g){
+        var table = computeStandings(g);
+        html += '<div class="archive-group"><h3>'+escapeHtml(g.name)+'</h3>' +
+          '<table class="archive-table"><thead><tr><th>Tim</th><th>M</th><th>W</th><th>L</th><th>Selisih</th><th>Poin</th></tr></thead><tbody>' +
+          table.map(function(row){
+            var t = teamById(cat, row.teamId);
+            return '<tr><td>'+escapeHtml(t?t.name:'-')+'</td><td>'+row.played+'</td><td>'+row.won+'</td><td>'+row.lost+'</td><td>'+(row.pointsFor-row.pointsAgainst)+'</td><td>'+row.pts+'</td></tr>';
+          }).join('') +
+          '</tbody></table></div>';
+      });
+    }
+
+    if(cat.bracket && cat.bracket.rounds && cat.bracket.rounds.length){
+      html += '<h2 class="archive-section-title">Bagan Gugur</h2>';
+      cat.bracket.rounds.forEach(function(round, r){
+        var isFinal = r===cat.bracket.rounds.length-1;
+        html += '<div class="archive-round"><h3>'+(isFinal?'Final':'Babak '+(r+1))+'</h3><div class="archive-matches">';
+        round.forEach(function(m){
+          var a = teamById(cat, m.teamAId), b = teamById(cat, m.teamBId);
+          var aName = a ? escapeHtml(a.name) : (m.isBye?'&mdash;':'TBD');
+          var bName = b ? escapeHtml(b.name) : (m.isBye?'&mdash;':'TBD');
+          var aWin = !!(m.winnerId && m.winnerId===m.teamAId);
+          var bWin = !!(m.winnerId && m.winnerId===m.teamBId);
+          var scoreStr = (m.scoreA!=null && m.scoreB!=null) ? (m.scoreA+' - '+m.scoreB) : (m.walkover ? 'W.O.' : (m.isBye ? 'BYE' : 'vs'));
+          html += '<div class="archive-match">' +
+            '<span class="'+(aWin?'archive-winner':'')+'">'+aName+'</span>' +
+            '<span class="archive-score">'+scoreStr+'</span>' +
+            '<span class="'+(bWin?'archive-winner':'')+'">'+bName+'</span>' +
+            '</div>';
+        });
+        html += '</div></div>';
+      });
+    } else if(!(cat.format==='groups' && cat.groups && cat.groups.length)){
+      html += '<div class="archive-note">Bagan belum dibuat untuk kategori ini.</div>';
+    }
+
+    html += '<div class="archive-footer">Dibuat dengan Rally Bracket &middot; '+dateStr+'</div>';
+    return html;
+  }
+  function archiveCategoryToPdf(cat){
+    var el = ensureArchiveEl();
+    el.innerHTML = buildArchiveHTML(cat);
+    toast('Menyiapkan arsip PDF, dialog cetak akan terbuka...');
+    setTimeout(function(){ window.print(); }, 150);
+  }
+
+  function addCategory(name, format){
+    var cat = { id: uid('cat'), name: name || 'Kategori Baru', format: format==='groups' ? 'groups' : 'knockout', groupSize:4, advancePerGroup:2, teams:[], groups:null, groupsLocked:false, bracket:null, sample:false };
+    S.categories.push(cat);
+    S.activeCategoryId = cat.id;
+    return cat;
+  }
+  var toastStack = null;
+  function ensureToastStack(){
+    if(!toastStack){
+      toastStack = document.createElement('div');
+      toastStack.className = 'toast-stack';
+      document.body.appendChild(toastStack);
+    }
+    return toastStack;
+  }
+  function toast(msg, type){
+    // Appends directly to a persistent DOM node instead of going through the
+    // main state render, so a toast never wipes out uncontrolled form inputs
+    // (e.g. the registration form) that a full render() would reset.
+    var stack = ensureToastStack();
+    var t = document.createElement('div');
+    t.className = 'toast ' + (type||'success');
+    t.innerHTML = (type==='error'?ICONS.close:ICONS.check) + ' ' + escapeHtml(msg);
+    stack.appendChild(t);
+    setTimeout(function(){ t.remove(); }, 3200);
+  }
+  function openConfirm(msg, cb){
+    S.ui.confirmOpen = true; S.ui.confirmMsg = msg; S.ui.confirmCb = cb;
+    render();
+  }
+  function setTeamStatus(catId, teamId, newStatus){
+    var cat = S.categories.filter(function(c){return c.id===catId;})[0];
+    if(!cat) return;
+    var team = teamById(cat, teamId);
+    if(!team) return;
+    var prev = team.status;
+    team.status = newStatus;
+    if(newStatus!=='active' && prev==='active'){
+      if(cat.bracket) handleWithdrawalInBracket(cat.bracket, teamId);
+      if(cat.groups && !cat.groupsLocked) handleWithdrawalInGroups(cat, teamId);
+    }
+    if(S.isAdmin){
+      updateTeamRowAdmin(team);
+      queueCloudSync(); // bracket/groups may have been touched above
+    }
+    render();
+  }
+
+  /* ---------------- SHARED RENDER HELPERS ---------------- */
+  function teamStatusTag(team){
+    if(!team) return '';
+    if(team.status==='withdrawn') return '<span class="tag tag-withdrawn">Mundur</span>';
+    if(team.status==='disqualified') return '<span class="tag tag-dq">DQ</span>';
+    return '';
+  }
+  function statusPill(status){
+    if(status==='withdrawn') return '<span class="pill pill-withdrawn">Mundur</span>';
+    if(status==='disqualified') return '<span class="pill pill-disqualified">Diskualifikasi</span>';
+    return '<span class="pill pill-active">Aktif</span>';
+  }
+  function renderPagination(current,total,action,extra){
+    if(total<=1) return '';
+    var pages=[];
+    for(var p=1;p<=total;p++){
+      if(p===1||p===total||Math.abs(p-current)<=1) pages.push(p);
+      else if(pages[pages.length-1]!=='...') pages.push('...');
+    }
+    var ex = extra || '';
+    var btns = pages.map(function(p){
+      if(p==='...') return '<span class="page-ellipsis">…</span>';
+      return '<button class="page-btn '+(p===current?'active':'')+'" data-action="'+action+'" data-page="'+p+'" '+ex+'>'+p+'</button>';
+    }).join('');
+    var prevDisabled = current===1 ? 'disabled' : '';
+    var nextDisabled = current===total ? 'disabled' : '';
+    return '<div class="pagination">' +
+      '<button class="page-btn" data-action="'+action+'" data-page="'+Math.max(1,current-1)+'" '+ex+' '+prevDisabled+'>‹</button>' +
+      btns +
+      '<button class="page-btn" data-action="'+action+'" data-page="'+Math.min(total,current+1)+'" '+ex+' '+nextDisabled+'>›</button>' +
+      '</div>';
+  }
+  function matchCardHTML(cat, bracket, r, i, editable, searchTerm){
+    var m = bracket.rounds[r][i];
+    var teamA = teamById(cat, m.teamAId);
+    var teamB = teamById(cat, m.teamBId);
+    var isFinal = r===bracket.rounds.length-1;
+    var pending = !teamA || !teamB;
+    var stateClass = pending ? 'mc-pending' : (m.winnerId ? 'mc-done' : 'mc-live');
+    var matchKey = r+'-'+i;
+    var isOpen = S.ui.openMatch===matchKey;
+    var highlight = false;
+    if(searchTerm){
+      var q = searchTerm.toLowerCase();
+      if((teamA && teamA.name.toLowerCase().indexOf(q)>=0) || (teamB && teamB.name.toLowerCase().indexOf(q)>=0)) highlight = true;
+    }
+    function rowHtml(team, isWinner, score){
+      return '<div class="mc-team '+(isWinner?'winner':'')+' '+(!team?'tbd':'')+'">'+
+        '<span class="mc-name">'+(team?escapeHtml(team.name):'— TBD')+'</span>'+
+        (team?teamStatusTag(team):'')+
+        (score!=null ? '<span class="mc-score mono">'+score+'</span>' : '') +
+        '</div>';
+    }
+    var html = '<div class="match-card '+stateClass+' '+(highlight?'highlight':'')+'" id="matchcard_'+matchKey+'" '+
+      (editable && teamA && teamB && !m.isBye ? 'data-action="open-match-editor" data-match="'+matchKey+'"' : '') + '>';
+    html += '<div class="mc-round-tag">'+(isFinal?'Final':'Babak '+(r+1))+(m.isBye?' · BYE':'')+(m.walkover?' · W.O.':'')+'</div>';
+    html += rowHtml(teamA, m.winnerId && m.winnerId===m.teamAId, m.scoreA);
+    html += rowHtml(teamB, m.winnerId && m.winnerId===m.teamBId, m.scoreB);
+    if(editable && isOpen && teamA && teamB){
+      html += '<div class="mc-editor">' +
+        '<div class="mc-editor-scores">' +
+        '<input type="number" min="0" id="scoreA_'+matchKey+'" class="score-input mono" placeholder="Skor" value="'+(m.scoreA!=null?m.scoreA:'')+'">' +
+        '<span class="mc-vs">vs</span>' +
+        '<input type="number" min="0" id="scoreB_'+matchKey+'" class="score-input mono" placeholder="Skor" value="'+(m.scoreB!=null?m.scoreB:'')+'">' +
+        '</div>' +
+        '<label class="wo-check"><input type="checkbox" id="woCheck_'+matchKey+'"> Menang W.O. (lawan tidak hadir)</label>' +
+        '<div class="mc-editor-actions">' +
+        '<button class="btn btn-sm btn-primary" data-action="declare-winner" data-round="'+r+'" data-idx="'+i+'" data-winner="A">'+escapeHtml(teamA.name)+' Menang</button>' +
+        '<button class="btn btn-sm btn-primary" data-action="declare-winner" data-round="'+r+'" data-idx="'+i+'" data-winner="B">'+escapeHtml(teamB.name)+' Menang</button>' +
+        '<button class="btn btn-sm btn-ghost" data-action="close-match-editor">Tutup</button>' +
+        '</div></div>';
+    }
+    html += '</div>';
+    return html;
+  }
+  function renderBracketTree(cat, editable, searchTerm){
+    var bracket = cat.bracket;
+    var cols = bracket.rounds.map(function(round, r){
+      var isLast = r===bracket.rounds.length-1;
+      var inner;
+      if(!isLast){
+        var pairsHtml = '';
+        for(var i=0;i<round.length;i+=2){
+          pairsHtml += '<div class="pair">' + matchCardHTML(cat,bracket,r,i,editable,searchTerm) + (round[i+1]?matchCardHTML(cat,bracket,r,i+1,editable,searchTerm):'') + '</div>';
+        }
+        inner = pairsHtml;
+      } else {
+        inner = '<div class="final-wrap">'+matchCardHTML(cat,bracket,r,0,editable,searchTerm)+'</div>';
+      }
+      return '<div class="round-col"><div class="round-header">'+(isLast?'Final':'Babak '+(r+1))+'</div><div class="round-body">'+inner+'</div></div>';
+    }).join('');
+    return '<div class="bracket-scroll"><div class="bracket-canvas" data-cat="'+cat.id+'"><div class="bracket-tree">'+cols+'</div></div></div>';
+  }
+  function renderBracketPaged(cat, editable, searchTerm){
+    var bracket = cat.bracket;
+    var roundIdx = S.ui.bracketRound[cat.id] || 0;
+    if(roundIdx >= bracket.rounds.length) roundIdx = 0;
+    var round = bracket.rounds[roundIdx];
+    var chips = bracket.rounds.map(function(rnd,r){
+      return '<button class="round-chip '+(r===roundIdx?'active':'')+'" data-action="round-select" data-round="'+r+'">'+
+        (r===bracket.rounds.length-1?'Final':'Babak '+(r+1))+' <span class="chip-count">'+rnd.length+'</span></button>';
+    }).join('');
+    var perPage = 12;
+    var page = S.ui.bracketPage[cat.id] || 1;
+    var totalPages = Math.max(1, Math.ceil(round.length/perPage));
+    if(page>totalPages) page = totalPages;
+    var start = (page-1)*perPage;
+    var items = round.slice(start, start+perPage).map(function(m,localI){ return matchCardHTML(cat,bracket,roundIdx,start+localI,editable,searchTerm); }).join('');
+    return '<div class="round-chips-wrap"><div class="round-chips">'+chips+'</div></div>' +
+      '<div class="match-grid">'+items+'</div>' +
+      renderPagination(page,totalPages,'bracket-page');
+  }
+  function renderBracketSection(cat, editable){
+    if(!cat.bracket){
+      return '<div class="empty-state">'+ICONS.empty+'<div>Bagan belum dibuat untuk kategori ini.</div></div>';
+    }
+    var mode = S.ui.bracketMode[cat.id] || 'peta';
+    var searchTerm = S.ui.bracketSearch[cat.id] || '';
+    var toolbar = '<div class="toolbar">' +
+      '<div class="view-toggle">' +
+      '<button class="'+(mode==='peta'?'active':'')+'" data-action="bracket-mode" data-mode="peta">Peta</button>' +
+      '<button class="'+(mode==='paged'?'active':'')+'" data-action="bracket-mode" data-mode="paged">Per Babak</button>' +
+      '</div>' +
+      '<div class="search-box">'+ICONS.search+'<input id="bracketSearchInput" placeholder="Cari nama tim..." value="'+escapeHtml(searchTerm)+'"></div>' +
+      '<button class="btn btn-sm" data-action="bracket-jump">Cari &amp; Lompat</button>' +
+      '</div>';
+    var zoomBar = '';
+    if(mode==='peta'){
+      var zoomPct = S.ui.bracketZoom[cat.id] || 100;
+      zoomBar = '<div class="zoom-bar">' +
+        '<button class="btn btn-sm" data-action="zoom-out" title="Perkecil">−</button>' +
+        '<input type="range" id="zoomSlider" min="2" max="150" value="'+zoomPct+'">' +
+        '<button class="btn btn-sm" data-action="zoom-in" title="Perbesar">+</button>' +
+        '<span class="zoom-label mono" id="zoomLabel">'+zoomPct+'%</span>' +
+        '<button class="btn btn-sm" data-action="zoom-fit">Pas Lebar</button>' +
+        '<button class="btn btn-sm" data-action="zoom-map">Lihat Semua</button>' +
+        '<button class="btn btn-sm" data-action="zoom-100">100%</button>' +
+        '<span class="zoom-hint">'+cat.bracket.size+' slot &middot; '+cat.bracket.rounds.length+' babak &mdash; "Lihat Semua" menyusutkan seluruh bagan jadi satu bentuk kecil, keren buat turnamen besar.</span>' +
+        '</div>';
+    }
+    var body = mode==='paged' ? renderBracketPaged(cat, editable, searchTerm) : renderBracketTree(cat, editable, searchTerm);
+    return toolbar + zoomBar + body;
+  }
+
+  /* ---------------- BRACKET ZOOM ("PETA") ----------------
+     The tree is rendered once at its natural (unscaled) size, then visually
+     scaled with CSS transform. transform alone doesn't affect layout/scroll
+     size, so the canvas wrapper's own width/height are set explicitly (in
+     JS, from a measurement) to the scaled dimensions - that's what makes the
+     scrollable area match what's visually shown at any zoom level. */
+  function clampZoom(z){ return Math.max(2, Math.min(150, Math.round(z))); }
+  function findBracketCanvas(cat){ return document.querySelector('.bracket-canvas[data-cat="'+cat.id+'"]'); }
+  function applyZoomStyle(cat, zoomPct){
+    var canvas = findBracketCanvas(cat);
+    if(!canvas) return;
+    var tree = canvas.querySelector('.bracket-tree');
+    if(!tree) return;
+    var scroll = canvas.parentElement;
+    tree.style.transform = 'none';
+    var natW = tree.offsetWidth, natH = tree.offsetHeight;
+    var zoom = zoomPct/100;
+    tree.style.transform = 'scale('+zoom+')';
+    // Connector lines are drawn with CSS borders on elements inside the
+    // scaled tree, so their pixel width shrinks along with everything else -
+    // at a few % zoom a 2px line becomes sub-pixel and disappears, leaving
+    // just scattered card-dots with no visible branching shape. Compensate
+    // by inflating the border width before scaling so it always renders at
+    // a constant, clearly-visible thickness: this is what makes the "whole
+    // map" view actually read as a tapering tree/mountain silhouette instead
+    // of noise.
+    var connW = Math.min(160, 1.8/zoom);
+    tree.style.setProperty('--conn-w', connW.toFixed(2)+'px');
+    var scaledW = Math.ceil(natW*zoom), scaledH = Math.ceil(natH*zoom);
+    canvas.style.width = scaledW+'px';
+    canvas.style.height = scaledH+'px';
+    // Center small/zoomed-out content in the scroll viewport instead of
+    // leaving it pinned in the top-left corner of a lot of empty space.
+    var availW = scroll.clientWidth, availH = scroll.clientHeight;
+    canvas.style.marginLeft = scaledW < availW ? Math.floor((availW-scaledW)/2)+'px' : '0';
+    canvas.style.marginTop = scaledH < availH ? Math.floor((availH-scaledH)/2)+'px' : '0';
+  }
+  // Practical default: fill the available width (never zooms in past 100% on
+  // its own). A big bracket still needs vertical scrolling at this zoom, but
+  // every match card stays legible instead of shrinking to an invisible dot.
+  function computeFitZoom(cat){
+    var canvas = findBracketCanvas(cat);
+    if(!canvas) return 100;
+    var tree = canvas.querySelector('.bracket-tree');
+    if(!tree) return 100;
+    var scroll = canvas.parentElement;
+    tree.style.transform = 'none';
+    var natW = tree.offsetWidth;
+    if(!natW) return 100;
+    var availW = Math.max(160, scroll.clientWidth - 28);
+    return clampZoom(Math.min(availW/natW, 1) * 100);
+  }
+  // The "whole map" view: zooms out enough that BOTH dimensions fit on
+  // screen at once, so a big draw reads as one small branching shape - the
+  // "see the whole mountain from far away" effect - instead of a normal,
+  // scrollable working view.
+  function computeWholeMapZoom(cat){
+    var canvas = findBracketCanvas(cat);
+    if(!canvas) return 100;
+    var tree = canvas.querySelector('.bracket-tree');
+    if(!tree) return 100;
+    var scroll = canvas.parentElement;
+    tree.style.transform = 'none';
+    var natW = tree.offsetWidth, natH = tree.offsetHeight;
+    if(!natW || !natH) return 100;
+    var availW = Math.max(160, scroll.clientWidth - 28);
+    var availH = Math.max(220, scroll.clientHeight - 28);
+    var pct = Math.min(availW/natW, availH/natH, 1) * 100;
+    // Fitting a huge single-elimination tree into both dimensions at once can
+    // mathematically demand a tiny percentage (a 512-leaf bracket is ~17x
+    // taller than it is wide) - below a certain point the branching pattern
+    // that makes this view interesting stops being visible at all and it's
+    // just a hairline. Floor it so the "whole map" always shows a
+    // recognizable tapering shape, even if that means a little scrolling
+    // for very large brackets instead of a perfect one-screen fit.
+    return clampZoom(Math.max(pct, 6));
+  }
+  function updateZoomUI(z){
+    var slider = document.getElementById('zoomSlider'); if(slider) slider.value = z;
+    var label = document.getElementById('zoomLabel'); if(label) label.textContent = z+'%';
+  }
+  function layoutBracketZoom(cat){
+    var mode = S.ui.bracketMode[cat.id] || 'peta';
+    if(mode !== 'peta') return;
+    var canvas = findBracketCanvas(cat);
+    if(!canvas) return;
+    if(S.ui.bracketZoom[cat.id] == null){
+      S.ui.bracketZoom[cat.id] = computeFitZoom(cat);
+    }
+    applyZoomStyle(cat, S.ui.bracketZoom[cat.id]);
+    if(S.ui.bracketScrollTo){
+      var target = document.getElementById('matchcard_'+S.ui.bracketScrollTo);
+      if(target && target.scrollIntoView) target.scrollIntoView({ block:'center', inline:'center' });
+      S.ui.bracketScrollTo = null;
+    }
+  }
+
+  /* ---------------- TOPBAR / TABS ---------------- */
+  function renderTopbar(){
+    // Role is DETECTED (profile.role from requireAuth()), not chosen -- this is a read-only
+    // badge, not a switch. See boot() for where S.isAdmin/S.role actually get set.
+    return '<div class="topbar">' +
+      '<div class="brand"><div class="brand-mark">'+ICONS.shuttle+'</div>' +
+      '<div class="brand-text"><span class="brand-title">'+escapeHtml(S.tournamentName||'Rally Bracket')+'</span><span class="brand-sub">Manajemen Turnamen Bulutangkis</span></div></div>' +
+      '<span class="rb-role-badge '+(S.isAdmin?'':'player')+'">'+(S.isAdmin?'Admin':'Pemain')+'</span>' +
+      '<button class="icon-btn" data-action="toggle-rules">'+ICONS.book+' Peraturan</button>' +
+      '</div>';
+  }
+  function renderCategoryTabs(){
+    var tabs = S.categories.map(function(c){
+      return '<button class="cat-tab '+(c.id===S.activeCategoryId?'active':'')+'" data-action="select-category" data-id="'+c.id+'">' +
+        '<span class="fmt-dot '+(c.format==='groups'?'groups':'')+'"></span>' + escapeHtml(c.name) + '</button>';
+    }).join('');
+    var addForm = '';
+    if(S.ui.showAddCategory){
+      addForm = '<div class="add-cat-form">' +
+        '<input id="newCategoryName" placeholder="Nama kategori (contoh: Ganda Putri Divisi Umum)">' +
+        '<select id="newCategoryFormat"><option value="knockout">Langsung Gugur</option><option value="groups">Grup lalu Gugur</option></select>' +
+        '<button class="btn btn-primary btn-sm" data-action="create-category">'+ICONS.plus+' Buat</button>' +
+        '<button class="btn btn-ghost btn-sm" data-action="cancel-add-category">Batal</button>' +
+        '</div>';
+    }
+    return '<div class="cat-tabs-row">' + tabs +
+      '<button class="cat-tab-add" data-action="show-add-category">'+ICONS.plus+' Kategori</button></div>' + addForm;
+  }
+
+  /* ---------------- ADMIN VIEWS ---------------- */
+  function renderAdmin(){
+    var cat = getCat();
+    if(!cat) return '<div class="panel empty-state">'+ICONS.empty+'<div>Belum ada kategori turnamen. Buat kategori baru untuk mulai.</div></div>';
+    var tabs = [['ringkasan','Ringkasan'],['pengaturan','Pengaturan'],['tim','Tim']];
+    if(cat.format==='groups') tabs.push(['grup','Grup']);
+    tabs.push(['bagan','Bagan']);
+    var nav = tabs.map(function(t){
+      return '<button class="subnav-btn '+(S.ui.adminTab===t[0]?'active':'')+'" data-action="admin-tab" data-tab="'+t[0]+'">'+t[1]+'</button>';
+    }).join('');
+    var body = '';
+    if(S.ui.adminTab==='ringkasan') body = renderAdminRingkasan();
+    else if(S.ui.adminTab==='pengaturan') body = renderAdminPengaturan(cat);
+    else if(S.ui.adminTab==='tim') body = renderAdminTim(cat);
+    else if(S.ui.adminTab==='grup') body = renderAdminGrup(cat);
+    else if(S.ui.adminTab==='bagan') body = renderAdminBagan(cat);
+    return '<div class="subnav">'+nav+'</div>' + body;
+  }
+  function renderAdminRingkasan(){
+    var totalTeams = 0, fullVerified = 0, pendingVerif = 0;
+    S.categories.forEach(function(c){
+      c.teams.forEach(function(t){
+        totalTeams++;
+        var allDone = t.checks.dob && t.checks.email && t.checks.gopay && t.checks.rekening;
+        if(allDone) fullVerified++; else pendingVerif++;
+      });
+    });
+    var banner = '<div class="banner"><span>Pendaftaran tim saat ini: <strong>'+(S.registrationOpen?'DIBUKA':'DITUTUP')+'</strong> — pemain '+(S.registrationOpen?'bisa':'tidak bisa')+' mendaftarkan tim baru.</span>' +
+      '<button class="btn btn-sm '+(S.registrationOpen?'btn-danger':'btn-primary')+'" data-action="toggle-registration">'+(S.registrationOpen?'Tutup Pendaftaran':'Buka Pendaftaran')+'</button></div>';
+    var stats = '<div class="stat-grid">' +
+      '<div class="stat-tile"><div class="stat-value mono">'+S.categories.length+'</div><div class="stat-label">Kategori</div></div>' +
+      '<div class="stat-tile"><div class="stat-value mono">'+totalTeams+'</div><div class="stat-label">Total Tim</div></div>' +
+      '<div class="stat-tile"><div class="stat-value mono">'+fullVerified+'</div><div class="stat-label">Verifikasi Lengkap</div></div>' +
+      '<div class="stat-tile"><div class="stat-value mono">'+pendingVerif+'</div><div class="stat-label">Menunggu Verifikasi</div></div>' +
+      '</div>';
+    var cards = '<div class="cat-summary-grid">' + S.categories.map(function(c){
+      var active = c.teams.filter(function(t){return t.status==='active';}).length;
+      var stageLabel = c.format==='groups' ? (c.groupsLocked ? 'Babak Gugur' : (c.groups ? 'Fase Grup' : 'Belum Dikelompokkan')) : (c.bracket ? 'Bagan Berjalan' : 'Belum Ada Bagan');
+      return '<div class="cat-summary-card">' +
+        '<div class="cat-summary-title">'+escapeHtml(c.name)+'</div>' +
+        '<div class="cat-summary-meta"><span>'+(c.format==='groups'?'Grup lalu Gugur':'Langsung Gugur')+'</span><span>'+active+' tim aktif</span><span>'+stageLabel+'</span></div>' +
+        '<button class="btn btn-sm" data-action="select-category" data-id="'+c.id+'">Kelola →</button>' +
+        '</div>';
+    }).join('') + '</div>';
+    return banner + '<div class="panel"><div class="panel-head"><div><div class="panel-title">Ringkasan Turnamen</div><div class="panel-desc">Gambaran umum seluruh kategori pertandingan.</div></div></div>' + stats + cards + '</div>';
+  }
+  function renderAdminPengaturan(cat){
+    var groupSettings = '';
+    if(cat.format==='groups'){
+      groupSettings = '<div class="field-row" style="margin-top:14px;">' +
+        '<div class="field"><label for="groupSizeInput">Ukuran Grup (tim per grup)</label><input type="number" min="2" id="groupSizeInput" value="'+cat.groupSize+'"></div>' +
+        '<div class="field"><label for="advancePerGroupInput">Tim Lolos per Grup</label><input type="number" min="1" id="advancePerGroupInput" value="'+cat.advancePerGroup+'"></div>' +
+        '</div>' +
+        '<div class="hint" style="margin-top:6px;">'+cat.teams.filter(function(t){return t.status==='active';}).length+' tim aktif → akan membentuk sekitar '+Math.max(1,Math.ceil(cat.teams.filter(function(t){return t.status==='active';}).length/(cat.groupSize||4)))+' grup.</div>' +
+        '<div class="field-inline" style="margin-top:10px;">' +
+        '<button class="btn btn-secondary" data-action="save-group-settings">Simpan Pengaturan Grup</button>' +
+        '<button class="btn" data-action="assign-groups">'+(cat.groups?'Ulangi Pengelompokan Grup':'Buat Pengelompokan Grup')+'</button>' +
+        '</div>';
+    } else {
+      var activeN = cat.teams.filter(function(t){return t.status==='active';}).length;
+      groupSettings = '<div class="hint" style="margin:10px 0;">'+activeN+' tim aktif akan disusun menjadi bagan gugur langsung (otomatis diberi bye bila jumlah tim bukan kelipatan 2).</div>' +
+        '<button class="btn btn-secondary" data-action="generate-bracket">'+(cat.bracket?'Buat Ulang Bagan':'Buat Bagan Gugur')+'</button>';
+    }
+    return '<div class="panel">' +
+      '<div class="panel-head"><div><div class="panel-title">Pengaturan Kategori</div><div class="panel-desc">Nama, format, dan pembuatan bagan untuk kategori ini.</div></div></div>' +
+      '<div class="field"><label for="categoryNameInput">Nama Kategori</label>' +
+      '<div class="field-inline"><input id="categoryNameInput" value="'+escapeHtml(cat.name)+'" style="flex:1;min-width:220px;"><button class="btn btn-sm" data-action="save-category-name">Simpan</button></div></div>' +
+      '<div style="margin-top:14px;"><label style="font-size:12px;font-weight:700;color:var(--text-dim);">Format Turnamen</label>' +
+      '<div class="radio-group" style="margin-top:8px;">' +
+      '<label class="radio-card '+(cat.format==='knockout'?'checked':'')+'"><input type="radio" name="fmt" value="knockout" '+(cat.format==='knockout'?'checked':'')+' data-action-name="format-radio"><span><span class="radio-card-title">Langsung Gugur</span><br><span class="radio-card-desc">Semua tim langsung masuk satu bagan gugur (single elimination).</span></span></label>' +
+      '<label class="radio-card '+(cat.format==='groups'?'checked':'')+'"><input type="radio" name="fmt" value="groups" '+(cat.format==='groups'?'checked':'')+' data-action-name="format-radio"><span><span class="radio-card-title">Grup lalu Gugur</span><br><span class="radio-card-desc">Tim dibagi ke beberapa grup (round robin), lalu terbaik tiap grup lanjut ke bagan gugur.</span></span></label>' +
+      '</div></div>' +
+      groupSettings +
+      '</div>' +
+      '<div class="panel">' +
+      '<div class="panel-head"><div><div class="panel-title">Data Contoh</div><div class="panel-desc">Tambahkan tim contoh secara instan untuk menguji tampilan pada skala besar.</div></div></div>' +
+      '<div class="field-inline"><div class="field" style="width:140px;"><label for="dummyCount">Jumlah tim</label><input type="number" min="1" max="4000" id="dummyCount" value="'+S.ui.lastDummyCount+'"></div>' +
+      '<button class="btn" data-action="gen-dummy-teams" style="margin-top:20px;">Tambah Tim Contoh</button></div>' +
+      '</div>' +
+      '<div class="panel">' +
+      '<div class="panel-head"><div><div class="panel-title">Arsip Kategori</div><div class="panel-desc">Kalau kategori ini sudah selesai, ekspor juara & bagan lengkapnya jadi satu PDF sebagai arsip sebelum dihapus.</div></div></div>' +
+      '<div class="field-inline"><button class="btn btn-secondary" data-action="archive-pdf">Arsipkan sebagai PDF</button>' +
+      '<span class="hint">Membuka dialog cetak browser &mdash; pilih "Simpan sebagai PDF" di sana.</span></div>' +
+      '</div>' +
+      '<div class="panel">' +
+      '<div class="panel-head"><div><div class="panel-title" style="color:var(--danger);">Zona Berbahaya</div><div class="panel-desc">Tindakan berikut tidak dapat dibatalkan. Arsipkan dulu ke PDF di atas kalau datanya masih ingin disimpan.</div></div></div>' +
+      '<div class="field-inline">' +
+      '<button class="btn btn-danger" data-action="reset-category">Hapus Semua Tim &amp; Bagan</button>' +
+      (S.categories.length>1 ? '<button class="btn btn-danger" data-action="delete-category">Hapus Kategori Ini</button>' : '') +
+      '</div></div>';
+  }
+  function renderAdminTim(cat){
+    var search = (S.ui.teamsSearch||'').toLowerCase();
+    var filtered = cat.teams.filter(function(t){
+      if(!search) return true;
+      if(t.name.toLowerCase().indexOf(search)>=0) return true;
+      return t.players.some(function(p){ return p.name.toLowerCase().indexOf(search)>=0; });
+    });
+    var perPage = S.ui.teamsPerPage;
+    var totalPages = Math.max(1, Math.ceil(filtered.length/perPage));
+    var page = Math.min(S.ui.teamsPage, totalPages);
+    var start = (page-1)*perPage;
+    var pageItems = filtered.slice(start, start+perPage);
+    var rows = pageItems.map(function(t){
+      var checksArr = ['dob','email','gopay','rekening'];
+      var dots = checksArr.map(function(k){ return '<span class="dot '+(t.checks[k]?'done':'')+'"></span>'; }).join('');
+      return '<tr>' +
+        '<td data-label="Tim"><span class="team-cell-name">'+escapeHtml(t.name)+'</span></td>' +
+        '<td data-label="Pemain"><div class="players-cell">'+escapeHtml(t.players[0].name)+' <span class="em">('+escapeHtml(t.players[0].email)+')</span><br>'+escapeHtml(t.players[1].name)+' <span class="em">('+escapeHtml(t.players[1].email)+')</span></div></td>' +
+        '<td data-label="Verifikasi"><div class="dots">'+dots+'</div></td>' +
+        '<td data-label="Status">'+statusPill(t.status)+'</td>' +
+        '<td data-label="Aksi"><div class="field-inline" style="gap:6px;">' +
+        '<select class="status-select" data-team="'+t.id+'" data-action-name="team-status-select">' +
+        '<option value="active" '+(t.status==='active'?'selected':'')+'>Aktif</option>' +
+        '<option value="withdrawn" '+(t.status==='withdrawn'?'selected':'')+'>Mundur</option>' +
+        '<option value="disqualified" '+(t.status==='disqualified'?'selected':'')+'>Diskualifikasi</option>' +
+        '</select>' +
+        '<button class="btn btn-sm btn-danger" data-action="delete-team" data-team="'+t.id+'">'+ICONS.trash+'</button>' +
+        '</div></td></tr>';
+    }).join('');
+    var table = filtered.length ? ('<div class="table-wrap"><table class="data-table"><thead><tr><th>Tim</th><th>Pemain</th><th>Verifikasi</th><th>Status</th><th>Aksi</th></tr></thead><tbody>'+rows+'</tbody></table></div>' + renderPagination(page,totalPages,'teams-page'))
+      : '<div class="empty-state">'+ICONS.empty+'<div>Tidak ada tim yang cocok.</div></div>';
+    return '<div class="panel">' +
+      '<div class="panel-head"><div><div class="panel-title">Daftar Tim</div><div class="panel-desc">'+cat.teams.length+' tim terdaftar di kategori ini.</div></div></div>' +
+      '<div class="toolbar">' +
+      '<div class="search-box">'+ICONS.search+'<input id="teamsSearchInput" placeholder="Cari nama tim atau pemain..." value="'+escapeHtml(S.ui.teamsSearch)+'"></div>' +
+      '<select id="teamsPerPageSelect" style="width:auto;" data-action-name="teams-per-page">' +
+      [10,25,50,100].map(function(n){ return '<option value="'+n+'" '+(S.ui.teamsPerPage===n?'selected':'')+'>'+n+' / halaman</option>'; }).join('') +
+      '</select>' +
+      '</div>' + table + '</div>';
+  }
+  function renderAdminGrup(cat){
+    if(!cat.groups){
+      return '<div class="panel empty-state">'+ICONS.empty+'<div>Grup belum dibuat. Buka tab Pengaturan untuk membuat pengelompokan grup.</div></div>';
+    }
+    var perPage = 6;
+    var totalPages = Math.max(1, Math.ceil(cat.groups.length/perPage));
+    var page = Math.min(S.ui.groupsPage, totalPages);
+    var start = (page-1)*perPage;
+    var pageGroups = cat.groups.slice(start, start+perPage);
+    var grid = '<div class="group-grid">' + pageGroups.map(function(g){ return groupCardHTML(cat,g); }).join('') + '</div>';
+    var lockNote = cat.groupsLocked ? '<div class="banner">Fase grup telah dikunci. Bagan gugur sudah dibuat dari hasil grup.</div>' : '';
+    return '<div class="panel"><div class="panel-head"><div><div class="panel-title">Fase Grup</div><div class="panel-desc">'+cat.groups.length+' grup &middot; masukkan skor tiap pertandingan untuk memperbarui klasemen otomatis.</div></div>' +
+      (!cat.groupsLocked ? '<button class="btn btn-primary" data-action="advance-knockout">Lanjutkan ke Bagan Gugur</button>' : '') +
+      '</div>' + lockNote + grid + renderPagination(page,totalPages,'groups-page') + '</div>';
+  }
+  function groupCardHTML(cat, g){
+    var table = computeStandings(g);
+    var rows = table.map(function(row, idx){
+      var team = teamById(cat, row.teamId);
+      return '<tr class="'+(idx<cat.advancePerGroup?'qualify-row':'')+'">' +
+        '<td class="rank-cell mono">'+(idx+1)+'</td>' +
+        '<td>'+escapeHtml(team?team.name:'?')+' '+teamStatusTag(team)+'</td>' +
+        '<td class="mono">'+row.played+'</td><td class="mono">'+row.won+'</td><td class="mono">'+row.lost+'</td>' +
+        '<td class="mono">'+(row.pointsFor-row.pointsAgainst)+'</td><td class="mono">'+row.pts+'</td></tr>';
+    }).join('');
+    var matches = g.matches.map(function(m){
+      var teamA = teamById(cat,m.teamAId), teamB = teamById(cat,m.teamBId);
+      return '<div class="grp-match '+(m.winnerId?'done':'')+'">' +
+        '<span class="grp-match-team">'+escapeHtml(teamA?teamA.name:'?')+'</span>' +
+        '<input type="number" min="0" class="score-input sm mono" id="gs_a_'+m.id+'" value="'+(m.scoreA!=null?m.scoreA:'')+'" '+(cat.groupsLocked?'disabled':'')+'>' +
+        '<span class="grp-vs">–</span>' +
+        '<input type="number" min="0" class="score-input sm mono" id="gs_b_'+m.id+'" value="'+(m.scoreB!=null?m.scoreB:'')+'" '+(cat.groupsLocked?'disabled':'')+'>' +
+        '<span class="grp-match-team">'+escapeHtml(teamB?teamB.name:'?')+'</span>' +
+        (!cat.groupsLocked ? '<button class="btn btn-sm btn-ghost" data-action="save-group-match" data-group="'+g.id+'" data-match="'+m.id+'">Simpan</button>' : (m.walkover?'<span class="tag tag-warning">W.O.</span>':'')) +
+        '</div>';
+    }).join('');
+    return '<div class="panel group-card"><div class="group-card-header">'+escapeHtml(g.name)+'</div>' +
+      '<div class="table-wrap"><table class="standings-table"><thead><tr><th>#</th><th>Tim</th><th>M</th><th>W</th><th>L</th><th>Sel.</th><th>Poin</th></tr></thead><tbody>'+rows+'</tbody></table></div>' +
+      '<div class="grp-matches">'+matches+'</div></div>';
+  }
+  function renderAdminBagan(cat){
+    return '<div class="panel">' +
+      '<div class="panel-head"><div><div class="panel-title">Bagan Pertandingan</div><div class="panel-desc">Klik pertandingan untuk memasukkan skor dan menentukan pemenang.</div></div>' +
+      (cat.format==='knockout' ? '<button class="btn" data-action="generate-bracket">'+(cat.bracket?'Buat Ulang':'Buat Bagan')+'</button>' : '') +
+      '</div>' + renderBracketSection(cat, true) + '</div>';
+  }
+
+  /* ---------------- PLAYER VIEWS ---------------- */
+  function renderPlayer(){
+    var cat = getCat();
+    if(!cat) return '<div class="panel empty-state">'+ICONS.empty+'<div>Belum ada kategori turnamen yang tersedia.</div></div>';
+    var nav = '<div class="subnav">' +
+      '<button class="subnav-btn '+(S.ui.playerTab==='daftar'?'active':'')+'" data-action="player-tab" data-tab="daftar">Daftar Tim</button>' +
+      '<button class="subnav-btn '+(S.ui.playerTab==='bagan'?'active':'')+'" data-action="player-tab" data-tab="bagan">Bagan Live</button>' +
+      '</div>';
+    var body = S.ui.playerTab==='daftar' ? renderPlayerDaftar(cat) : renderPlayerBagan(cat);
+    return nav + body;
+  }
+  function verifyCard(key, title, inputHtml){
+    var checked = S.ui.registrationChecks[key];
+    return '<div class="verify-card">' +
+      '<div class="verify-card-head"><span class="verify-card-title">'+title+'</span>' +
+      '<span class="verify-badge '+(checked?'verified':'')+'" id="badge_'+key+'">'+(checked?ICONS.check:ICONS.dot)+'</span></div>' +
+      inputHtml +
+      '<button class="btn btn-sm btn-block" data-action="verify-check" data-check="'+key+'">Verifikasi</button>' +
+      '</div>';
+  }
+  function renderPlayerDaftar(cat){
+    var catSelect = '';
+    if(S.categories.length>1){
+      catSelect = '<div class="field" style="margin-bottom:14px;"><label for="regCategorySelect">Daftar ke Kategori</label>' +
+        '<select id="regCategorySelect" data-action-name="reg-category-select">' +
+        S.categories.map(function(c){ return '<option value="'+c.id+'" '+(c.id===cat.id?'selected':'')+'>'+escapeHtml(c.name)+'</option>'; }).join('') +
+        '</select></div>';
+    }
+    var lockedNote = cat.bracket ? '<div class="hint" style="margin-bottom:10px;">Bagan kategori ini sudah dibuat &mdash; tim baru akan menunggu penyusunan ulang bagan oleh panitia.</div>' : '';
+    var myTeams = cat.teams.filter(function(t){ return S.ui.myTeamIds.indexOf(t.id)>=0; });
+    var alreadyRegisteredHere = myTeams.length>0;
+    var myTeamsHtml = myTeams.length ? ('<div class="panel"><div class="panel-title" style="font-size:16px;">Tim Saya di Kategori Ini</div><div class="my-teams-list" style="margin-top:10px;">' +
+      myTeams.map(function(t){
+        return '<div class="my-team-row"><span>'+escapeHtml(t.name)+' '+statusPill(t.status)+'</span>' +
+          (t.status==='active' && S.registrationOpen ? '<button class="btn btn-sm btn-danger" data-action="withdraw-self-team" data-team="'+t.id+'">Batalkan</button>' : '') +
+          '</div>';
+      }).join('') + '</div></div>') : '';
+
+    var infoPanel = '<div class="panel"><div class="panel-title" style="font-size:16px;">Info Kategori</div>' +
+      '<div class="hint" style="margin-top:8px;">Format: '+(cat.format==='groups'?'Grup lalu Gugur':'Langsung Gugur')+'<br>Tim aktif: '+cat.teams.filter(function(t){return t.status==='active';}).length+'</div>' +
+      '</div>';
+
+    if(!S.registrationOpen){
+      return '<div class="panel reg-grid"><div>' +
+        '<div class="empty-state">'+ICONS.empty+'<div>Pendaftaran tim sedang <strong>ditutup</strong> oleh panitia untuk saat ini.</div></div>' +
+        '</div><div>' + myTeamsHtml + infoPanel + '</div></div>';
+    }
+    if(alreadyRegisteredHere){
+      return '<div class="panel reg-grid"><div>' +
+        catSelect +
+        '<div class="empty-state">'+ICONS.check+'<div>Anda sudah mendaftarkan tim di kategori ini. Satu akun hanya bisa mendaftar satu tim per kategori.</div></div>' +
+        '</div><div>' + myTeamsHtml + infoPanel + '</div></div>';
+    }
+
+    var form = '<div class="panel reg-grid">' +
+      '<div>' +
+      '<div class="panel-title" style="font-size:19px;margin-bottom:4px;">Daftarkan Tim Baru</div>' +
+      '<div class="panel-desc" style="margin-bottom:14px;">Lengkapi data tim dan pasangan Anda untuk bergabung ke turnamen.</div>' +
+      catSelect + lockedNote +
+      '<div class="field" style="margin-bottom:14px;"><label for="teamNameInput">Nama Tim</label><input id="teamNameInput" placeholder="cth: Smash Jaya"></div>' +
+      '<div class="player-block">' +
+      '<div class="player-block-head"><span class="player-block-title">Pemain 1</span><button class="btn btn-sm" data-action="quick-self-fill">'+ICONS.user+' + Saya</button></div>' +
+      '<div class="field-row">' +
+      '<div class="field"><label for="p1NameInput">Nama Player 1</label><input id="p1NameInput" placeholder="Nama lengkap"></div>' +
+      '<div class="field"><label for="p1EmailInput">Email Player 1</label><input id="p1EmailInput" type="email" placeholder="nama@email.com"></div>' +
+      '</div></div>' +
+      '<div class="player-block" style="margin-top:12px;">' +
+      '<div class="player-block-head"><span class="player-block-title">Pemain 2 (Partner)</span>' +
+      '<span class="verify-badge '+(S.ui.registrationChecks.partnerEmail?'verified':'')+'" id="badge_partnerEmail">'+(S.ui.registrationChecks.partnerEmail?ICONS.check:ICONS.dot)+'</span></div>' +
+      '<div class="field-row">' +
+      '<div class="field"><label for="p2NameInput">Nama Player 2</label><input id="p2NameInput" placeholder="Nama lengkap partner"></div>' +
+      '<div class="field"><label for="p2EmailInput">Email Player 2</label><input id="p2EmailInput" type="email" placeholder="email partner (wajib diisi sendiri)"></div>' +
+      '</div>' +
+      '<button class="btn btn-sm" data-action="verify-partner-email" style="margin-top:8px;">Kirim &amp; Verifikasi Email Partner</button>' +
+      '</div>' +
+      '<div style="margin-top:16px;"><label style="font-size:12px;font-weight:700;color:var(--text-dim);">Verifikasi Tambahan</label>' +
+      '<div class="verify-grid" style="margin-top:8px;">' +
+      verifyCard('dob','Tanggal Lahir','<input type="date" id="dobInput">') +
+      verifyCard('email','Email Tim','<div class="hint">Mengecek format &amp; keaktifan kedua email di atas.</div>') +
+      verifyCard('gopay','GoPay','<input id="gopayInput" placeholder="Nomor GoPay">') +
+      verifyCard('rekening','Rekening Bank','<input id="rekeningInput" placeholder="Nama Bank &amp; No. Rekening">') +
+      '</div></div>' +
+      '<div class="status-bar" id="regStatusBar" style="margin-top:16px;"><span id="regStatusText">Lengkapi data &amp; verifikasi di atas.</span></div>' +
+      '<button class="btn btn-primary btn-block" data-action="submit-registration" style="margin-top:14px;">Daftar Sekarang</button>' +
+      '</div>' +
+      '<div>' + myTeamsHtml + infoPanel +
+      '</div>' +
+      '</div>';
+    return form;
+  }
+  function renderPlayerBagan(cat){
+    return '<div class="panel"><div class="panel-head"><div><div class="panel-title">Bagan Live — '+escapeHtml(cat.name)+'</div><div class="panel-desc">Bagan diperbarui otomatis mengikuti pengaturan panitia.</div></div></div>' +
+      renderBracketSection(cat, false) + '</div>';
+  }
+
+  /* ---------------- DRAWER / TOASTS / MODAL ---------------- */
+  function renderRulesDrawer(){
+    var overlay = '<div class="drawer-overlay '+(S.rulesOpen?'open':'')+'" data-action="toggle-rules"></div>';
+    var body;
+    if(S.isAdmin && S.ui.rulesEditing){
+      body = '<textarea id="rulesTextarea" class="rules-textarea">'+escapeHtml(S.rulesText)+'</textarea>' +
+        '<div class="field-inline" style="margin-top:10px;"><button class="btn btn-primary" data-action="save-rules">Simpan</button><button class="btn btn-ghost" data-action="toggle-rules-edit">Batal</button></div>';
+    } else {
+      body = '<div class="rules-body">'+escapeHtml(S.rulesText)+'</div>' +
+        (S.isAdmin ? '<button class="btn btn-sm" data-action="toggle-rules-edit" style="margin-top:10px;">Ubah Peraturan</button>' : '');
+    }
+    return overlay + '<div class="rules-drawer '+(S.rulesOpen?'open':'')+'">' +
+      '<div class="rules-head"><h3>Peraturan Turnamen</h3><button class="icon-btn" data-action="toggle-rules">'+ICONS.close+'</button></div>' +
+      body + '</div>';
+  }
+  function renderConfirmModal(){
+    if(!S.ui.confirmOpen) return '';
+    return '<div class="modal-overlay"><div class="confirm-box">' +
+      '<h3 style="font-size:18px;margin-bottom:8px;">Konfirmasi</h3>' +
+      '<div style="font-size:13.5px;color:var(--text-dim);">'+escapeHtml(S.ui.confirmMsg)+'</div>' +
+      '<div class="confirm-actions"><button class="btn btn-ghost" data-action="confirm-no">Batal</button><button class="btn btn-danger" data-action="confirm-yes">Ya, Lanjutkan</button></div>' +
+      '</div></div>';
+  }
+
+  /* ---------------- NO-TOURNAMENT GATES ---------------- */
+  function renderCreateTournamentForm(){
+    return '<div class="panel"><div class="panel-head"><div><div class="panel-title">Buat Turnamen</div>' +
+      '<div class="panel-desc">Belum ada turnamen. Buat satu untuk mulai menambahkan kategori dan membuka pendaftaran.</div></div></div>' +
+      '<div class="field"><label for="newTournamentName">Nama Turnamen</label>' +
+      '<div class="field-inline"><input id="newTournamentName" placeholder="cth: Turnamen Bulutangkis RW 04 2026" style="flex:1;min-width:220px;">' +
+      '<button class="btn btn-primary" data-action="create-tournament">'+ICONS.plus+' Buat Turnamen</button></div></div>' +
+      '</div>';
+  }
+  function renderNoTournamentPlayer(){
+    return '<div class="panel empty-state">'+ICONS.empty+'<div>Belum ada turnamen yang dibuat oleh panitia. Coba lagi nanti.</div></div>';
+  }
+  /* ---------------- ROOT RENDER ---------------- */
+  function renderApp(){
+    if(!S.tournamentId){
+      return '<div class="shell">' + renderTopbar() + (S.isAdmin ? renderCreateTournamentForm() : renderNoTournamentPlayer()) + '</div>' +
+        renderRulesDrawer() + renderConfirmModal();
+    }
+    return '<div class="shell">' + renderTopbar() + renderCategoryTabs() + (S.isAdmin ? renderAdmin() : renderPlayer()) + '</div>' +
+      renderRulesDrawer() + renderConfirmModal();
+  }
+  function render(){
+    var active = document.activeElement;
+    var activeId = active && active.id;
+    var selStart = active && ('selectionStart' in active) ? active.selectionStart : null;
+    var selEnd = active && ('selectionEnd' in active) ? active.selectionEnd : null;
+    app.innerHTML = renderApp();
+    if(activeId){
+      var el = document.getElementById(activeId);
+      if(el){
+        el.focus();
+        if(selStart!=null && el.setSelectionRange){ try{ el.setSelectionRange(selStart, selEnd); }catch(e){} }
+      }
+    }
+    var curCat = getCat();
+    if(curCat && curCat.bracket){
+      var showingBagan = (S.isAdmin && S.ui.adminTab==='bagan') || (!S.isAdmin && S.ui.playerTab==='bagan');
+      if(showingBagan) layoutBracketZoom(curCat);
+    }
+  }
+
+  /* ---------------- REGISTRATION HELPERS (imperative) ---------------- */
+  function fillSelfDummy(){
+    var name = randomPersonName();
+    var nameEl = document.getElementById('p1NameInput');
+    var emailEl = document.getElementById('p1EmailInput');
+    if(nameEl) nameEl.value = name;
+    if(emailEl) emailEl.value = randomEmail(name);
+    toast('Data Anda diisi otomatis (contoh) — silakan sunting bila perlu');
+  }
+  function updateRegStatusBar(){
+    var bar = document.getElementById('regStatusBar');
+    var text = document.getElementById('regStatusText');
+    if(!bar || !text) return;
+    var c = S.ui.registrationChecks;
+    var done = (c.dob?1:0)+(c.email?1:0)+(c.gopay?1:0)+(c.rekening?1:0)+(c.partnerEmail?1:0);
+    if(done===5){
+      bar.classList.add('status-bar-ready');
+      text.textContent = 'Semua verifikasi selesai — tim siap didaftarkan!';
+    } else {
+      bar.classList.remove('status-bar-ready');
+      text.textContent = done + '/5 verifikasi selesai. Lengkapi verifikasi lalu daftarkan tim.';
+    }
+  }
+  function runVerification(key){
+    var badge = document.getElementById('badge_'+key);
+    if(!badge) return;
+    badge.classList.remove('verified');
+    badge.classList.add('verifying');
+    badge.innerHTML = ICONS.spinner;
+    setTimeout(function(){
+      badge.classList.remove('verifying');
+      badge.classList.add('verified');
+      badge.innerHTML = ICONS.check;
+      S.ui.registrationChecks[key] = true;
+      updateRegStatusBar();
+    }, 1000 + Math.random()*700);
+  }
+  async function submitRegistration(){
+    if(!S.registrationOpen){ toast('Pendaftaran sedang ditutup oleh panitia.', 'error'); return; }
+    var cat = S.categories.filter(function(c){ return c.id === (val('regCategorySelect') || getCat().id); })[0] || getCat();
+    if(!cat){ toast('Belum ada kategori untuk didaftari.', 'error'); return; }
+    // Dedupe client-side: one registration per user per category (RLS doesn't enforce this for
+    // v1, per the task's own call -- this is a UX guard, not a security boundary).
+    var already = cat.teams.some(function(t){ return t.registeredBy && t.registeredBy===S.currentUserId; });
+    if(already){ toast('Anda sudah mendaftarkan tim di kategori ini.', 'error'); return; }
+    var teamName = val('teamNameInput').trim();
+    var p1n = val('p1NameInput').trim(), p1e = val('p1EmailInput').trim();
+    var p2n = val('p2NameInput').trim(), p2e = val('p2EmailInput').trim();
+    if(!teamName || !p1n || !p1e || !p2n || !p2e){
+      toast('Lengkapi nama tim serta nama & email kedua pemain.', 'error');
+      return;
+    }
+    var checks = S.ui.registrationChecks;
+    var payload = {
+      status:'active',
+      players: [ {name:p1n, email:p1e}, {name:p2n, email:p2e, partnerVerified: checks.partnerEmail} ],
+      checks: { dob:checks.dob, email:checks.email, gopay:checks.gopay, rekening:checks.rekening },
+      dob: val('dobInput'), gopayNumber: val('gopayInput'), bankName:'', bankAccount: val('rekeningInput')
+    };
+    try{
+      var row = await registerTeamCloud(cat.id, teamName, payload);
+      var team = teamRowToTeam(row);
+      cat.teams.push(team);
+      S.ui.myTeamIds.push(team.id);
+      S.ui.registrationChecks = { dob:false, email:false, gopay:false, rekening:false, partnerEmail:false };
+      var complete = checks.dob && checks.email && checks.gopay && checks.rekening && checks.partnerEmail;
+      toast(complete ? 'Tim "'+teamName+'" berhasil didaftarkan!' : 'Tim "'+teamName+'" didaftarkan dengan verifikasi belum lengkap.');
+    }catch(e){
+      toast('Gagal mendaftar: '+e.message, 'error');
+    }
+    render();
+  }
+
+  /* ---------------- EVENT DELEGATION ---------------- */
+  // Actions gated to admins-only client-side, in addition to (not instead of) the RLS policies in
+  // db/migrations/0028_tournaments.sql that actually enforce it server-side -- this just keeps a
+  // non-admin from seeing a request bounce off the database with an opaque error.
+  var ADMIN_ONLY_ACTIONS = {
+    'show-add-category':1, 'create-category':1, 'gen-dummy-teams':1, 'save-category-name':1,
+    'save-group-settings':1, 'assign-groups':1, 'generate-bracket':1, 'advance-knockout':1,
+    'delete-team':1, 'declare-winner':1, 'save-group-match':1, 'archive-pdf':1, 'reset-category':1,
+    'delete-category':1, 'toggle-rules-edit':1, 'save-rules':1, 'toggle-registration':1,
+    'create-tournament':1
+  };
+  app.addEventListener('click', function(e){
+    var btn = e.target.closest('[data-action]');
+    if(!btn) return;
+    var action = btn.dataset.action;
+    if(ADMIN_ONLY_ACTIONS[action] && !S.isAdmin) return;
+    var cat = getCat();
+    switch(action){
+      case 'toggle-registration':
+        setRegistrationOpen(!S.registrationOpen);
+        return;
+      case 'create-tournament': {
+        var tname = val('newTournamentName').trim() || 'Turnamen Baru';
+        createTournamentAdmin(tname).then(function(ok){
+          if(ok){ subscribeRealtime(); toast('Turnamen "'+tname+'" dibuat'); }
+          render();
+        });
+        return;
+      }
+      case 'select-category':
+        S.activeCategoryId = btn.dataset.id;
+        S.ui.adminTab = 'ringkasan';
+        render();
+        break;
+      case 'show-add-category':
+        S.ui.showAddCategory = true;
+        render();
+        var el1 = document.getElementById('newCategoryName'); if(el1) el1.focus();
+        break;
+      case 'cancel-add-category':
+        S.ui.showAddCategory = false;
+        render();
+        break;
+      case 'create-category': {
+        var nm = val('newCategoryName').trim() || 'Kategori Baru';
+        var fmt = val('newCategoryFormat');
+        addCategory(nm, fmt);
+        S.ui.showAddCategory = false;
+        S.ui.adminTab = 'pengaturan';
+        toast('Kategori "'+nm+'" dibuat');
+        queueCloudSync();
+        break;
+      }
+      case 'admin-tab':
+        S.ui.adminTab = btn.dataset.tab;
+        S.ui.teamsPage = 1;
+        render();
+        break;
+      case 'player-tab':
+        S.ui.playerTab = btn.dataset.tab;
+        render();
+        break;
+      case 'toggle-rules':
+        S.rulesOpen = !S.rulesOpen;
+        render();
+        break;
+      case 'toggle-rules-edit':
+        S.ui.rulesEditing = !S.ui.rulesEditing;
+        render();
+        break;
+      case 'save-rules':
+        S.rulesText = val('rulesTextarea');
+        S.ui.rulesEditing = false;
+        toast('Peraturan disimpan');
+        queueCloudSync();
+        break;
+      case 'dismiss-banner':
+        S.ui.bannerDismissed = true;
+        render();
+        break;
+      case 'gen-dummy-teams': {
+        var n = parseInt(val('dummyCount'), 10) || 10;
+        n = Math.min(n, 4000);
+        S.ui.lastDummyCount = n;
+        bulkCreateDummyTeams(cat, n);
+        return;
+      }
+      case 'save-category-name': {
+        var newName = val('categoryNameInput').trim();
+        if(newName) cat.name = newName;
+        toast('Nama kategori disimpan');
+        queueCloudSync();
+        break;
+      }
+      case 'save-group-settings': {
+        cat.groupSize = Math.max(2, parseInt(val('groupSizeInput'),10) || 4);
+        cat.advancePerGroup = Math.max(1, parseInt(val('advancePerGroupInput'),10) || 2);
+        toast('Pengaturan grup disimpan');
+        queueCloudSync();
+        break;
+      }
+      case 'assign-groups': {
+        var doAssign = function(){ assignGroups(cat); toast('Grup berhasil dibuat'); S.ui.adminTab='grup'; queueCloudSync(); render(); };
+        if(cat.groups) openConfirm('Buat ulang pengelompokan grup? Hasil pertandingan grup saat ini akan hilang.', doAssign);
+        else doAssign();
+        return;
+      }
+      case 'generate-bracket': {
+        var activeTeams = cat.teams.filter(function(t){ return t.status==='active'; });
+        if(activeTeams.length<2){ toast('Minimal 2 tim aktif diperlukan untuk membuat bagan.', 'error'); return; }
+        var doGen = function(){
+          cat.bracket = generateKnockoutBracket(shuffle(activeTeams));
+          delete S.ui.bracketZoom[cat.id];
+          toast('Bagan berhasil dibuat');
+          S.ui.adminTab='bagan';
+          queueCloudSync();
+          render();
+        };
+        if(cat.bracket) openConfirm('Bagan sudah ada. Buat ulang? Semua hasil pertandingan akan hilang.', doGen);
+        else doGen();
+        return;
+      }
+      case 'advance-knockout': {
+        openConfirm('Lanjutkan ke babak gugur? Fase grup akan dikunci dan tidak bisa diubah lagi.', function(){
+          advanceGroupsToKnockout(cat);
+          delete S.ui.bracketZoom[cat.id];
+          toast('Babak gugur berhasil dibuat dari hasil grup');
+          S.ui.adminTab = 'bagan';
+          queueCloudSync();
+          render();
+        });
+        return;
+      }
+      case 'bracket-mode':
+        S.ui.bracketMode[cat.id] = btn.dataset.mode;
+        render();
+        return;
+      case 'zoom-in': {
+        var zIn = clampZoom((S.ui.bracketZoom[cat.id]||100) + 10);
+        S.ui.bracketZoom[cat.id] = zIn;
+        applyZoomStyle(cat, zIn);
+        updateZoomUI(zIn);
+        return;
+      }
+      case 'zoom-out': {
+        var zOut = clampZoom((S.ui.bracketZoom[cat.id]||100) - 10);
+        S.ui.bracketZoom[cat.id] = zOut;
+        applyZoomStyle(cat, zOut);
+        updateZoomUI(zOut);
+        return;
+      }
+      case 'zoom-fit': {
+        var zFit = computeFitZoom(cat);
+        S.ui.bracketZoom[cat.id] = zFit;
+        applyZoomStyle(cat, zFit);
+        updateZoomUI(zFit);
+        return;
+      }
+      case 'zoom-map': {
+        var zMap = computeWholeMapZoom(cat);
+        S.ui.bracketZoom[cat.id] = zMap;
+        applyZoomStyle(cat, zMap);
+        updateZoomUI(zMap);
+        toast('Bagan disusutkan jadi satu bentuk utuh');
+        return;
+      }
+      case 'zoom-100': {
+        S.ui.bracketZoom[cat.id] = 100;
+        applyZoomStyle(cat, 100);
+        updateZoomUI(100);
+        return;
+      }
+      case 'delete-team': {
+        var tid = btn.dataset.team;
+        openConfirm('Hapus tim ini secara permanen dari kategori?', function(){
+          cat.teams = cat.teams.filter(function(t){ return t.id!==tid; });
+          deleteTeamRowAdmin(tid);
+          render();
+        });
+        return;
+      }
+      case 'teams-page':
+        S.ui.teamsPage = parseInt(btn.dataset.page,10);
+        render();
+        break;
+      case 'groups-page':
+        S.ui.groupsPage = parseInt(btn.dataset.page,10);
+        render();
+        break;
+      case 'round-select':
+        S.ui.bracketRound[cat.id] = parseInt(btn.dataset.round,10);
+        S.ui.bracketPage[cat.id] = 1;
+        render();
+        break;
+      case 'bracket-page':
+        S.ui.bracketPage[cat.id] = parseInt(btn.dataset.page,10);
+        render();
+        break;
+      case 'bracket-jump': {
+        var q = (val('bracketSearchInput')||'').trim().toLowerCase();
+        if(!q){ return; }
+        S.ui.bracketSearch[cat.id] = q;
+        var bracket = cat.bracket;
+        var found = null;
+        for(var r=bracket.rounds.length-1; r>=0 && !found; r--){
+          for(var idx=0; idx<bracket.rounds[r].length; idx++){
+            var mm = bracket.rounds[r][idx];
+            var ta = teamById(cat, mm.teamAId), tb = teamById(cat, mm.teamBId);
+            if((ta && ta.name.toLowerCase().indexOf(q)>=0) || (tb && tb.name.toLowerCase().indexOf(q)>=0)){ found = {r:r, i:idx}; break; }
+          }
+        }
+        if(found){
+          var jumpMode = S.ui.bracketMode[cat.id] || 'peta';
+          if(jumpMode==='paged'){
+            S.ui.bracketRound[cat.id] = found.r;
+            S.ui.bracketPage[cat.id] = Math.floor(found.i/12)+1;
+          } else {
+            S.ui.bracketZoom[cat.id] = 100;
+            S.ui.bracketScrollTo = found.r+'-'+found.i;
+          }
+          toast('Tim ditemukan di Babak '+(found.r+1));
+        } else {
+          toast('Tim tidak ditemukan di bagan ini', 'error');
+        }
+        render();
+        return;
+      }
+      case 'open-match-editor':
+        S.ui.openMatch = (S.ui.openMatch===btn.dataset.match) ? null : btn.dataset.match;
+        render();
+        break;
+      case 'close-match-editor':
+        S.ui.openMatch = null;
+        render();
+        break;
+      case 'declare-winner': {
+        var r2 = parseInt(btn.dataset.round,10), i2 = parseInt(btn.dataset.idx,10), side = btn.dataset.winner;
+        var bracket2 = cat.bracket;
+        var m2 = bracket2.rounds[r2][i2];
+        var winnerId = side==='A' ? m2.teamAId : m2.teamBId;
+        var sA = document.getElementById('scoreA_'+r2+'-'+i2);
+        var sB = document.getElementById('scoreB_'+r2+'-'+i2);
+        m2.scoreA = sA && sA.value!=='' ? parseInt(sA.value,10) : null;
+        m2.scoreB = sB && sB.value!=='' ? parseInt(sB.value,10) : null;
+        var woEl = document.getElementById('woCheck_'+r2+'-'+i2);
+        setMatchWinner(bracket2, r2, i2, winnerId, woEl ? woEl.checked : false);
+        S.ui.openMatch = null;
+        toast('Hasil pertandingan disimpan');
+        queueCloudSync();
+        break;
+      }
+      case 'save-group-match': {
+        var g = cat.groups.filter(function(x){ return x.id===btn.dataset.group; })[0];
+        var m3 = g.matches.filter(function(x){ return x.id===btn.dataset.match; })[0];
+        var aVal = val('gs_a_'+m3.id), bVal = val('gs_b_'+m3.id);
+        if(aVal===''||bVal===''){ toast('Isi kedua skor terlebih dahulu', 'error'); return; }
+        var sa = parseInt(aVal,10), sb = parseInt(bVal,10);
+        if(sa===sb){ toast('Skor tidak boleh seri', 'error'); return; }
+        m3.scoreA = sa; m3.scoreB = sb; m3.winnerId = sa>sb ? m3.teamAId : m3.teamBId; m3.walkover = false;
+        toast('Skor disimpan');
+        queueCloudSync();
+        break;
+      }
+      case 'archive-pdf': {
+        archiveCategoryToPdf(cat);
+        return;
+      }
+      case 'reset-category': {
+        openConfirm('Hapus semua tim, grup, dan bagan pada kategori ini?', function(){
+          var idsToDelete = cat.teams.map(function(t){ return t.id; });
+          cat.teams = []; cat.groups = null; cat.groupsLocked = false; cat.bracket = null;
+          idsToDelete.forEach(function(id){ deleteTeamRowAdmin(id); });
+          toast('Kategori direset');
+          queueCloudSync();
+          render();
+        });
+        return;
+      }
+      case 'delete-category': {
+        openConfirm('Hapus kategori "'+cat.name+'" beserta seluruh data timnya?', function(){
+          var idsToDelete = cat.teams.map(function(t){ return t.id; });
+          S.categories = S.categories.filter(function(c){ return c.id!==cat.id; });
+          S.activeCategoryId = S.categories.length ? S.categories[0].id : null;
+          S.ui.adminTab = 'ringkasan';
+          idsToDelete.forEach(function(id){ deleteTeamRowAdmin(id); });
+          toast('Kategori dihapus');
+          queueCloudSync();
+          render();
+        });
+        return;
+      }
+      case 'confirm-yes': {
+        var cb = S.ui.confirmCb;
+        S.ui.confirmOpen = false;
+        S.ui.confirmCb = null;
+        if(cb) cb();
+        else render();
+        return;
+      }
+      case 'confirm-no':
+        S.ui.confirmOpen = false;
+        S.ui.confirmCb = null;
+        render();
+        break;
+      case 'quick-self-fill':
+        fillSelfDummy();
+        return;
+      case 'verify-partner-email': {
+        var p2email = val('p2EmailInput').trim();
+        if(!p2email){ toast('Minta partner mengisi emailnya terlebih dahulu', 'error'); return; }
+        runVerification('partnerEmail');
+        return;
+      }
+      case 'verify-check': {
+        var key = btn.dataset.check;
+        runVerification(key);
+        return;
+      }
+      case 'submit-registration':
+        submitRegistration();
+        return;
+      case 'withdraw-self-team': {
+        var wtid = btn.dataset.team;
+        openConfirm('Batalkan pendaftaran tim ini?', async function(){
+          try{
+            await withdrawTeamCloud(wtid);
+            var wcat = getCat();
+            if(wcat) wcat.teams = wcat.teams.filter(function(t){ return t.id!==wtid; });
+            S.ui.myTeamIds = S.ui.myTeamIds.filter(function(id){ return id!==wtid; });
+            toast('Pendaftaran dibatalkan');
+          }catch(e){
+            toast('Gagal membatalkan: '+e.message, 'error');
+          }
+          render();
+        });
+        return;
+      }
+      default:
+        return;
+    }
+    render();
+  });
+
+  app.addEventListener('change', function(e){
+    var el = e.target;
+    var actionName = el.dataset ? el.dataset.actionName : null;
+    if(el.id==='teamsPerPageSelect'){
+      S.ui.teamsPerPage = parseInt(el.value,10);
+      S.ui.teamsPage = 1;
+      render();
+    } else if(actionName==='team-status-select'){
+      if(!S.isAdmin) return;
+      setTeamStatus(S.activeCategoryId, el.dataset.team, el.value);
+    } else if(actionName==='format-radio'){
+      if(!S.isAdmin) return;
+      var cat = getCat();
+      cat.format = el.value;
+      queueCloudSync();
+      render();
+    } else if(el.id==='regCategorySelect'){
+      // no state change needed; read at submit time
+    }
+  });
+
+  app.addEventListener('input', function(e){
+    var el = e.target;
+    if(el.id==='teamsSearchInput'){
+      S.ui.teamsSearch = el.value;
+      S.ui.teamsPage = 1;
+      render();
+    } else if(el.id==='bracketSearchInput'){
+      var cat = getCat();
+      S.ui.bracketSearch[cat.id] = el.value;
+      render();
+    } else if(el.id==='zoomSlider'){
+      // Direct DOM update (no render()) so dragging the slider stays smooth
+      // and never rebuilds the whole (potentially huge) bracket tree mid-drag.
+      var zcat = getCat();
+      var z = clampZoom(parseInt(el.value,10) || 100);
+      S.ui.bracketZoom[zcat.id] = z;
+      applyZoomStyle(zcat, z);
+      var label = document.getElementById('zoomLabel');
+      if(label) label.textContent = z+'%';
+    }
+  });
+
+  /* ---------------- INIT ---------------- */
+  async function boot(){
+    var ctx = await requireAuth('index.html');
+    if(!ctx) return; // requireAuth already redirected to login
+    S.currentUserId = ctx.user.id;
+    S.isAdmin = !!(ctx.profile && ctx.profile.role === 'admin');
+    S.role = S.isAdmin ? 'admin' : 'player';
+
+    var found = await loadTournament();
+    if(found) subscribeRealtime();
+    render();
+  }
+  boot();
+})();
+</script>
+</body>
+</html>

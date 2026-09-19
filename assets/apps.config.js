@@ -76,6 +76,14 @@ window.GEMBEL_APPS = [
     enabled: true,
   },
   {
+    id: 'tournament',
+    name: 'Rally Bracket',
+    desc: 'Manajemen turnamen bulutangkis — kategori, format gugur langsung atau grup, bagan otomatis, dan skor pertandingan. Admin kelola turnamen, member lain bisa daftarin tim & pantau bagan live.',
+    icon: '🏸',
+    url: 'tournament.html',
+    enabled: true,
+  },
+  {
     id: 'drawer',
     name: 'Recall Drawer',
     desc: 'Card-catalog buat apa aja yang worth di-inget — quick capture, tag, cari lewat command palette (Ctrl+K). Data tersimpan di akun lo.',
