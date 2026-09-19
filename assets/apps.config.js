@@ -91,6 +91,14 @@ window.GEMBEL_APPS = [
     url: 'drawer.html',
     enabled: true,
   },
+  {
+    id: 'donasi',
+    name: 'Dana Ortu',
+    desc: 'QRIS + pencatatan donasi bulanan — siapa nyumbang berapa, pengeluaran kemana aja, saldo bulan ini. Link publik bisa dilihat siapa aja tanpa login.',
+    icon: '🙏',
+    url: 'donasi.html',
+    enabled: true,
+  },
   // These three are real projects still being built -- the tile is here so they're visible on the
   // roadmap, but clicking through lands on coming-soon.html (a shared "under construction" scene)
   // instead of a real app. See coming-soon.html's own comment for how the ?app=/?domain=/?icon=

@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dana Ortu — Gembel AI PIK</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27%3E%3Cdefs%3E%3ClinearGradient id=%27g%27 x1=%270%27 y1=%270%27 x2=%271%27 y2=%271%27%3E%3Cstop offset=%270%27 stop-color=%27%234f7cff%27/%3E%3Cstop offset=%271%27 stop-color=%27%232338a8%27/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width=%2764%27 height=%2764%27 rx=%2716%27 fill=%27url(%23g)%27/%3E%3Ctext x=%2732%27 y=%2746%27 font-family=%27Arial,sans-serif%27 font-weight=%27800%27 font-size=%2740%27 fill=%27white%27 text-anchor=%27middle%27%3EG%3C/text%3E%3Ccircle cx=%2750%27 cy=%2715%27 r=%276%27 fill=%27%23ffd166%27/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/app-theme.css">
+<style>
+  .top{ display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid var(--border); }
+  .wrap{ max-width:640px;margin:0 auto;padding:24px 20px 80px; }
+  .qris-box{ text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:24px;margin-bottom:18px;box-shadow:var(--shadow-card); }
+  .qris-box img{ max-width:260px;width:100%;border-radius:var(--radius-md);border:1px solid var(--border); }
+  .qris-empty{ color:var(--text-faint);font-size:13px;padding:30px 10px; }
+  .mode-toggle{ display:flex;gap:6px;background:var(--surface-muted);border:1px solid var(--border);border-radius:100px;padding:4px;margin-bottom:18px; }
+  .mode-btn{ flex:1;border:none;background:none;padding:9px;border-radius:100px;font-weight:700;font-size:13px;color:var(--text-muted);cursor:pointer; }
+  .mode-btn.active{ background:var(--primary);color:#fff; }
+  .stat-grid{ display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px; }
+  .stat-tile{ background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:14px 10px;text-align:center; }
+  .stat-tile .v{ font-family:var(--font-mono);font-size:17px;font-weight:700; }
+  .stat-tile .l{ font-size:10.5px;color:var(--text-faint);margin-top:4px;text-transform:uppercase;letter-spacing:.03em; }
+  .stat-tile.in .v{ color:var(--success-text); }
+  .stat-tile.out .v{ color:var(--danger); }
+  .entry-row{ display:flex;justify-content:space-between;gap:10px;padding:12px 14px;border-bottom:1px solid var(--border);font-size:13px; }
+  .entry-row:last-child{ border-bottom:none; }
+  .entry-left{ min-width:0; }
+  .entry-name{ font-weight:600;color:var(--text-main); }
+  .entry-note{ color:var(--text-faint);font-size:11.5px;margin-top:1px; }
+  .entry-amt{ font-family:var(--font-mono);font-weight:700;white-space:nowrap; }
+  .entry-amt.in{ color:var(--success-text); }
+  .entry-amt.out{ color:var(--danger); }
+  .panel{ background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);margin-bottom:16px;overflow:hidden; }
+  .panel-head{ padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px; }
+  .panel-head h2{ font-size:15px; }
+  .panel-body{ padding:16px 18px; }
+  .field-row{ display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px; }
+  .field-row input, .field-row select{ flex:1;min-width:120px; }
+  .empty-hint{ color:var(--text-faint);font-size:12.5px;padding:16px;text-align:center; }
+  .share-box{ display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--surface-muted);border:1px solid var(--border);border-radius:var(--radius-md);padding:10px 12px;font-size:12px;word-break:break-all; }
+</style>
+</head>
+<body>
+
+<div class="top">
+  <a href="index.html" style="text-decoration:none;color:inherit;">
+    <div class="logo display" style="font-size:15px;"><span class="g">GEMBEL</span> <span class="e">AI PIK</span></div>
+  </a>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <button class="theme-toggle" onclick="toggleTheme()" title="Ganti tema">🌙</button>
+    <a href="dashboard.html" class="btn btn-ghost btn-sm" id="dash-link" style="text-decoration:none;">Dashboard</a>
+  </div>
+</div>
+
+<div class="wrap" id="app-root">
+  <div class="empty-hint">Memuat…</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/dist/umd/supabase.min.js"></script>
+<script src="assets/supabaseClient.js"></script>
+<script src="assets/auth.js"></script>
+<script src="assets/popup.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  let CURRENT_USER = null;
+  let ACTIVE_FUND = null;
+  let ACTIVE_ROLE = null; // 'owner' | 'editor' | null (public view)
+  let ENTRIES = [];
+  let mode = 'simple';
+  let isPublicView = false;
+
+  function fmtRupiah(n){ return 'Rp' + Math.round(Number(n) || 0).toLocaleString('id-ID'); }
+  function escapeHtml(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function currentMonthKey(){ const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); }
+  function todayKey(){ return new Date().toISOString().slice(0,10); }
+  function isThisMonth(dateStr){ return String(dateStr || '').slice(0,7) === currentMonthKey(); }
+
+  // ---------------- Summary stats (shared by both public + authenticated views) ----------------
+  function computeStats(entries){
+    const thisMonth = entries.filter(e => isThisMonth(e.occurred_on));
+    const inThisMonth = thisMonth.filter(e => e.type === 'in');
+    const outThisMonth = thisMonth.filter(e => e.type === 'out');
+    const totalIn = inThisMonth.reduce((s,e)=>s+Number(e.amount),0);
+    const totalOut = outThisMonth.reduce((s,e)=>s+Number(e.amount),0);
+    const donorCount = new Set(inThisMonth.map(e => (e.donor_name||'').trim().toLowerCase()).filter(Boolean)).size;
+    const outToday = entries.filter(e => e.type === 'out' && e.occurred_on === todayKey()).reduce((s,e)=>s+Number(e.amount),0);
+    return { totalIn, totalOut, balance: totalIn - totalOut, donorCount, outToday, thisMonth };
+  }
+
+  function statGridHTML(stats){
+    return `
+      <div class="stat-grid">
+        <div class="stat-tile in"><div class="v">${fmtRupiah(stats.totalIn)}</div><div class="l">Masuk · ${stats.donorCount} orang</div></div>
+        <div class="stat-tile out"><div class="v">${fmtRupiah(stats.outToday)}</div><div class="l">Keluar hari ini</div></div>
+        <div class="stat-tile"><div class="v">${fmtRupiah(stats.balance)}</div><div class="l">Saldo bulan ini</div></div>
+      </div>`;
+  }
+
+  function modeToggleHTML(){
+    return `
+      <div class="mode-toggle">
+        <button type="button" class="mode-btn ${mode==='simple'?'active':''}" data-mode="simple">Simple</button>
+        <button type="button" class="mode-btn ${mode==='detail'?'active':''}" data-mode="detail">Detail</button>
+      </div>`;
+  }
+
+  function entryListHTML(entries){
+    const sorted = [...entries].sort((a,b) => (b.occurred_on||'').localeCompare(a.occurred_on||'') || (b.created_at||'').localeCompare(a.created_at||''));
+    if(!sorted.length) return `<div class="empty-hint">Belum ada catatan bulan ini.</div>`;
+    return sorted.map(e => `
+      <div class="entry-row">
+        <div class="entry-left">
+          <div class="entry-name">${e.type === 'in' ? escapeHtml(e.donor_name || 'Donatur') : escapeHtml(e.note || 'Pengeluaran')}</div>
+          <div class="entry-note">${escapeHtml(e.occurred_on)}${e.type === 'out' && e.note ? '' : ''}${e.type === 'in' && e.note ? ' · ' + escapeHtml(e.note) : ''}</div>
+        </div>
+        <div class="entry-amt ${e.type}">${e.type === 'in' ? '+' : '-'}${fmtRupiah(e.amount)}</div>
+      </div>`).join('');
+  }
+
+  function qrisBoxHTML(fund){
+    return `
+      <div class="qris-box">
+        ${fund.qris_image_url
+          ? `<img src="${escapeHtml(fund.qris_image_url)}" alt="QRIS">`
+          : `<div class="qris-empty">Belum ada QRIS di-upload.</div>`}
+        <div style="margin-top:10px;font-size:13px;color:var(--text-muted);">Scan buat donasi ke <strong>${escapeHtml(fund.name)}</strong></div>
+      </div>`;
+  }
+
+  function wireModeToggle(container){
+    container.querySelectorAll('.mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => { mode = btn.dataset.mode; render(); });
+    });
+  }
+
+  // ---------------- Public (no login) view ----------------
+  async function bootPublicShare(fundId){
+    isPublicView = true;
+    document.getElementById('dash-link').style.display = 'none';
+    const { data: fund, error } = await supabase.from('donation_funds').select('id, name, qris_image_url, public_share_enabled').eq('id', fundId).maybeSingle();
+    const root = document.getElementById('app-root');
+    if(error || !fund || !fund.public_share_enabled){
+      root.innerHTML = `<div class="empty-hint" style="padding-top:60px;">Link gak ketemu, atau pemiliknya belum ngaktifin link publik ini.</div>`;
+      return;
+    }
+    ACTIVE_FUND = fund;
+    const { data: entries } = await supabase.from('donation_entries').select('*').eq('fund_id', fundId);
+    ENTRIES = entries || [];
+    render();
+
+    // Live updates -- a donor watching the page doesn't need to refresh to see a new entry land.
+    supabase.channel('donation_public_' + fundId)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'donation_entries', filter: `fund_id=eq.${fundId}` }, async () => {
+        const { data } = await supabase.from('donation_entries').select('*').eq('fund_id', fundId);
+        ENTRIES = data || [];
+        render();
+      })
+      .subscribe();
+  }
+
+  function render(){
+    const root = document.getElementById('app-root');
+    if(!ACTIVE_FUND){
+      root.innerHTML = `<div class="empty-hint" style="padding-top:60px;">Belum ada dana yang di-setup.</div>`;
+      return;
+    }
+    const stats = computeStats(ENTRIES);
+    const canEdit = !isPublicView && (ACTIVE_ROLE === 'owner' || ACTIVE_ROLE === 'editor');
+    const isOwner = !isPublicView && ACTIVE_ROLE === 'owner';
+
+    root.innerHTML = `
+      ${qrisBoxHTML(ACTIVE_FUND)}
+      ${modeToggleHTML()}
+      ${statGridHTML(stats)}
+      ${mode === 'detail' ? `
+        <div class="panel">
+          <div class="panel-head"><h2>Catatan bulan ini</h2></div>
+          <div>${entryListHTML(stats.thisMonth)}</div>
+        </div>` : ''}
+      ${canEdit ? `
+        <div class="panel">
+          <div class="panel-head"><h2>Tambah catatan</h2></div>
+          <div class="panel-body">
+            <div class="field-row">
+              <select id="entry-type-input">
+                <option value="in">Masuk (donasi)</option>
+                <option value="out">Keluar (pengeluaran)</option>
+              </select>
+              <input type="text" id="entry-amount-input" inputmode="numeric" placeholder="Nominal (Rp)">
+            </div>
+            <div class="field-row">
+              <input type="text" id="entry-donor-input" placeholder="Nama donatur (kalau masuk)">
+            </div>
+            <div class="field-row">
+              <input type="text" id="entry-note-input" placeholder="Catatan (opsional)">
+              <input type="date" id="entry-date-input">
+            </div>
+            <button class="btn btn-primary btn-block" id="entry-save-btn">Simpan</button>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>Semua catatan bulan ini</h2></div>
+          <div id="editable-entry-list">${entryListEditableHTML(stats.thisMonth, isOwner)}</div>
+        </div>` : ''}
+      ${isOwner ? `
+        <div class="panel">
+          <div class="panel-head"><h2>QRIS</h2></div>
+          <div class="panel-body">
+            <label class="btn btn-ghost" style="display:inline-flex;cursor:pointer;">
+              ⬆ ${ACTIVE_FUND.qris_image_url ? 'Ganti' : 'Upload'} gambar QRIS
+              <input type="file" id="qris-file-input" accept="image/*" style="display:none;">
+            </label>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>Anggota</h2></div>
+          <div class="panel-body">
+            <div id="members-list" class="empty-hint">Memuat…</div>
+            <div class="field-row" style="margin-top:10px;">
+              <input type="text" id="member-email-input" placeholder="Email anggota baru">
+              <button class="btn btn-ghost" id="member-add-btn">+ Tambah</button>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>Link publik</h2></div>
+          <div class="panel-body">
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:10px;">
+              <input type="checkbox" id="public-toggle-input" ${ACTIVE_FUND.public_share_enabled ? 'checked' : ''}> Aktifkan link publik (bisa dilihat tanpa login)
+            </label>
+            <div class="share-box" id="share-box" style="${ACTIVE_FUND.public_share_enabled ? '' : 'display:none;'}">
+              <span id="share-link-text">${escapeHtml(location.origin + location.pathname + '?share=' + ACTIVE_FUND.id)}</span>
+              <button type="button" class="btn btn-ghost btn-sm" id="share-copy-btn">Salin</button>
+            </div>
+          </div>
+        </div>` : ''}
+    `;
+
+    wireModeToggle(root);
+    if(canEdit) wireEntryForm();
+    if(isOwner){ wireQrisUpload(); wireMembers(); wireShareToggle(); loadMembers(); }
+  }
+
+  function entryListEditableHTML(entries, isOwner){
+    const sorted = [...entries].sort((a,b) => (b.occurred_on||'').localeCompare(a.occurred_on||''));
+    if(!sorted.length) return `<div class="empty-hint">Belum ada catatan bulan ini.</div>`;
+    return sorted.map(e => `
+      <div class="entry-row">
+        <div class="entry-left">
+          <div class="entry-name">${e.type === 'in' ? escapeHtml(e.donor_name || 'Donatur') : escapeHtml(e.note || 'Pengeluaran')}</div>
+          <div class="entry-note">${escapeHtml(e.occurred_on)}${e.type === 'in' && e.note ? ' · ' + escapeHtml(e.note) : ''}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div class="entry-amt ${e.type}">${e.type === 'in' ? '+' : '-'}${fmtRupiah(e.amount)}</div>
+          ${isOwner ? `<button type="button" class="btn btn-ghost btn-sm" data-del-entry="${e.id}" title="Hapus">✕</button>` : ''}
+        </div>
+      </div>`).join('');
+  }
+
+  async function refreshEntries(){
+    const { data } = await supabase.from('donation_entries').select('*').eq('fund_id', ACTIVE_FUND.id);
+    ENTRIES = data || [];
+    render();
+  }
+
+  function wireEntryForm(){
+    document.getElementById('entry-date-input').value = todayKey();
+    const btn = document.getElementById('entry-save-btn');
+    btn.addEventListener('click', async () => {
+      const type = document.getElementById('entry-type-input').value;
+      const amount = parseInt(document.getElementById('entry-amount-input').value.replace(/\D/g,''));
+      const donor_name = document.getElementById('entry-donor-input').value.trim() || null;
+      const note = document.getElementById('entry-note-input').value.trim() || null;
+      const occurred_on = document.getElementById('entry-date-input').value || todayKey();
+      if(!amount || amount <= 0){ await gembelAlert('Isi nominal dulu ya.'); return; }
+      btn.disabled = true; btn.textContent = 'Nyimpen…';
+      const { error } = await supabase.from('donation_entries').insert({
+        fund_id: ACTIVE_FUND.id, type, amount, donor_name: type === 'in' ? donor_name : null, note, occurred_on, created_by: CURRENT_USER.id,
+      });
+      btn.disabled = false; btn.textContent = 'Simpan';
+      if(error){ await gembelAlert('Gagal simpan: ' + error.message); return; }
+      await refreshEntries();
+    });
+    document.getElementById('app-root').querySelectorAll('[data-del-entry]').forEach(b => {
+      b.addEventListener('click', async () => {
+        if(!(await gembelConfirm('Hapus catatan ini?'))) return;
+        const { error } = await supabase.from('donation_entries').delete().eq('id', b.dataset.delEntry);
+        if(error){ await gembelAlert('Gagal hapus: ' + error.message); return; }
+        await refreshEntries();
+      });
+    });
+  }
+
+  function wireQrisUpload(){
+    document.getElementById('qris-file-input').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if(!file) return;
+      if(file.size > 5*1024*1024){ await gembelAlert('File maks 5MB.'); return; }
+      const path = ACTIVE_FUND.id + '/' + Date.now() + '-' + file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+      const { error: upErr } = await supabase.storage.from('donation-qris').upload(path, file, { upsert: false });
+      if(upErr){ await gembelAlert('Gagal upload: ' + upErr.message); return; }
+      const { data: pub } = supabase.storage.from('donation-qris').getPublicUrl(path);
+      const { error: updErr } = await supabase.from('donation_funds').update({ qris_image_url: pub.publicUrl }).eq('id', ACTIVE_FUND.id);
+      if(updErr){ await gembelAlert('Gagal simpan URL QRIS: ' + updErr.message); return; }
+      ACTIVE_FUND.qris_image_url = pub.publicUrl;
+      render();
+    });
+  }
+
+  async function loadMembers(){
+    const { data } = await supabase.from('donation_members').select('*').eq('fund_id', ACTIVE_FUND.id);
+    const rows = data || [];
+    let profiles = {};
+    if(rows.length){
+      const { data: profRows } = await supabase.from('profiles').select('id, full_name, email').in('id', rows.map(r=>r.user_id));
+      (profRows||[]).forEach(p => { profiles[p.id] = p; });
+    }
+    const el = document.getElementById('members-list');
+    if(!el) return;
+    el.className = '';
+    el.innerHTML = rows.length ? rows.map(r => {
+      const p = profiles[r.user_id];
+      return `<div class="entry-row"><div class="entry-name">${escapeHtml(p?.full_name || p?.email || r.user_id)}</div><div class="entry-note">${r.role}</div></div>`;
+    }).join('') : `<div class="empty-hint">Cuma kamu (pemilik) sejauh ini.</div>`;
+  }
+
+  function wireMembers(){
+    document.getElementById('member-add-btn').addEventListener('click', async () => {
+      const input = document.getElementById('member-email-input');
+      const email = input.value.trim();
+      if(!email) return;
+      const { error } = await supabase.rpc('donation_add_member_by_email', { _fund_id: ACTIVE_FUND.id, _email: email, _role: 'editor' });
+      if(error){ await gembelAlert('Gagal nambah: ' + error.message); return; }
+      input.value = '';
+      await gembelAlert('Anggota ditambahin.');
+      loadMembers();
+    });
+  }
+
+  function wireShareToggle(){
+    document.getElementById('public-toggle-input').addEventListener('change', async (e) => {
+      const checked = e.target.checked;
+      const { error } = await supabase.from('donation_funds').update({ public_share_enabled: checked }).eq('id', ACTIVE_FUND.id);
+      if(error){ await gembelAlert('Gagal ubah: ' + error.message); e.target.checked = !checked; return; }
+      ACTIVE_FUND.public_share_enabled = checked;
+      document.getElementById('share-box').style.display = checked ? '' : 'none';
+    });
+    const copyBtn = document.getElementById('share-copy-btn');
+    if(copyBtn) copyBtn.addEventListener('click', async () => {
+      const text = document.getElementById('share-link-text').textContent;
+      try{ await navigator.clipboard.writeText(text); copyBtn.textContent = 'Kesalin!'; setTimeout(()=>copyBtn.textContent='Salin', 1500); }
+      catch(e){ await gembelAlert('Copy manual ya:\n' + text); }
+    });
+  }
+
+  // ---------------- Authenticated (owner/editor) boot ----------------
+  async function bootAuthenticated(){
+    const { data: ownedFund } = await supabase.from('donation_funds').select('*').eq('owner_id', CURRENT_USER.id).maybeSingle();
+    if(ownedFund){
+      ACTIVE_FUND = ownedFund; ACTIVE_ROLE = 'owner';
+    } else {
+      const { data: memberRow } = await supabase.from('donation_members').select('*, fund:donation_funds(*)').eq('user_id', CURRENT_USER.id).maybeSingle();
+      if(memberRow && memberRow.fund){ ACTIVE_FUND = memberRow.fund; ACTIVE_ROLE = memberRow.role; }
+    }
+
+    if(!ACTIVE_FUND){
+      const root = document.getElementById('app-root');
+      root.innerHTML = `
+        <div class="panel">
+          <div class="panel-head"><h2>Setup Dana</h2></div>
+          <div class="panel-body">
+            <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">Belum ada dana. Kasih nama dulu (misal "Dana Bulanan Ortu"), nanti bisa nambah QRIS, anggota, dan catatan.</p>
+            <div class="field-row"><input type="text" id="new-fund-name-input" placeholder="Nama dana"></div>
+            <button class="btn btn-primary btn-block" id="new-fund-btn">Buat</button>
+          </div>
+        </div>`;
+      document.getElementById('new-fund-btn').addEventListener('click', async () => {
+        const name = document.getElementById('new-fund-name-input').value.trim();
+        if(!name){ return; }
+        const { data, error } = await supabase.from('donation_funds').insert({ owner_id: CURRENT_USER.id, name }).select().single();
+        if(error){ await gembelAlert('Gagal buat: ' + error.message); return; }
+        ACTIVE_FUND = data; ACTIVE_ROLE = 'owner';
+        await refreshEntries();
+      });
+      return;
+    }
+
+    await refreshEntries();
+
+    supabase.channel('donation_own_sync_' + CURRENT_USER.id)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'donation_entries', filter: `fund_id=eq.${ACTIVE_FUND.id}` }, refreshEntries)
+      .subscribe();
+  }
+
+  document.addEventListener('DOMContentLoaded', async () => {
+    const shareId = new URLSearchParams(location.search).get('share');
+    if(shareId){ await bootPublicShare(shareId); return; }
+
+    const authCtx = await requireAuth('index.html');
+    if(!authCtx) return;
+    CURRENT_USER = authCtx.user;
+    await bootAuthenticated();
+  });
+})();
+</script>
+</body>
+</html>
