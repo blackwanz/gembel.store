@@ -240,6 +240,15 @@
             return rawNow >= state.targetTime;
         }
 
+        // How often an ACTIVE session gets pushed to the cloud while just sitting there ticking
+        // (as opposed to on every color switch/stop, which already pushes immediately). Before
+        // this, the cloud row only updated at the start of a session -- so a second device opening
+        // during a long-running session pulled an hours-stale snapshot and then ticked forward from
+        // THAT on its own, diverging from the actual device further with every second ("different
+        // bar on my current device vs work device"). 20s keeps other devices' live view honest
+        // without hammering Supabase every tick.
+        const CLOUD_HEARTBEAT_MS = 20000;
+        let lastCloudHeartbeatAt = 0;
         function updateClock() {
             const now = new Date();
             document.getElementById('current-date').innerText = formatDate(now);
@@ -253,6 +262,10 @@
                 }
                 document.getElementById('countdown-display').innerText = formatDuration(Math.floor(timeDiff / 1000));
                 syncWithSystemTime();
+                if (now.getTime() - lastCloudHeartbeatAt >= CLOUD_HEARTBEAT_MS) {
+                    lastCloudHeartbeatAt = now.getTime();
+                    saveCloud();
+                }
             } else {
                 document.getElementById('countdown-display').innerText = "00h 00m 00s";
             }
@@ -481,23 +494,7 @@
             }
 
             await loadCloud();
-
-            const savedState = localStorage.getItem(K_STATE());
-            if (savedState) {
-                const parsedState = JSON.parse(savedState);
-                if (parsedState.active) {
-                    state = parsedState;
-                    state.startTime = new Date(state.startTime);
-                    state.targetTime = new Date(state.targetTime);
-
-                    document.querySelector('.status-indicator').classList.add('active');
-                    document.getElementById('target-display').innerText = `[${formatTime(state.targetTime)} - ${state.targetTime.getDate() === new Date().getDate() ? 'HARI INI' : 'BESOK'}]`;
-                    document.getElementById('progress-status-overlay').innerText = `PROCESSING SESSION: ${state.activeColor.toUpperCase()} // SYSTEM RESUMED`;
-
-                    console.log("SYSTEM // Sesi aktif dipulihkan dari LocalStorage.");
-                }
-            }
-
+            applyLocalStateToUI();
             renderReports();
 
             setInterval(() => {
@@ -505,7 +502,57 @@
             }, 1000);
 
             updateClock();
+
+            // Realtime: reflect another device's session live instead of only at boot. Only
+            // applied while THIS device isn't itself the one actively running a session --
+            // otherwise the echo of our own heartbeat push (or a stale remote snapshot arriving
+            // mid-tick) would stomp on progress this tab has already ticked forward locally.
+            // The device that's actually active stays authoritative until it stops; every other
+            // (idle) device just mirrors whatever the cloud row says.
+            if (!IS_GUEST) {
+                supabase
+                    .channel('progbar_own_sync_' + UID)
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'user_progbar_data', filter: `user_id=eq.${UID}` }, async () => {
+                        if (state.active) return; // this device is the live one -- don't self-clobber
+                        await loadCloud();
+                        applyLocalStateToUI();
+                        renderReports();
+                    })
+                    .subscribe();
+            }
         };
+
+        // Pulls whatever's currently in K_STATE()/K_HISTORY() localStorage (just refreshed by
+        // loadCloud()) into the in-memory `state` and re-renders the bar/header to match --
+        // shared by the boot path and the realtime handler above so both apply a fetched
+        // snapshot the exact same way.
+        function applyLocalStateToUI() {
+            const savedState = localStorage.getItem(K_STATE());
+            const parsedState = savedState ? JSON.parse(savedState) : null;
+            if (parsedState && parsedState.active) {
+                state = parsedState;
+                state.startTime = new Date(state.startTime);
+                state.targetTime = new Date(state.targetTime);
+
+                document.querySelector('.status-indicator').classList.add('active');
+                document.getElementById('target-display').innerText = `[${formatTime(state.targetTime)} - ${state.targetTime.getDate() === new Date().getDate() ? 'HARI INI' : 'BESOK'}]`;
+                document.getElementById('progress-status-overlay').innerText = `PROCESSING SESSION: ${state.activeColor.toUpperCase()} // SYSTEM RESUMED`;
+                renderActiveProgressBar();
+                console.log("SYSTEM // Sesi aktif dipulihkan dari LocalStorage.");
+            } else {
+                // Remote session ended (or none ever started) -- make sure this idle device's
+                // own leftover local state/UI doesn't keep showing a session that's over.
+                state.active = false;
+                state.activeColor = null;
+                state.startTime = null;
+                state.targetTime = null;
+                state.segments = [];
+                document.querySelector('.status-indicator').classList.remove('active');
+                document.getElementById('target-display').innerText = '[BELUM AKTIF]';
+                document.getElementById('progress-status-overlay').innerText = 'SYSTEM IDLE // AWAITING COMMAND';
+                document.getElementById('progress-bar-base').innerHTML = '';
+            }
+        }
 
         // Sinkronisasi saat layar terkunci / app dibuka lagi.
         // Sync juga dilakukan saat 'hidden' (sesaat sebelum layar terkunci) sebagai
