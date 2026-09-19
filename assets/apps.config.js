@@ -75,4 +75,32 @@ window.GEMBEL_APPS = [
     url: 'archery.html',
     enabled: true,
   },
+  // These three are real projects still being built -- the tile is here so they're visible on the
+  // roadmap, but clicking through lands on coming-soon.html (a shared "under construction" scene)
+  // instead of a real app. See coming-soon.html's own comment for how the ?app=/?domain=/?icon=
+  // query params drive it.
+  {
+    id: 'mokondo',
+    name: 'Mokondo.com',
+    desc: 'Masih dikerjain — belum live. Tile ini nunjukin progress-nya di dashboard.',
+    icon: '🛠️',
+    url: 'coming-soon.html?app=Mokondo&domain=mokondo.com&icon=%F0%9F%9B%A0%EF%B8%8F',
+    enabled: true,
+  },
+  {
+    id: 'yourlegacy',
+    name: 'YourLegacy.com',
+    desc: 'Masih dikerjain — belum live. Tile ini nunjukin progress-nya di dashboard.',
+    icon: '🏛️',
+    url: 'coming-soon.html?app=YourLegacy&domain=yourlegacy.com&icon=%F0%9F%8F%9B%EF%B8%8F',
+    enabled: true,
+  },
+  {
+    id: 'bitworks',
+    name: 'Bitworks.com',
+    desc: 'Masih dikerjain — belum live. Tile ini nunjukin progress-nya di dashboard.',
+    icon: '⚙️',
+    url: 'coming-soon.html?app=Bitworks&domain=bitworks.com&icon=%E2%9A%99%EF%B8%8F',
+    enabled: true,
+  },
 ];

@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Segera Hadir — Gembel AI PIK</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/app-theme.css">
+<style>
+  body { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+  .wip-card {
+    max-width: 480px; width: 100%; background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-xl); box-shadow: var(--shadow-lift); padding: 40px 32px; text-align: center;
+  }
+  .back-link {
+    position: fixed; top: 14px; left: 14px; font-size: 12.5px; color: var(--text-muted);
+    display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: var(--radius-sm);
+    border: 1px solid var(--border); background: var(--surface); text-decoration: none; transition: var(--transition);
+  }
+  .back-link:hover { color: var(--text-main); border-color: var(--border-strong); }
+
+  /* ---- Construction scene: a little worker hammering a sign, sparks flying, dust puffs ---- */
+  .wip-scene { position: relative; width: 220px; height: 140px; margin: 0 auto 18px; }
+  .wip-ground {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 6px; border-radius: 3px;
+    background: repeating-linear-gradient(90deg, var(--warning-text) 0 14px, var(--surface) 14px 28px);
+    opacity: .55;
+  }
+  .wip-cone {
+    position: absolute; bottom: 6px; width: 0; height: 0;
+    border-left: 15px solid transparent; border-right: 15px solid transparent; border-bottom: 34px solid var(--warning-text);
+    filter: drop-shadow(0 2px 2px rgba(0,0,0,.15));
+  }
+  .wip-cone::after {
+    content: ''; position: absolute; left: -19px; bottom: -4px; width: 38px; height: 6px;
+    background: var(--warning-text); border-radius: 2px;
+  }
+  .wip-cone.left { left: 4px; transform: scale(.72); }
+  .wip-cone.right { right: 4px; transform: scale(.72); }
+
+  .wip-sign {
+    position: absolute; left: 50%; bottom: 6px; transform: translateX(-50%);
+    width: 96px; height: 66px; display: flex; flex-direction: column; align-items: center;
+  }
+  .wip-sign .post { width: 6px; height: 40px; background: var(--text-faint); border-radius: 2px; }
+  .wip-sign .board {
+    position: absolute; top: 0; width: 96px; height: 34px; background: var(--warning-bg);
+    border: 3px solid var(--warning-text); border-radius: var(--radius-sm);
+    display: flex; align-items: center; justify-content: center; font-size: 22px;
+    animation: wipShake 2.6s ease-in-out infinite;
+  }
+  @keyframes wipShake {
+    0%, 80%, 100% { transform: rotate(0deg); }
+    82% { transform: rotate(-3deg); }
+    84% { transform: rotate(3deg); }
+    86% { transform: rotate(-2deg); }
+    88% { transform: rotate(2deg); }
+    90% { transform: rotate(0deg); }
+  }
+
+  .wip-worker { position: absolute; bottom: 6px; left: 50%; transform: translateX(-38px); width: 46px; height: 78px; }
+  .wip-worker .head {
+    width: 20px; height: 18px; background: #f2c39a; border-radius: 50% 50% 46% 46%;
+    position: absolute; top: 10px; left: 13px;
+  }
+  .wip-worker .helmet {
+    width: 24px; height: 12px; background: var(--warning-text); border-radius: 12px 12px 2px 2px;
+    position: absolute; top: 4px; left: 11px; box-shadow: 0 2px 0 rgba(0,0,0,.1);
+  }
+  .wip-worker .body {
+    width: 22px; height: 30px; background: var(--primary); border-radius: 6px;
+    position: absolute; top: 28px; left: 12px;
+  }
+  .wip-worker .legs {
+    width: 22px; height: 20px; background: #3a4256; border-radius: 0 0 4px 4px;
+    position: absolute; top: 56px; left: 12px;
+  }
+  .wip-worker .arm {
+    width: 6px; height: 22px; background: var(--primary-hover); border-radius: 3px;
+    position: absolute; top: 30px; left: 30px; transform-origin: top center;
+    animation: wipHammer 1.1s ease-in-out infinite;
+  }
+  @keyframes wipHammer {
+    0%, 100% { transform: rotate(-55deg); }
+    45% { transform: rotate(20deg); }
+    55% { transform: rotate(20deg); }
+  }
+  .wip-worker .hammer {
+    position: absolute; top: -6px; left: -5px; width: 16px; height: 9px;
+    background: #5c6472; border-radius: 3px; box-shadow: -3px 0 0 #4a4a4a;
+  }
+  .wip-spark {
+    position: absolute; bottom: 40px; left: 50%; margin-left: -2px; width: 4px; height: 4px;
+    background: var(--warning-text); border-radius: 50%; opacity: 0;
+    animation: wipSpark 1.1s ease-out infinite;
+  }
+  .wip-spark:nth-child(2) { animation-delay: .15s; margin-left: 6px; }
+  .wip-spark:nth-child(3) { animation-delay: .3s; margin-left: -10px; }
+  @keyframes wipSpark {
+    0% { opacity: 0; transform: translate(0,0) scale(1); }
+    50%, 55% { opacity: 1; }
+    46% { transform: translate(var(--dx, 10px), -14px) scale(.6); }
+    100% { opacity: 0; transform: translate(var(--dx, 10px), -14px) scale(.4); }
+  }
+
+  .wip-badge {
+    display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 700;
+    color: var(--warning-text); background: var(--warning-bg); border: 1px solid var(--warning-border);
+    padding: 5px 12px; border-radius: 100px; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 14px;
+  }
+  .wip-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--warning-text); animation: wipBlink 1.4s ease-in-out infinite; }
+  @keyframes wipBlink { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+
+  .wip-title { font-family: var(--font-display); font-size: 24px; font-weight: 800; color: var(--text-main); margin-bottom: 8px; }
+  .wip-domain { font-family: var(--font-mono); font-size: 13px; color: var(--primary-text); margin-bottom: 14px; }
+  .wip-desc { font-size: 13.5px; color: var(--text-muted); line-height: 1.6; margin-bottom: 22px; }
+
+  .wip-progress-track {
+    height: 8px; border-radius: 100px; background: var(--surface-muted); border: 1px solid var(--border);
+    overflow: hidden; margin-bottom: 22px; position: relative;
+  }
+  .wip-progress-fill {
+    position: absolute; inset: 0; width: 40%; border-radius: 100px;
+    background: linear-gradient(90deg, var(--primary), var(--primary-hover));
+    animation: wipProgressShimmer 2.4s ease-in-out infinite;
+  }
+  @keyframes wipProgressShimmer {
+    0%, 100% { width: 28%; }
+    50% { width: 58%; }
+  }
+
+  .back-cta {
+    display: inline-flex; align-items: center; gap: 6px; padding: 10px 20px; border-radius: var(--radius-md);
+    background: var(--primary); color: #fff; font-size: 13.5px; font-weight: 700; text-decoration: none;
+    transition: var(--transition);
+  }
+  .back-cta:hover { background: var(--primary-hover); }
+</style>
+</head>
+<body>
+  <a href="dashboard.html" class="back-link">&larr; Dashboard</a>
+
+  <div class="wip-card">
+    <div class="wip-scene">
+      <div class="wip-ground"></div>
+      <div class="wip-cone left"></div>
+      <div class="wip-cone right"></div>
+      <div class="wip-sign">
+        <div class="post"></div>
+        <div class="board" id="wip-icon">🚧</div>
+      </div>
+      <div class="wip-worker">
+        <div class="legs"></div>
+        <div class="body"></div>
+        <div class="arm"><div class="hammer"></div></div>
+        <div class="helmet"></div>
+        <div class="head"></div>
+      </div>
+      <div class="wip-spark" style="--dx:12px;"></div>
+      <div class="wip-spark" style="--dx:18px;"></div>
+      <div class="wip-spark" style="--dx:4px;"></div>
+    </div>
+
+    <div class="wip-badge"><span class="dot"></span> Work in Progress</div>
+    <div class="wip-title" id="wip-title">Segera Hadir</div>
+    <div class="wip-domain" id="wip-domain"></div>
+    <div class="wip-desc" id="wip-desc">Masih dikerjain di bengkel -- tukangnya lagi ngebut. Balik lagi nanti ya.</div>
+
+    <div class="wip-progress-track"><div class="wip-progress-fill"></div></div>
+
+    <a href="dashboard.html" class="back-cta">&larr; Balik ke Dashboard</a>
+  </div>
+
+  <script>
+    // Driven entirely by query params so one page covers every "still being built" app tile
+    // (Mokondo, YourLegacy, Bitworks, or any future one) instead of copy-pasting this scene per
+    // app -- see assets/apps.config.js for how each tile links here with its own ?app=&domain=.
+    const q = new URLSearchParams(location.search);
+    const appName = q.get('app') || 'App ini';
+    const domain = q.get('domain') || '';
+    const icon = q.get('icon') || '🚧';
+    document.title = appName + ' — Segera Hadir';
+    document.getElementById('wip-title').textContent = appName;
+    document.getElementById('wip-icon').textContent = icon;
+    if (domain) document.getElementById('wip-domain').textContent = domain;
+    else document.getElementById('wip-domain').style.display = 'none';
+  </script>
+</body>
+</html>
