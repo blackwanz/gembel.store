@@ -28,6 +28,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/dist/umd/supabase.min.js"></script>
 <script src="assets/supabaseClient.js"></script>
 <script src="assets/auth.js"></script>
+<script src="assets/popup.js"></script>
 <style>
   :root{
     --field:#16241a;
@@ -408,6 +409,15 @@
           ⬆ Import dari Excel
           <input type="file" id="importExcelInput" accept=".xlsx,.xls" style="display:none;">
         </label>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <h2>🎁 Kasih Data Arrow</h2>
+      <p class="helper" style="margin-top:-6px;">Kasih semua setup anak panah kamu ke member lain -- tinggal ketik emailnya, kalau dia user aktif bakal dapat notif dan bisa milih mau nambahin data kamu ke punya dia atau nggak.</p>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <input type="text" id="giftEmailInput" placeholder="email penerima" style="flex:1; min-width:200px;">
+        <button class="btn gold" id="giftArrowsBtn">Kirim</button>
       </div>
     </div>
 
@@ -1571,6 +1581,73 @@ async function bootstrapAuth(){
       renderArrowChips(); renderBowChips(); renderGearLists(); renderStats();
     })
     .subscribe();
+
+  wireArrowGifting();
+  await checkPendingArrowGifts();
+}
+
+/* ============================================================
+   ARROW GIFTING -- "kasih data arrow" to another member by email.
+   Server-side logic (lookup, snapshot, merge) lives in the
+   gift_archery_arrows / respond_archery_gift RPCs (see
+   db/migrations/0031_archery_gifts.sql) so a plain user never
+   needs direct access to auth.users or someone else's data --
+   this file only ever calls the RPCs and reflects their result.
+============================================================ */
+function wireArrowGifting(){
+  const btn = document.getElementById("giftArrowsBtn");
+  const input = document.getElementById("giftEmailInput");
+  if(!btn || !input) return;
+  btn.addEventListener("click", async () => {
+    const email = input.value.trim();
+    if(!email){ input.focus(); return; }
+    btn.disabled = true; const original = btn.textContent; btn.textContent = "Ngirim...";
+    try{
+      const { data, error } = await supabase.rpc("gift_archery_arrows", { p_recipient_email: email });
+      if(error){ await gembelAlert("Gagal kirim: " + error.message); return; }
+      input.value = "";
+      await gembelAlert("Terkirim! " + email + " bakal dapat notif buat nerima data arrow kamu.");
+    } finally {
+      btn.disabled = false; btn.textContent = original;
+    }
+  });
+}
+
+// Checked once on every boot (not just via a notification click) -- so a pending gift is caught
+// whether the recipient got here by clicking the notif in dashboard.html or just opened Stargazer
+// directly, matching "pada saat pertama masuk Star Gazer" from the request rather than depending
+// on a specific navigation path.
+async function checkPendingArrowGifts(){
+  const { data, error } = await supabase
+    .from("archery_gifts")
+    .select("*")
+    .eq("to_user_id", CURRENT_USER_ID)
+    .eq("status", "pending")
+    .order("created_at", { ascending: true });
+  if(error){ console.error("Gagal cek kiriman arrow:", error); return; }
+  if(!data || !data.length) return;
+  // Separate lookup (not an embedded PostgREST join) -- archery_gifts.from_user_id references
+  // auth.users, not public.profiles, so there's no FK path PostgREST could embed through.
+  const senderIds = [...new Set(data.map(g => g.from_user_id))];
+  const { data: senderRows } = await supabase.from("profiles").select("id, full_name, email").in("id", senderIds);
+  const senderById = {};
+  (senderRows || []).forEach(p => { senderById[p.id] = p; });
+  for(const gift of data){
+    const sender = senderById[gift.from_user_id];
+    const senderName = sender?.full_name || sender?.email || "Seseorang";
+    const accept = await gembelConfirm(
+      `${senderName} ngasih ${gift.arrow_count} data arrow buat Stargazer kamu.\n\nMau ditambahin ke data arrow kamu sekarang? (Ya = tambahin, Batal = nanti aja)`
+    );
+    const { error: respErr } = await supabase.rpc("respond_archery_gift", { p_gift_id: gift.id, p_accept: !!accept });
+    if(respErr){ await gembelAlert("Gagal proses kiriman: " + respErr.message); continue; }
+    if(accept){
+      await loadArcheryRow(CURRENT_USER_ID);
+      arrows = await storeGet("arrows", []);
+      populateSelects();
+      renderArrowChips(); renderGearLists(); renderStats();
+      await gembelAlert(`${gift.arrow_count} data arrow ditambahin ke punya kamu.`);
+    }
+  }
 }
 // Called directly, not via a DOMContentLoaded listener: this script tag sits
 // right before </body>, so the DOM is already parsed by the time it runs --

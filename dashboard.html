@@ -223,10 +223,16 @@ function renderTicket(req) {
 // edge, a 📢 badge instead of a status badge, no action buttons). One row per recipient (see
 // db/migrations/0017_notifications.sql), so deleting "mine" never touches anyone else's copy.
 function renderNotificationHTML(n) {
+  // "announcement" (admin broadcast) is the only kind that existed before -- anything else
+  // (currently just "archery_gift") is clickable and carries its own label/icon instead of the
+  // generic megaphone, so a gift notice doesn't look like a maintenance notice.
+  const clickable = !!n.link_url;
+  const kindLabel = n.kind === 'archery_gift' ? '🎁 KIRIMAN DATA' : '📢 PENGUMUMAN';
   return `
-    <div class="ticket notif-ticket" data-type="notification" data-id="${n.id}" title="Klik kanan buat opsi">
+    <div class="ticket notif-ticket" data-type="notification" data-id="${n.id}" data-link="${n.link_url ? escapeHtml(n.link_url) : ''}"
+         title="${clickable ? 'Klik buat buka · klik kanan buat opsi' : 'Klik kanan buat opsi'}" style="${clickable ? 'cursor:pointer;' : ''}">
       <div class="ticket-head">
-        <span class="ticket-num mono">📢 PENGUMUMAN</span>
+        <span class="ticket-num mono">${kindLabel}</span>
       </div>
       <h3>${escapeHtml(n.title)}</h3>
       <p class="prompt" style="-webkit-line-clamp:unset;">${escapeHtml(n.message)}</p>
@@ -359,6 +365,14 @@ document.getElementById('requests-list').addEventListener('contextmenu', (e) => 
   showDashContextMenu(e.clientX, e.clientY, [
     { label: type === 'notification' ? 'Hapus notifikasi' : 'Hapus request', icon: '🗑', danger: true, action: () => deleteRequestOrNotification(type, id) }
   ]);
+});
+// A notification with a link_url (e.g. an archery gift) navigates there on a plain click --
+// request tickets already have their own explicit "Buka"/"Unduh" buttons for that, so this only
+// applies to the notification card itself, not its whole row of siblings.
+document.getElementById('requests-list').addEventListener('click', (e) => {
+  const card = e.target.closest('.notif-ticket[data-link]');
+  if (!card || !card.dataset.link) return;
+  window.location.href = card.dataset.link;
 });
 
 async function deleteRequestOrNotification(type, id) {
