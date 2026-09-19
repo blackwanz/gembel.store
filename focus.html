@@ -886,6 +886,13 @@
             </span>
         </div>
         <div class="panel-body">
+            <div class="goals-toolbar" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px;">
+                <label class="goals-workhours-toggle" style="display:flex; align-items:center; gap:5px; font-size:0.78rem; cursor:pointer;" title="During work hours (Mon-Fri, 08:00-17:00), only show goals graded priority 8-10. Outside work hours, everything shows.">
+                    <input type="checkbox" id="goals-workhours-filter-toggle"> 🕐 Focus by work hours
+                </label>
+                <button type="button" class="secondary" id="goals-timeline-btn" style="margin-left:auto; padding:4px 10px; font-size:0.78rem;">📊 Timeline</button>
+            </div>
+            <div class="empty-hint" id="goals-workhours-hidden-hint" style="display:none; text-align:left; padding:2px 0 8px 0;"></div>
             <div class="goals-scroll-area">
             <div class="goal-list" id="goals-list"></div>
             </div>
@@ -1385,6 +1392,10 @@
             </div>
             <div class="form-row">
                 <div>
+                    <label class="field-label">Start date (optional)</label>
+                    <input type="date" id="goal-start-input">
+                </div>
+                <div>
                     <label class="field-label">Target month (optional)</label>
                     <input type="month" id="goal-target-input">
                 </div>
@@ -1392,6 +1403,16 @@
                     <div class="field-label-row"><span class="field-label" style="margin:0;">Progress</span><span class="pct-value" id="goal-progress-display">0%</span></div>
                     <input type="range" id="goal-progress-input" min="0" max="100" step="5" value="0">
                     <div class="empty-hint" id="goal-progress-auto-hint" style="display:none; text-align:left; padding:4px 0 0 0;">Auto-calculated from linked tasks below — completing them raises this automatically.</div>
+                </div>
+            </div>
+            <div class="form-row">
+                <div style="flex:2;">
+                    <!-- Drives the work-hours auto-hide filter above the goals list: during work
+                         hours only grade 8-10 goals stay visible, so a goal meant to survive that
+                         filter (an active work priority) needs to be graded that high on purpose. -->
+                    <div class="field-label-row"><span class="field-label" style="margin:0;">Priority grade (1-10)</span><span class="pct-value" id="goal-grade-display">5</span></div>
+                    <input type="range" id="goal-grade-input" min="1" max="10" step="1" value="5">
+                    <div class="empty-hint" style="text-align:left; padding:4px 0 0 0;">8-10 = stays visible during work hours when the work-hours filter is on. Lower = personal/background goal.</div>
                 </div>
             </div>
 
@@ -1448,6 +1469,22 @@
         <div class="form-actions">
             <button type="button" class="secondary" id="bulk-goal-timeline-cancel-btn">Cancel</button>
             <button type="button" id="bulk-goal-timeline-apply-btn">Apply to all</button>
+        </div>
+    </div>
+</div>
+
+<!-- Timeline view -- a Gantt-style read of every Long-Term Goal's own start->target span at once,
+     so "which project is late, which is ahead" is answerable at a glance instead of opening each
+     goal card one at a time. Purely a read view (no editing here); dates come from goalStartMs()
+     (goal.startDate, falling back to createdAt) through goal.targetDate. -->
+<div class="modal-overlay" id="goals-timeline-modal">
+    <div class="modal-box settings-modal-box" style="width:75vw; max-width:1000px;">
+        <div class="modal-fixed-header">
+            <button type="button" class="modal-close-x" id="close-goals-timeline-btn" title="Close">✕</button>
+            <h3>📊 Goals Timeline</h3>
+        </div>
+        <div class="modal-scroll-content">
+            <div id="goals-timeline-body"></div>
         </div>
     </div>
 </div>
@@ -1984,7 +2021,7 @@
         }
     }
 
-    function isWorkHours() { const h = new Date().getHours(); return h >= 8 && h < 17; }
+    function isWorkHours() { const d = new Date(); const dow = d.getDay(); const h = d.getHours(); return dow >= 1 && dow <= 5 && h >= 8 && h < 17; }
     function computeInitialOrder(priority) {
         const base = { High: 0, Medium: 1000, Low: 2000 }[priority];
         const count = state.tasks.filter(x => x.priority === priority).length;
@@ -4291,10 +4328,24 @@
     // STATUS_TOLERANCE is a deliberate dead zone so a goal isn't flagged the instant it drifts a
     // couple points off a perfectly straight line.
     const GOAL_STATUS_TOLERANCE = 10;
+    // Start of a goal's own timeline: its explicit startDate if the user set one, else falls
+    // back to createdAt (unchanged pre-startDate-field behavior) -- used by both the expectation
+    // pill below and the Timeline view so "when did this actually begin" agrees everywhere.
+    function goalStartMs(g) {
+        return g.startDate ? new Date(g.startDate + 'T00:00:00').getTime() : new Date(g.createdAt || Date.now()).getTime();
+    }
+    // Start date + running duration line — shown on every goal card so "how long has this been
+    // going" doesn't require opening the edit form and doing the date math by hand.
+    function goalStatsLineHTML(g) {
+        const startMs = goalStartMs(g);
+        const days = Math.max(0, Math.floor((Date.now() - startMs) / 86400000));
+        const startLabel = new Date(startMs).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+        return `<div class="goal-stats-line" style="font-size:0.72rem; color:var(--text-dim, #888); margin:2px 0;">📆 Started ${startLabel} · ${days} day${days === 1 ? '' : 's'} in</div>`;
+    }
     function goalExpectationStatusHTML(g, effectiveProgress) {
         if (!g.targetDate || effectiveProgress >= 100) return '';
         const [ty, tm] = g.targetDate.split('-').map(Number);
-        const start = new Date(g.createdAt || Date.now()).getTime();
+        const start = goalStartMs(g);
         const end = new Date(ty, tm, 0, 23, 59, 59).getTime(); // last instant of target month
         if (end <= start) return '';
         const expectedPct = Math.max(0, Math.min(100, ((Date.now() - start) / (end - start)) * 100));
@@ -4303,6 +4354,62 @@
         if (delta < -GOAL_STATUS_TOLERANCE) { cls = 'late'; label = '⚠ Running Late'; }
         else if (delta > GOAL_STATUS_TOLERANCE) { cls = 'ahead'; label = '⚡ Ahead of Schedule'; }
         return `<div class="goal-status-pill ${cls}" title="Expected ~${Math.round(expectedPct)}% by now, based on the target date">${label}</div>`;
+    }
+
+    // ---------- Timeline view -- all goals' start->target spans at a glance ----------
+    function openGoalsTimelineModal() {
+        renderGoalsTimeline();
+        document.getElementById('goals-timeline-modal').classList.add('active');
+    }
+    function closeGoalsTimelineModal() {
+        document.getElementById('goals-timeline-modal').classList.remove('active');
+    }
+    function renderGoalsTimeline() {
+        const body = document.getElementById('goals-timeline-body');
+        const withTarget = state.goals.filter(g => g.targetDate);
+        const withoutTarget = state.goals.filter(g => !g.targetDate);
+        if (!withTarget.length) {
+            body.innerHTML = `<div class="empty-hint">No goals have a target month set yet -- add one in a goal's edit form to see it plotted here.</div>`;
+            return;
+        }
+        // Overall window: earliest start to latest target across all goals, so every bar's
+        // position is relative to the same shared axis instead of each stretching independently.
+        const spans = withTarget.map(g => {
+            const [ty, tm] = g.targetDate.split('-').map(Number);
+            return { g, start: goalStartMs(g), end: new Date(ty, tm, 0, 23, 59, 59).getTime() };
+        }).filter(s => s.end > s.start);
+        const axisStart = Math.min(...spans.map(s => s.start));
+        const axisEnd = Math.max(...spans.map(s => s.end), Date.now());
+        const axisSpan = Math.max(1, axisEnd - axisStart);
+        const now = Date.now();
+        const nowPct = Math.max(0, Math.min(100, ((now - axisStart) / axisSpan) * 100));
+        const rowsHTML = spans.map(({ g, start, end }) => {
+            const effectiveProgress = computeGoalProgress(g);
+            const leftPct = ((start - axisStart) / axisSpan) * 100;
+            const widthPct = Math.max(1, ((end - start) / axisSpan) * 100);
+            const expectedPct = Math.max(0, Math.min(100, ((now - start) / (end - start)) * 100));
+            const delta = effectiveProgress - expectedPct;
+            let color = '#4a9eff', label = 'On track';
+            if (effectiveProgress >= 100) { color = '#2ecc71'; label = 'Done'; }
+            else if (delta < -GOAL_STATUS_TOLERANCE) { color = '#e05252'; label = 'Late'; }
+            else if (delta > GOAL_STATUS_TOLERANCE) { color = '#f5b642'; label = 'Ahead'; }
+            return `
+            <div class="goal-timeline-row" style="margin-bottom:14px;">
+                <div style="font-size:0.82rem; font-weight:600; margin-bottom:3px;">${escapeHTML(g.title)} <span style="font-weight:500; color:${color};">· ${label}</span></div>
+                <div style="position:relative; height:20px; background:rgba(128,128,128,0.12); border-radius:5px;">
+                    <div style="position:absolute; top:0; bottom:0; left:${leftPct}%; width:${widthPct}%; background:rgba(128,128,128,0.25); border-radius:5px;"></div>
+                    <div style="position:absolute; top:0; bottom:0; left:${leftPct}%; width:${widthPct * (effectiveProgress / 100)}%; background:${color}; border-radius:5px;"></div>
+                </div>
+                <div style="font-size:0.68rem; color:var(--text-dim,#888); margin-top:2px;">${effectiveProgress}% done · expected ~${Math.round(expectedPct)}% by now</div>
+            </div>`;
+        }).join('');
+        body.innerHTML = `
+            <div style="position:relative; height:16px; margin:0 0 4px 0; font-size:0.68rem; color:var(--text-dim,#888);">
+                <div style="position:absolute; left:${nowPct}%; transform:translateX(-50%);">📍 Today</div>
+            </div>
+            ${rowsHTML}
+            ${withoutTarget.length ? `<div class="empty-hint" style="text-align:left;">${withoutTarget.length} goal${withoutTarget.length > 1 ? 's' : ''} without a target month not shown: ${withoutTarget.map(g => escapeHTML(g.title)).join(', ')}.</div>` : ''}
+        `;
     }
 
     // ---------- Bulk-edit target timeline for a multi-selection of goals ----------
@@ -4350,7 +4457,25 @@
         const categoryFilteredGoals = activeCategory === 'All'
             ? state.goals
             : state.goals.filter(g => g.category === activeCategory);
-        const sortedGoals = [...categoryFilteredGoals].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
+        // ---- Work-hours auto-hide (opt-in via the "Focus by work hours" toggle) ----
+        // During work hours (Mon-Fri 08:00-17:00), only priority-graded 8-10 goals stay visible --
+        // the rest (personal/background goals) are hidden, not deleted, and come right back outside
+        // work hours or once the toggle is switched off. A hint line reports how many were hidden
+        // so the filter never looks like goals silently vanished.
+        const workHoursFilterOn = document.getElementById('goals-workhours-filter-toggle').checked;
+        const applyWorkHoursFilter = workHoursFilterOn && isWorkHours();
+        const goalsAfterWorkHours = applyWorkHoursFilter
+            ? categoryFilteredGoals.filter(g => (g.priorityGrade || 5) >= 8)
+            : categoryFilteredGoals;
+        const hiddenByWorkHours = categoryFilteredGoals.length - goalsAfterWorkHours.length;
+        const hint = document.getElementById('goals-workhours-hidden-hint');
+        if (applyWorkHoursFilter && hiddenByWorkHours > 0) {
+            hint.style.display = 'block';
+            hint.textContent = `🕐 Work hours active — ${hiddenByWorkHours} lower-priority goal${hiddenByWorkHours > 1 ? 's' : ''} hidden (grade < 8). They'll show again outside work hours.`;
+        } else {
+            hint.style.display = 'none';
+        }
+        const sortedGoals = [...goalsAfterWorkHours].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
         // Always-visible bulk-action bar while 2+ goals are Ctrl/Cmd-click-selected — a guaranteed
         // way to reach "edit timeline for N goals" that doesn't depend on right-clicking exactly
         // one of the selected cards (the right-click menu below still offers the same action too).
@@ -4418,6 +4543,7 @@
                         </div>
                     </div>
                     ${g.targetDate ? `<div class="goal-target">🎯 Target: ${monthLabel(g.targetDate)}</div>` : ''}
+                    ${goalStatsLineHTML(g)}
                     ${goalExpectationStatusHTML(g, effectiveProgress)}
                     <span class="pct-bar-wrap" style="display:block; width:100%;"><span class="pct-bar-fill" style="width:${effectiveProgress}%"></span></span>
                     <div class="goal-pct-label">${effectiveProgress}%</div>
@@ -4942,6 +5068,23 @@
         document.getElementById('cancel-goal-btn').addEventListener('click', closeGoalForm);
         document.getElementById('close-goal-modal-btn').addEventListener('click', closeGoalForm);
         progressInput.addEventListener('input', () => progressDisplay.textContent = progressInput.value + '%');
+        const gradeInput = document.getElementById('goal-grade-input');
+        const gradeDisplay = document.getElementById('goal-grade-display');
+        gradeInput.addEventListener('input', () => gradeDisplay.textContent = gradeInput.value);
+
+        // Work-hours filter toggle — a local display preference (not goal data), so it's kept in
+        // localStorage directly rather than on `state`, which gets overwritten wholesale on every
+        // cloud sync pull (see boot()) and would silently drop any field not in that reconstruction.
+        const WORKHOURS_FILTER_KEY = 'focusGoalsWorkHoursFilter';
+        const workHoursToggle = document.getElementById('goals-workhours-filter-toggle');
+        workHoursToggle.checked = localStorage.getItem(WORKHOURS_FILTER_KEY) === '1';
+        workHoursToggle.addEventListener('change', () => {
+            localStorage.setItem(WORKHOURS_FILTER_KEY, workHoursToggle.checked ? '1' : '0');
+            renderGoalsList();
+        });
+
+        document.getElementById('goals-timeline-btn').addEventListener('click', openGoalsTimelineModal);
+        document.getElementById('close-goals-timeline-btn').addEventListener('click', closeGoalsTimelineModal);
 
         document.getElementById('goal-link-add-btn').addEventListener('click', () => {
             const taskIds = Array.from(goalLinkPickerSelection);
@@ -4982,15 +5125,17 @@
             const title = document.getElementById('goal-title-input').value.trim();
             if (!title) { customAlert('Please enter a goal title.'); return; }
             const category = document.getElementById('goal-category-input').value;
+            const startDate = document.getElementById('goal-start-input').value || null;
             const targetDate = document.getElementById('goal-target-input').value;
             const progress = parseInt(progressInput.value);
+            const priorityGrade = parseInt(gradeInput.value) || 5;
             const links = pendingGoalLinks.map(l => ({ ...l }));
 
             if (editingGoalId) {
                 const g = state.goals.find(x => x.id === editingGoalId);
-                if (g) Object.assign(g, { title, category, targetDate, progress, links });
+                if (g) Object.assign(g, { title, category, startDate, targetDate, progress, priorityGrade, links });
             } else {
-                state.goals.push({ id: uid('g'), title, category, targetDate, progress, links, createdAt: new Date().toISOString() });
+                state.goals.push({ id: uid('g'), title, category, startDate, targetDate, progress, priorityGrade, links, createdAt: new Date().toISOString() });
             }
             editingGoalId = null;
             pendingGoalLinks = [];
@@ -5004,9 +5149,12 @@
     function resetGoalForm() {
         document.getElementById('goal-title-input').value = '';
         document.getElementById('goal-category-input').value = 'Other';
+        document.getElementById('goal-start-input').value = '';
         document.getElementById('goal-target-input').value = '';
         document.getElementById('goal-progress-input').value = 0;
         document.getElementById('goal-progress-display').textContent = '0%';
+        document.getElementById('goal-grade-input').value = 5;
+        document.getElementById('goal-grade-display').textContent = '5';
         document.getElementById('save-goal-btn').textContent = 'Save Goal';
         document.getElementById('goal-modal-title').textContent = 'Add Goal';
         pendingGoalLinks = [];
@@ -5038,9 +5186,12 @@
         editingGoalId = id;
         document.getElementById('goal-title-input').value = g.title;
         document.getElementById('goal-category-input').value = g.category;
+        document.getElementById('goal-start-input').value = g.startDate || '';
         document.getElementById('goal-target-input').value = g.targetDate || '';
         document.getElementById('goal-progress-input').value = g.progress;
         document.getElementById('goal-progress-display').textContent = g.progress + '%';
+        document.getElementById('goal-grade-input').value = g.priorityGrade || 5;
+        document.getElementById('goal-grade-display').textContent = String(g.priorityGrade || 5);
         document.getElementById('save-goal-btn').textContent = 'Update Goal';
         document.getElementById('goal-modal-title').textContent = 'Edit Goal';
         pendingGoalLinks = (g.links || []).map(l => ({ ...l }));
