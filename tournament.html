@@ -342,7 +342,8 @@
   .mc-team{ display:flex; align-items:center; gap:6px; padding:3px 0; font-size:13px; font-weight:700; }
   .mc-team.tbd{ color:var(--text-faint); font-weight:600; font-style:italic; }
   .mc-team.winner{ color:var(--success); }
-  .mc-name{ flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mc-name-wrap{ flex:1; min-width:0; display:flex; flex-direction:column; }
+  .mc-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .mc-score{ font-family:var(--font-mono); font-weight:700; }
   .tag{ font-size:9.5px; font-weight:800; padding:1px 6px; border-radius:6px; text-transform:uppercase; }
   .tag-withdrawn{ background:var(--warning-bg); color:var(--warning); }
@@ -413,6 +414,15 @@
   .confirm-box{ background:var(--bg-elev); border:1px solid var(--border); border-radius:var(--radius-lg); padding:22px; max-width:380px; width:100%; box-shadow:var(--shadow); }
   .confirm-actions{ display:flex; gap:10px; margin-top:18px; justify-content:flex-end; }
 
+  /* Manual slot editor -- "place a team directly at this bracket slot" (any round, any time) */
+  .slot-editor-box{ background:var(--bg-elev); border:1px solid var(--border); border-radius:var(--radius-lg); padding:22px; max-width:420px; width:100%; box-shadow:var(--shadow); }
+  .slot-editor-box .field{ margin-bottom:12px; }
+  .slot-editor-divider{ display:flex; align-items:center; gap:10px; margin:16px 0; color:var(--text-faint); font-size:11.5px; text-transform:uppercase; letter-spacing:0.06em; }
+  .slot-editor-divider::before, .slot-editor-divider::after{ content:''; flex:1; height:1px; background:var(--border); }
+  .mc-team[data-action="edit-slot"]{ cursor:pointer; }
+  .mc-team[data-action="edit-slot"]:hover{ background:var(--surface-strong); }
+  .mc-subtitle{ display:block; font-size:11px; color:var(--text-faint); margin-top:1px; }
+
   /* Registration */
   .reg-grid{ display:grid; grid-template-columns:1.2fr 0.8fr; gap:16px; align-items:flex-start; }
   .player-block{ border:1px solid var(--border); background:var(--surface-strong); border-radius:var(--radius-md); padding:14px; display:flex; flex-direction:column; gap:10px; }
@@ -482,7 +492,8 @@
     close: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
     trash: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0 1 13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     empty: '<svg width="34" height="34" viewBox="0 0 24 24" fill="none"><path d="M4 20V10l8-6 8 6v10a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z" stroke="currentColor" stroke-width="1.6"/></svg>',
-    user: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3.4" stroke="currentColor" stroke-width="1.8"/><path d="M5 20c1-4 4-6 7-6s6 2 7 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>'
+    user: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3.4" stroke="currentColor" stroke-width="1.8"/><path d="M5 20c1-4 4-6 7-6s6 2 7 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+    edit: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 20l1-4.4L15.6 5 19 8.4 8.4 19 4 20z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>'
   };
 
   /* ---------------- NAME / DUMMY DATA POOLS ---------------- */
@@ -534,6 +545,8 @@
     return {
       id: uid('team'),
       name: randomTeamName(),
+      subtitle: '',
+      isDummy: true, // lets "Hapus Semua Tim Contoh" find and remove exactly these, and nothing else
       status: status,
       createdAt: Date.now(),
       players: [
@@ -623,6 +636,24 @@
         clearDownstream(bracket, r+1, Math.floor(i/2));
       }
     }
+  }
+  // Directly place (or replace, or clear) a team at one specific bracket slot -- unlike
+  // setMatchWinner, this never requires the OTHER slot to be filled, never requires the previous
+  // round to be complete, and works at any round including the final. That's the whole point:
+  // "tambahin di titik manapun saat live atau tidak live ... langsung ke semi final atau final".
+  // If the match this slot belongs to already had a winner declared, that result is no longer
+  // meaningful once one of its two teams changes, so it (and anything that already advanced from
+  // it) gets cleared the same way undoing a winner normally would.
+  function assignSlotTeam(cat, r, i, side, teamId){
+    var bracket = cat.bracket;
+    if(!bracket || !bracket.rounds[r] || !bracket.rounds[r][i]) return;
+    var m = bracket.rounds[r][i];
+    var slotKey = side==='A' ? 'teamAId' : 'teamBId';
+    var changed = m[slotKey] !== (teamId||null);
+    m[slotKey] = teamId || null;
+    m.isBye = false; // a manually-edited slot is never treated as an automatic bye anymore
+    if(changed && m.winnerId) clearDownstream(bracket, r, i);
+    queueCloudSync();
   }
   function handleWithdrawalInBracket(bracket, teamId){
     for(var r=0; r<bracket.rounds.length; r++){
@@ -738,7 +769,12 @@
       confirmOpen: false, confirmMsg: '', confirmCb: null,
       registrationChecks: { dob:false, email:false, gopay:false, rekening:false, partnerEmail:false },
       myTeamIds: [],
-      lastDummyCount: 16
+      lastDummyCount: 16,
+      // slotEditor: {r,i,side} while the "place a team directly at this bracket slot" popup is
+      // open (any round, any slot state, whether the tournament is mid-progress or not).
+      // teamEditor: {teamId} while editing an existing team's name/subtitle from the Daftar Tim list.
+      slotEditor: null,
+      teamEditor: null
     }
   };
 
@@ -803,6 +839,9 @@
     return {
       id: row.id,
       name: row.name,
+      subtitle: p.subtitle || '',
+      isDummy: !!p.isDummy,
+      manualSeed: !!p.manualSeed,
       status: p.status || 'active',
       createdAt: row.created_at ? Date.parse(row.created_at) : Date.now(),
       players: p.players || [{name:'',email:''},{name:'',email:''}],
@@ -815,7 +854,8 @@
   function teamToPayload(t){
     return {
       status: t.status, players: t.players, checks: t.checks,
-      dob: t.dob, gopayNumber: t.gopayNumber, bankName: t.bankName, bankAccount: t.bankAccount
+      dob: t.dob, gopayNumber: t.gopayNumber, bankName: t.bankName, bankAccount: t.bankAccount,
+      subtitle: t.subtitle || '', isDummy: !!t.isDummy, manualSeed: !!t.manualSeed
     };
   }
   // Admin-only direct writes (dummy teams, manual add, status change, delete) -- a non-admin
@@ -1121,9 +1161,18 @@
       var q = searchTerm.toLowerCase();
       if((teamA && teamA.name.toLowerCase().indexOf(q)>=0) || (teamB && teamB.name.toLowerCase().indexOf(q)>=0)) highlight = true;
     }
-    function rowHtml(team, isWinner, score){
-      return '<div class="mc-team '+(isWinner?'winner':'')+' '+(!team?'tbd':'')+'">'+
-        '<span class="mc-name">'+(team?escapeHtml(team.name):'— TBD')+'</span>'+
+    // Every slot (filled, TBD, or a bye) is clickable in edit mode -- this is what lets an admin
+    // place/replace a team at ANY round, including deep into the bracket (e.g. straight into a
+    // semifinal or final) and whether the tournament is already live or not. Kept separate from
+    // the "open match editor" click on the whole card (which needs both slots filled and isn't a
+    // bye) -- clicking a name always means "edit this slot's team", clicking elsewhere on an
+    // eligible card means "score this match".
+    function rowHtml(team, isWinner, score, side){
+      var slotAttrs = editable ? ' data-action="edit-slot" data-round="'+r+'" data-idx="'+i+'" data-side="'+side+'"' : '';
+      return '<div class="mc-team '+(isWinner?'winner':'')+' '+(!team?'tbd':'')+'"'+slotAttrs+'>'+
+        '<span class="mc-name-wrap"><span class="mc-name">'+(team?escapeHtml(team.name):'— TBD')+'</span>'+
+        (team && team.subtitle ? '<span class="mc-subtitle">'+escapeHtml(team.subtitle)+'</span>' : '') +
+        '</span>'+
         (team?teamStatusTag(team):'')+
         (score!=null ? '<span class="mc-score mono">'+score+'</span>' : '') +
         '</div>';
@@ -1131,8 +1180,8 @@
     var html = '<div class="match-card '+stateClass+' '+(highlight?'highlight':'')+'" id="matchcard_'+matchKey+'" '+
       (editable && teamA && teamB && !m.isBye ? 'data-action="open-match-editor" data-match="'+matchKey+'"' : '') + '>';
     html += '<div class="mc-round-tag">'+(isFinal?'Final':'Babak '+(r+1))+(m.isBye?' · BYE':'')+(m.walkover?' · W.O.':'')+'</div>';
-    html += rowHtml(teamA, m.winnerId && m.winnerId===m.teamAId, m.scoreA);
-    html += rowHtml(teamB, m.winnerId && m.winnerId===m.teamBId, m.scoreB);
+    html += rowHtml(teamA, m.winnerId && m.winnerId===m.teamAId, m.scoreA, 'A');
+    html += rowHtml(teamB, m.winnerId && m.winnerId===m.teamBId, m.scoreB, 'B');
     if(editable && isOpen && teamA && teamB){
       html += '<div class="mc-editor">' +
         '<div class="mc-editor-scores">' +
@@ -1421,8 +1470,11 @@
       '</div>' +
       '<div class="panel">' +
       '<div class="panel-head"><div><div class="panel-title">Data Contoh</div><div class="panel-desc">Tambahkan tim contoh secara instan untuk menguji tampilan pada skala besar.</div></div></div>' +
+      (cat.bracket ? '<div class="hint" style="color:var(--danger);margin-bottom:10px;">Bagan sudah dibuat untuk kategori ini -- tim contoh baru tidak akan otomatis masuk bagan. Reset bagan dulu (di Zona Berbahaya) kalau mau menambah tim contoh lagi.</div>' : '') +
       '<div class="field-inline"><div class="field" style="width:140px;"><label for="dummyCount">Jumlah tim</label><input type="number" min="1" max="4000" id="dummyCount" value="'+S.ui.lastDummyCount+'"></div>' +
-      '<button class="btn" data-action="gen-dummy-teams" style="margin-top:20px;">Tambah Tim Contoh</button></div>' +
+      '<button class="btn" data-action="gen-dummy-teams" style="margin-top:20px;" '+(cat.bracket?'disabled':'')+'>Tambah Tim Contoh</button>' +
+      (cat.teams.some(function(t){return t.isDummy;}) ? '<button class="btn btn-danger" data-action="delete-dummy-teams" style="margin-top:20px;">Hapus Semua Tim Contoh</button>' : '') +
+      '</div>' +
       '</div>' +
       '<div class="panel">' +
       '<div class="panel-head"><div><div class="panel-title">Arsip Kategori</div><div class="panel-desc">Kalau kategori ini sudah selesai, ekspor juara & bagan lengkapnya jadi satu PDF sebagai arsip sebelum dihapus.</div></div></div>' +
@@ -1452,7 +1504,7 @@
       var checksArr = ['dob','email','gopay','rekening'];
       var dots = checksArr.map(function(k){ return '<span class="dot '+(t.checks[k]?'done':'')+'"></span>'; }).join('');
       return '<tr>' +
-        '<td data-label="Tim"><span class="team-cell-name">'+escapeHtml(t.name)+'</span></td>' +
+        '<td data-label="Tim"><span class="team-cell-name">'+escapeHtml(t.name)+'</span>'+(t.subtitle?'<span class="mc-subtitle">'+escapeHtml(t.subtitle)+'</span>':'')+'</td>' +
         '<td data-label="Pemain"><div class="players-cell">'+escapeHtml(t.players[0].name)+' <span class="em">('+escapeHtml(t.players[0].email)+')</span><br>'+escapeHtml(t.players[1].name)+' <span class="em">('+escapeHtml(t.players[1].email)+')</span></div></td>' +
         '<td data-label="Verifikasi"><div class="dots">'+dots+'</div></td>' +
         '<td data-label="Status">'+statusPill(t.status)+'</td>' +
@@ -1462,6 +1514,7 @@
         '<option value="withdrawn" '+(t.status==='withdrawn'?'selected':'')+'>Mundur</option>' +
         '<option value="disqualified" '+(t.status==='disqualified'?'selected':'')+'>Diskualifikasi</option>' +
         '</select>' +
+        '<button class="btn btn-sm" data-action="edit-team" data-team="'+t.id+'" title="Edit nama/nama tambahan">'+ICONS.edit+'</button>' +
         '<button class="btn btn-sm btn-danger" data-action="delete-team" data-team="'+t.id+'">'+ICONS.trash+'</button>' +
         '</div></td></tr>';
     }).join('');
@@ -1641,6 +1694,104 @@
       '<div class="confirm-actions"><button class="btn btn-ghost" data-action="confirm-no">Batal</button><button class="btn btn-danger" data-action="confirm-yes">Ya, Lanjutkan</button></div>' +
       '</div></div>';
   }
+  // "Place a team at this slot" modal -- reachable by clicking ANY team name in the bracket while
+  // editing (TBD, filled, or a bye; any round). Either types a brand-new team on the spot (with
+  // an optional subtitle line, e.g. player names or a note shown under the team name) or picks an
+  // existing registered-but-not-yet-placed team from this category.
+  function renderSlotEditorModal(){
+    var ed = S.ui.slotEditor;
+    if(!ed) return '';
+    var cat = getCat();
+    var bracket = cat && cat.bracket;
+    if(!bracket || !bracket.rounds[ed.r] || !bracket.rounds[ed.r][ed.i]){
+      // Bracket changed shape (e.g. another admin reset it) while this editor was open --
+      // silently drop the stale reference instead of throwing on the next render.
+      S.ui.slotEditor = null;
+      return '';
+    }
+    var m = bracket.rounds[ed.r][ed.i];
+    var currentId = ed.side==='A' ? m.teamAId : m.teamBId;
+    var current = teamById(cat, currentId);
+    var placedIds = {};
+    bracket.rounds.forEach(function(round){ round.forEach(function(mm){ if(mm.teamAId) placedIds[mm.teamAId]=1; if(mm.teamBId) placedIds[mm.teamBId]=1; }); });
+    var pickable = cat.teams.filter(function(t){ return t.id===currentId || !placedIds[t.id]; });
+    var roundLabel = ed.r===bracket.rounds.length-1 ? 'Final' : 'Babak '+(ed.r+1);
+    return '<div class="modal-overlay"><div class="slot-editor-box">' +
+      '<h3 style="font-size:18px;margin-bottom:4px;">Atur Slot Tim</h3>' +
+      '<div class="hint" style="margin-bottom:16px;">'+roundLabel+' &middot; slot '+(ed.side==='A'?'1':'2')+(current?' &middot; saat ini: '+escapeHtml(current.name):'')+'</div>' +
+      (pickable.length ? '<div class="field"><label for="slotExistingTeamSelect">Pilih tim terdaftar</label>' +
+        '<select id="slotExistingTeamSelect"><option value="">-- ketik tim baru di bawah --</option>' +
+        pickable.map(function(t){ return '<option value="'+t.id+'" '+(t.id===currentId?'selected':'')+'>'+escapeHtml(t.name)+'</option>'; }).join('') +
+        '</select></div>' +
+        '<div class="slot-editor-divider">atau</div>' : '') +
+      '<div class="field"><label for="slotTeamNameInput">Nama tim baru</label><input type="text" id="slotTeamNameInput" placeholder="cth: Tim Wildcard"></div>' +
+      '<div class="field"><label for="slotTeamSubtitleInput">Nama tambahan (opsional, tampil di bawah nama tim)</label><input type="text" id="slotTeamSubtitleInput" placeholder="cth: nama pemain, catatan"></div>' +
+      '<div class="confirm-actions" style="justify-content:space-between;">' +
+      (current ? '<button class="btn btn-ghost" data-action="clear-slot">Kosongkan Slot</button>' : '<span></span>') +
+      '<div class="field-inline" style="margin:0;"><button class="btn btn-ghost" data-action="close-slot-editor">Batal</button><button class="btn btn-primary" data-action="save-slot-editor">Simpan</button></div>' +
+      '</div></div></div>';
+  }
+  async function submitSlotEditor(){
+    var ed = S.ui.slotEditor;
+    if(!ed) return;
+    var cat = getCat();
+    var existingSel = document.getElementById('slotExistingTeamSelect');
+    var pickedId = existingSel ? existingSel.value : '';
+    var teamId;
+    if(pickedId){
+      teamId = pickedId;
+    } else {
+      var name = val('slotTeamNameInput').trim();
+      if(!name){ toast('Isi nama tim, atau pilih dari tim terdaftar.', 'error'); return; }
+      var subtitle = val('slotTeamSubtitleInput').trim();
+      var newTeam = {
+        name: name, subtitle: subtitle, status:'active',
+        players:[{name:'',email:''},{name:'',email:''}],
+        checks:{dob:false,email:false,gopay:false,rekening:false},
+        dob:'', gopayNumber:'', bankName:'', bankAccount:'',
+        manualSeed:true, isDummy:false
+      };
+      var saved = await createTeamRowAdmin(cat.id, newTeam);
+      if(!saved) return; // createTeamRowAdmin already toasted the error
+      cat.teams.push(saved);
+      teamId = saved.id;
+    }
+    assignSlotTeam(cat, ed.r, ed.i, ed.side, teamId);
+    S.ui.slotEditor = null;
+    toast('Tim ditempatkan di slot.');
+    render();
+  }
+  // Edit an already-registered team's name/subtitle -- same subtitle field as the slot editor
+  // above, but reachable from the Daftar Tim list so it applies to any team, not just ones seeded
+  // manually into the bracket.
+  function renderTeamEditorModal(){
+    var ed = S.ui.teamEditor;
+    if(!ed) return '';
+    var cat = getCat();
+    var team = teamById(cat, ed.teamId);
+    if(!team) return '';
+    return '<div class="modal-overlay"><div class="slot-editor-box">' +
+      '<h3 style="font-size:18px;margin-bottom:16px;">Edit Tim</h3>' +
+      '<div class="field"><label for="teamEditNameInput">Nama tim</label><input type="text" id="teamEditNameInput" value="'+escapeHtml(team.name)+'"></div>' +
+      '<div class="field"><label for="teamEditSubtitleInput">Nama tambahan (opsional, tampil di bawah nama tim)</label><input type="text" id="teamEditSubtitleInput" value="'+escapeHtml(team.subtitle||'')+'"></div>' +
+      '<div class="confirm-actions"><button class="btn btn-ghost" data-action="close-team-editor">Batal</button><button class="btn btn-primary" data-action="save-team-editor">Simpan</button></div>' +
+      '</div></div>';
+  }
+  function submitTeamEditor(){
+    var ed = S.ui.teamEditor;
+    if(!ed) return;
+    var cat = getCat();
+    var team = teamById(cat, ed.teamId);
+    if(!team) return;
+    var name = val('teamEditNameInput').trim();
+    if(!name){ toast('Nama tim tidak boleh kosong.', 'error'); return; }
+    team.name = name;
+    team.subtitle = val('teamEditSubtitleInput').trim();
+    updateTeamRowAdmin(team);
+    S.ui.teamEditor = null;
+    toast('Tim diperbarui.');
+    render();
+  }
 
   /* ---------------- NO-TOURNAMENT GATES ---------------- */
   function renderCreateTournamentForm(){
@@ -1661,7 +1812,7 @@
         renderRulesDrawer() + renderConfirmModal();
     }
     return '<div class="shell">' + renderTopbar() + renderCategoryTabs() + (S.isAdmin ? renderAdmin() : renderPlayer()) + '</div>' +
-      renderRulesDrawer() + renderConfirmModal();
+      renderRulesDrawer() + renderConfirmModal() + renderSlotEditorModal() + renderTeamEditorModal();
   }
   function render(){
     var active = document.activeElement;
@@ -1765,7 +1916,8 @@
     'save-group-settings':1, 'assign-groups':1, 'generate-bracket':1, 'advance-knockout':1,
     'delete-team':1, 'declare-winner':1, 'save-group-match':1, 'archive-pdf':1, 'reset-category':1,
     'delete-category':1, 'toggle-rules-edit':1, 'save-rules':1, 'toggle-registration':1,
-    'create-tournament':1
+    'create-tournament':1, 'delete-dummy-teams':1, 'edit-slot':1, 'save-slot-editor':1,
+    'close-slot-editor':1, 'edit-team':1, 'save-team-editor':1, 'close-team-editor':1
   };
   app.addEventListener('click', function(e){
     var btn = e.target.closest('[data-action]');
@@ -1837,10 +1989,34 @@
         render();
         break;
       case 'gen-dummy-teams': {
-        var n = parseInt(val('dummyCount'), 10) || 10;
-        n = Math.min(n, 4000);
+        // Real validation (the input's min/max HTML attributes alone don't stop parseInt('-5',10)
+        // or parseInt('',10) from sneaking through as a request for a negative/NaN count) --
+        // and a hard block once a bracket already exists for this category, since teams added
+        // after generation never get seeded a slot until the bracket is regenerated, which is
+        // exactly the confusing "why isn't my team in the bracket" state this guards against.
+        if(cat.bracket){ toast('Bagan sudah dibuat -- reset bagan dulu sebelum menambah tim contoh baru.', 'error'); return; }
+        var rawCount = val('dummyCount').trim();
+        var n = parseInt(rawCount, 10);
+        if(!rawCount || isNaN(n) || n < 1 || n > 4000){
+          toast('Jumlah tim harus angka antara 1 dan 4000.', 'error');
+          return;
+        }
         S.ui.lastDummyCount = n;
         bulkCreateDummyTeams(cat, n);
+        return;
+      }
+      case 'delete-dummy-teams': {
+        var dummyIds = cat.teams.filter(function(t){ return t.isDummy; }).map(function(t){ return t.id; });
+        if(!dummyIds.length) return;
+        openConfirm(dummyIds.length+' tim contoh akan dihapus permanen'+(cat.bracket||cat.groups?' (bagan/grup kategori ini juga akan direset karena mereferensikan tim-tim ini)':'')+'. Lanjutkan?', function(){
+          cat.teams = cat.teams.filter(function(t){ return !t.isDummy; });
+          if(cat.bracket){ cat.bracket = null; }
+          if(cat.groups){ cat.groups = null; cat.groupsLocked = false; }
+          dummyIds.forEach(function(id){ deleteTeamRowAdmin(id); });
+          toast(dummyIds.length+' tim contoh dihapus.');
+          queueCloudSync();
+          render();
+        });
         return;
       }
       case 'save-category-name': {
@@ -1935,6 +2111,37 @@
           deleteTeamRowAdmin(tid);
           render();
         });
+        return;
+      }
+      case 'edit-team':
+        S.ui.teamEditor = { teamId: btn.dataset.team };
+        render();
+        return;
+      case 'close-team-editor':
+        S.ui.teamEditor = null;
+        render();
+        return;
+      case 'save-team-editor':
+        submitTeamEditor();
+        return;
+      case 'edit-slot':
+        if(!cat.bracket) return;
+        S.ui.slotEditor = { r: parseInt(btn.dataset.round,10), i: parseInt(btn.dataset.idx,10), side: btn.dataset.side };
+        render();
+        return;
+      case 'close-slot-editor':
+        S.ui.slotEditor = null;
+        render();
+        return;
+      case 'save-slot-editor':
+        submitSlotEditor();
+        return;
+      case 'clear-slot': {
+        var ce = S.ui.slotEditor;
+        if(ce) assignSlotTeam(cat, ce.r, ce.i, ce.side, null);
+        S.ui.slotEditor = null;
+        toast('Slot dikosongkan.');
+        render();
         return;
       }
       case 'teams-page':
