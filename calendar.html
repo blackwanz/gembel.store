@@ -154,8 +154,16 @@
         .habbit-sync-badge .refresh-ico { display: inline-block; transition: transform .35s ease; }
         .habbit-sync-badge.spinning .refresh-ico { transform: rotate(360deg); }
 
-        /* ===== App shell / header ===== */
-        .app-shell { max-width: 1440px; margin: 0 auto; }
+        /* ===== App shell / header =====
+           A hard max-width here caps the grid's physical width once the effective viewport
+           (browser width / zoom level) grows past it -- at extreme zoom-out the shell used to
+           stay pinned at 1440px, stranded in the middle of a much wider viewport with dead space
+           on both sides instead of the day cells growing to fill it. No cap: the day-cell grid
+           (grid-template-columns: repeat(7, 1fr)) always fills whatever width is available, at
+           any zoom level, while padding-based content (text, chip padding) keeps scaling with
+           zoom normally -- same "everything scales together" model as before, just without an
+           artificial ceiling on the grid's own width. */
+        .app-shell { width: 100%; }
 
         /* Top-level mode switcher: Kalender (default) / Keuangan (finance detail) / Aktivitas (no money) */
         .mode-tabs {
