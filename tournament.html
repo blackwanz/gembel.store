@@ -339,6 +339,7 @@
   .match-card[data-action]{ cursor:pointer; }
   .match-card.highlight{ box-shadow:0 0 0 2px var(--accent); }
   .mc-round-tag{ font-size:10px; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-faint); font-weight:700; margin-bottom:6px; }
+  .mc-schedule-tag{ font-size:10.5px; color:var(--accent2); font-weight:700; margin-bottom:6px; }
   .mc-team{ display:flex; align-items:center; gap:6px; padding:3px 0; font-size:13px; font-weight:700; }
   .mc-team.tbd{ color:var(--text-faint); font-weight:600; font-style:italic; }
   .mc-team.winner{ color:var(--success); }
@@ -654,6 +655,57 @@
     m.isBye = false; // a manually-edited slot is never treated as an automatic bye anymore
     if(changed && m.winnerId) clearDownstream(bracket, r, i);
     queueCloudSync();
+  }
+  function fmtMatchDate(iso){
+    if(!iso) return '';
+    var parts = iso.split('-');
+    if(parts.length!==3) return iso;
+    var d = new Date(Number(parts[0]), Number(parts[1])-1, Number(parts[2]));
+    return d.toLocaleDateString('id-ID', { weekday:'short', day:'numeric', month:'short', year:'numeric' });
+  }
+  // Sets/clears a match's scheduled date and notifies both teams' account holders via the site's
+  // real notification system (public.notifications, same table archery gifts and admin
+  // announcements already use) -- a team registered by a real member has registeredBy set to
+  // their user id (see registerTeamCloud); an admin-added/dummy team has none, so there's simply
+  // no account to notify for that side. RLS on notifications already allows any admin to insert a
+  // row for ANY user_id (notifications_insert only checks the INSERTER's role, not the target),
+  // so this is a plain insert, no RPC needed.
+  async function saveMatchSchedule(cat, r, i, dateStr){
+    var bracket = cat.bracket;
+    if(!bracket || !bracket.rounds[r] || !bracket.rounds[r][i]) return;
+    var m = bracket.rounds[r][i];
+    var teamA = teamById(cat, m.teamAId), teamB = teamById(cat, m.teamBId);
+    m.scheduledDate = dateStr || null;
+    queueCloudSync();
+    render();
+    if(!dateStr){ toast('Jadwal dihapus.'); return; }
+    toast('Jadwal disimpan.');
+
+    var recipients = [];
+    [teamA, teamB].forEach(function(t){
+      if(t && t.registeredBy && recipients.indexOf(t.registeredBy)===-1) recipients.push(t.registeredBy);
+    });
+    if(!recipients.length) return; // neither team has a real account behind it (admin/dummy teams)
+    var roundLabel = (r===bracket.rounds.length-1) ? 'Final' : 'Babak '+(r+1);
+    var matchLabel = (teamA?teamA.name:'TBD') + ' vs ' + (teamB?teamB.name:'TBD');
+    var rows = recipients.map(function(uid){
+      return {
+        user_id: uid,
+        title: '📅 Jadwal Pertandingan',
+        message: matchLabel + ' ('+cat.name+' · '+roundLabel+') dijadwalkan main '+fmtMatchDate(dateStr)+'.',
+        kind: 'tournament_schedule',
+        link_url: 'tournament.html',
+        payload: { tournament_id: S.tournamentId, category_id: cat.id, round: r, match: i },
+        created_by: S.currentUserId
+      };
+    });
+    try{
+      var res = await supabase.from('notifications').insert(rows);
+      if(res.error) throw res.error;
+      toast('Notif jadwal dikirim ke '+recipients.length+' pemain.');
+    }catch(e){
+      toast('Jadwal tersimpan, tapi gagal kirim notif: '+e.message, 'error');
+    }
   }
   function handleWithdrawalInBracket(bracket, teamId){
     for(var r=0; r<bracket.rounds.length; r++){
@@ -1180,10 +1232,16 @@
     var html = '<div class="match-card '+stateClass+' '+(highlight?'highlight':'')+'" id="matchcard_'+matchKey+'" '+
       (editable && teamA && teamB && !m.isBye ? 'data-action="open-match-editor" data-match="'+matchKey+'"' : '') + '>';
     html += '<div class="mc-round-tag">'+(isFinal?'Final':'Babak '+(r+1))+(m.isBye?' · BYE':'')+(m.walkover?' · W.O.':'')+'</div>';
+    if(m.scheduledDate) html += '<div class="mc-schedule-tag">📅 '+escapeHtml(fmtMatchDate(m.scheduledDate))+'</div>';
     html += rowHtml(teamA, m.winnerId && m.winnerId===m.teamAId, m.scoreA, 'A');
     html += rowHtml(teamB, m.winnerId && m.winnerId===m.teamBId, m.scoreB, 'B');
     if(editable && isOpen && teamA && teamB){
       html += '<div class="mc-editor">' +
+        '<div class="field" style="margin-bottom:10px;">' +
+        '<label for="scheduleDate_'+matchKey+'">Tanggal main</label>' +
+        '<div class="field-inline"><input type="date" id="scheduleDate_'+matchKey+'" value="'+(m.scheduledDate||'')+'" style="flex:1;">' +
+        '<button class="btn btn-sm" data-action="save-match-schedule" data-round="'+r+'" data-idx="'+i+'">Simpan Jadwal &amp; Notif Pemain</button></div>' +
+        '</div>' +
         '<div class="mc-editor-scores">' +
         '<input type="number" min="0" id="scoreA_'+matchKey+'" class="score-input mono" placeholder="Skor" value="'+(m.scoreA!=null?m.scoreA:'')+'">' +
         '<span class="mc-vs">vs</span>' +
@@ -1917,7 +1975,8 @@
     'delete-team':1, 'declare-winner':1, 'save-group-match':1, 'archive-pdf':1, 'reset-category':1,
     'delete-category':1, 'toggle-rules-edit':1, 'save-rules':1, 'toggle-registration':1,
     'create-tournament':1, 'delete-dummy-teams':1, 'edit-slot':1, 'save-slot-editor':1,
-    'close-slot-editor':1, 'edit-team':1, 'save-team-editor':1, 'close-team-editor':1
+    'close-slot-editor':1, 'edit-team':1, 'save-team-editor':1, 'close-team-editor':1,
+    'save-match-schedule':1
   };
   app.addEventListener('click', function(e){
     var btn = e.target.closest('[data-action]');
@@ -2213,6 +2272,12 @@
         toast('Hasil pertandingan disimpan');
         queueCloudSync();
         break;
+      }
+      case 'save-match-schedule': {
+        var sr = parseInt(btn.dataset.round,10), si = parseInt(btn.dataset.idx,10);
+        var dateInput = document.getElementById('scheduleDate_'+sr+'-'+si);
+        saveMatchSchedule(cat, sr, si, dateInput ? dateInput.value : '');
+        return;
       }
       case 'save-group-match': {
         var g = cat.groups.filter(function(x){ return x.id===btn.dataset.group; })[0];
