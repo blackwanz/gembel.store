@@ -187,6 +187,18 @@
   .plan-item .t-note{font-size:12px;color:var(--muted);margin-top:2px;}
   .plan-empty{font-size:13px;color:var(--faint);padding:6px 0;}
 
+  .history-panel{padding:18px;}
+  .history-panel h2{font-size:17px;font-weight:600;margin-bottom:3px;}
+  .history-list{max-height:360px;overflow-y:auto;}
+  .history-item{display:flex;gap:10px;padding:11px 0;border-bottom:1px solid var(--border);}
+  .history-item:last-child{border-bottom:none;}
+  .history-dot{width:8px;height:8px;border-radius:50%;margin-top:5px;flex-shrink:0;}
+  .history-item.eaten .history-dot{background:var(--fresh);}
+  .history-item.discarded .history-dot{background:var(--expired);}
+  .history-item .t-name{font-weight:600;font-size:13.5px;}
+  .history-item .t-note{font-size:12px;color:var(--muted);margin-top:2px;}
+  .history-empty{font-size:13px;color:var(--faint);padding:6px 0;}
+
   .members-panel{padding:18px;}
   .members-panel h2{font-size:17px;font-weight:600;margin-bottom:3px;}
   .plan-sub2{font-size:12px;color:var(--muted);margin-bottom:14px;}
@@ -294,7 +306,7 @@
   let CURRENT_USER = null;
   let KITCHENS = [];        // [{id, name, role}]
   let activeKitchenId = null;
-  let ACTIVE = { locations:[], items:[], members:[], invites:[] };
+  let ACTIVE = { locations:[], items:[], members:[], invites:[], history:[] };
   let activeLocation = 'Semua';
   let searchTerm = '';
   let addingLocation = false;
@@ -335,29 +347,50 @@
 
   async function loadActiveKitchenDetail(){
     const kid = activeKitchenId;
-    const [locRes, itemRes, memberRes, inviteRes] = await Promise.all([
+    const [locRes, itemRes, memberRes, inviteRes, historyRes] = await Promise.all([
       supabase.from('kitchen_locations').select('*').eq('kitchen_id', kid).order('created_at'),
       supabase.from('stock_items').select('*').eq('kitchen_id', kid),
       supabase.from('kitchen_members').select('*').eq('kitchen_id', kid),
       isOwner()
         ? supabase.from('kitchen_invites').select('*').eq('kitchen_id', kid).is('accepted_by', null).gt('expires_at', new Date().toISOString())
         : Promise.resolve({ data: [] }),
+      supabase.from('stock_history').select('*').eq('kitchen_id', kid).order('acted_at', { ascending: false }).limit(50),
     ]);
     ACTIVE.locations = (locRes.data || []).map(l => l.name);
     ACTIVE.items = itemRes.data || [];
     ACTIVE.invites = inviteRes.data || [];
+    const history = historyRes.data || [];
 
     const members = memberRes.data || [];
-    const userIds = members.map(m => m.user_id);
+    // Union of current members + whoever acted in history (a person who's since left the
+    // kitchen can still show up as "siapa yang buang" on an old entry) -- one profiles lookup
+    // covers both.
+    const userIds = new Set(members.map(m => m.user_id));
+    history.forEach(h => { if(h.acted_by) userIds.add(h.acted_by); });
     let profiles = {};
-    if(userIds.length){
-      const { data: profRows } = await supabase.from('profiles').select('id, full_name, email').in('id', userIds);
+    if(userIds.size){
+      const { data: profRows } = await supabase.from('profiles').select('id, full_name, email').in('id', [...userIds]);
       (profRows || []).forEach(p => { profiles[p.id] = p; });
     }
-    ACTIVE.members = members.map(m => ({
-      id: m.id, user_id: m.user_id, role: m.role,
-      name: m.user_id === CURRENT_USER.id ? 'Kamu' : (profiles[m.user_id]?.full_name || profiles[m.user_id]?.email || 'Anggota'),
-    }));
+    const nameFor = (uid) => uid === CURRENT_USER.id ? 'Kamu' : (profiles[uid]?.full_name || profiles[uid]?.email || 'Anggota');
+    ACTIVE.members = members.map(m => ({ id: m.id, user_id: m.user_id, role: m.role, name: nameFor(m.user_id) }));
+    ACTIVE.history = history.map(h => ({ ...h, actorName: h.acted_by ? nameFor(h.acted_by) : 'Anggota' }));
+  }
+
+  async function logHistory(item, action, qty){
+    const { data, error } = await supabase.from('stock_history').insert({
+      kitchen_id: activeKitchenId,
+      item_name: item.name,
+      qty,
+      unit: item.unit,
+      action,
+      acted_by: CURRENT_USER.id,
+    }).select().single();
+    if(!error && data){
+      ACTIVE.history.unshift({ ...data, actorName: 'Kamu' });
+      ACTIVE.history = ACTIVE.history.slice(0, 50);
+      renderHistory();
+    }
   }
 
   function render(){
@@ -371,6 +404,7 @@
     renderSummary();
     renderMembers();
     renderShare();
+    renderHistory();
     syncLocationSelect();
     document.getElementById('add-details').style.display = canEdit() ? '' : 'none';
   }
@@ -484,6 +518,11 @@
             <div id="member-list"></div>
             <div id="invite-slot"></div>
             <div id="share-slot"></div>
+          </div>
+          <div class="panel history-panel">
+            <h2>Riwayat Stok</h2>
+            <div class="plan-sub2">Yang abis dimakan atau dibuang, dan siapa yang ngelakuin.</div>
+            <div class="history-list" id="history-list"></div>
           </div>
         </div>
       </div>
@@ -678,18 +717,22 @@
         <div class="badge">${badgeText(dl)}</div>
         ${editable ? `
         <div class="row-actions">
-          <button type="button" class="btn ghost" data-action="remove" data-id="${item.id}">Habis dipakai</button>
-          <button type="button" class="btn ghost" data-action="remove" data-id="${item.id}">Buang</button>
+          <button type="button" class="btn ghost" data-action="eaten" data-id="${item.id}">Habis dipakai</button>
+          <button type="button" class="btn ghost" data-action="discarded" data-id="${item.id}">Buang</button>
         </div>` : ''}
       </div>`;
     }).join('');
 
-    list.querySelectorAll('[data-action="remove"]').forEach(btn=>{
+    list.querySelectorAll('[data-action="eaten"], [data-action="discarded"]').forEach(btn=>{
       btn.addEventListener('click', async () => {
+        const action = btn.dataset.action;
+        const item = ACTIVE.items.find(i => i.id === btn.dataset.id);
+        if(!item) return;
         btn.closest('.row').style.opacity = '.5';
-        const { error } = await supabase.from('stock_items').delete().eq('id', btn.dataset.id);
-        if(error){ await gembelAlert('Gagal hapus: ' + error.message); }
-        ACTIVE.items = ACTIVE.items.filter(i=>i.id !== btn.dataset.id);
+        const { error } = await supabase.from('stock_items').delete().eq('id', item.id);
+        if(error){ await gembelAlert('Gagal hapus: ' + error.message); return; }
+        ACTIVE.items = ACTIVE.items.filter(i=>i.id !== item.id);
+        await logHistory(item, action, item.qty);
         render();
       });
     });
@@ -817,6 +860,31 @@
         await gembelAlert('Gagal salin otomatis. Copy manual ya:\n' + link);
       }
     });
+  }
+
+  // ---- History log (dimakan/dibuang: hari apa, siapa) ----
+  function renderHistory(){
+    const box = document.getElementById('history-list');
+    if(!box) return;
+    if(ACTIVE.history.length === 0){
+      box.innerHTML = `<div class="history-empty">Belum ada riwayat. Muncul di sini pas ada bahan yang dimakan/dibuang.</div>`;
+      return;
+    }
+    box.innerHTML = ACTIVE.history.map(h=>{
+      const d = new Date(h.acted_at);
+      const dateLabel = d.toLocaleDateString('id-ID', { weekday:'long', day:'numeric', month:'short' });
+      const timeLabel = d.toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit' });
+      const actionLabel = h.action === 'eaten' ? 'Dimakan' : 'Dibuang';
+      const qty = Number(h.qty) % 1 === 0 ? Number(h.qty) : Number(h.qty).toFixed(1);
+      return `
+      <div class="history-item ${h.action}">
+        <div class="history-dot"></div>
+        <div>
+          <div class="t-name">${escapeHtml(h.item_name)} <span class="mono" style="font-size:11.5px;color:var(--muted);font-weight:500;">${qty} ${escapeHtml(h.unit)}</span></div>
+          <div class="t-note">${actionLabel} ${dateLabel}, ${timeLabel} &middot; oleh ${escapeHtml(h.actorName)}</div>
+        </div>
+      </div>`;
+    }).join('');
   }
 
   // ---- Public read-only view (?share=<kitchen_id>, no login required) ----
@@ -1005,15 +1073,19 @@
   // "mkn telur 1"          -> subtract 1 from the existing telur (whichever row expires
   // "masak telur 1"           soonest, if there's more than one) -- drops the row entirely
   // "buang telur 1"           once its qty hits 0, same as the existing "Habis"/"Buang" buttons.
-  const CMD_CONSUME_PREFIXES = ['mkn', 'makan', 'masak', 'abis', 'habis', 'buang'];
+  // Prefix -> history action it logs. "buang" is the only one that means thrown away; the rest
+  // (eating it, cooking it, or just saying it's gone/used up) count as "eaten" for history purposes.
+  const CMD_CONSUME_ACTIONS = { mkn:'eaten', makan:'eaten', masak:'eaten', abis:'eaten', habis:'eaten', buang:'discarded' };
   const CMD_KNOWN_UNITS = ['ikat', 'butir', 'kg', 'gram', 'liter', 'papan', 'buah', 'bungkus', 'siung'];
 
   function parseQuickCommand(raw) {
     const words = String(raw || '').trim().split(/\s+/).filter(Boolean);
     if (!words.length) return null;
     let isConsume = false;
-    if (CMD_CONSUME_PREFIXES.includes(words[0].toLowerCase())) {
+    let action = null;
+    if (CMD_CONSUME_ACTIONS[words[0].toLowerCase()]) {
       isConsume = true;
+      action = CMD_CONSUME_ACTIONS[words[0].toLowerCase()];
       words.shift();
     }
     if (!words.length) return null;
@@ -1033,7 +1105,7 @@
     }
     const name = rest.join(' ').trim();
     if (!name) return null;
-    return { isConsume, name, qty: qty == null ? 1 : qty, unit };
+    return { isConsume, action, name, qty: qty == null ? 1 : qty, unit };
   }
 
   function wireQuickCommandBar() {
@@ -1065,16 +1137,19 @@
       try {
         if (parsed.isConsume) {
           if (!existing) { showFeedback(`"${displayName}" gak ada di stok.`, false); return; }
+          const consumedQty = Math.min(parsed.qty, Number(existing.qty));
           const newQty = Number(existing.qty) - parsed.qty;
           if (newQty <= 0) {
             const { error } = await supabase.from('stock_items').delete().eq('id', existing.id);
             if (error) { showFeedback('Gagal update: ' + error.message, false); return; }
             ACTIVE.items = ACTIVE.items.filter(i => i.id !== existing.id);
+            await logHistory(existing, parsed.action, consumedQty);
             showFeedback(`${displayName} abis, dihapus dari stok.`, true);
           } else {
             const { error } = await supabase.from('stock_items').update({ qty: newQty }).eq('id', existing.id);
             if (error) { showFeedback('Gagal update: ' + error.message, false); return; }
             existing.qty = newQty;
+            await logHistory(existing, parsed.action, consumedQty);
             showFeedback(`${displayName} dikurangi ${parsed.qty} -> sisa ${newQty} ${existing.unit}.`, true);
           }
         } else {

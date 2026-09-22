@@ -17,6 +17,7 @@ window.GEMBEL_APPS = [
     desc: 'App bawaan lo — goals harian, tracking angka, dan progress bulanan. Selalu aktif, gratis buat semua member.',
     icon: '📅',
     url: 'calendar.html',
+    category: 'Produktivitas',
     enabled: true,
   },
   {
@@ -25,6 +26,7 @@ window.GEMBEL_APPS = [
     desc: 'Lacak aktivitas harian dan duit masuk/keluar, plus target bulanan, budget planner, dan laporan savings rate.',
     icon: '💸',
     url: 'habbit.html',
+    category: 'Keuangan',
     enabled: true,
   },
   {
@@ -33,6 +35,7 @@ window.GEMBEL_APPS = [
     desc: 'Progress tracker gaya cyberpunk — lacak sesi kerja lo per warna (fokus/istirahat/lainnya) sampai target waktu harian. Data tersimpan di akun lo.',
     icon: '⚡',
     url: 'progbar.html',
+    category: 'Produktivitas',
     enabled: true,
   },
   {
@@ -41,6 +44,7 @@ window.GEMBEL_APPS = [
     desc: 'Kanban tugas, timeline harian, goals jangka panjang, dan focus timer — semuanya dalam satu workspace.',
     icon: '🎯',
     url: 'focus.html',
+    category: 'Produktivitas',
     enabled: true,
   },
   {
@@ -49,6 +53,7 @@ window.GEMBEL_APPS = [
     desc: 'Latihan mengetik pake buku/PDF/teks yang lo import sendiri — perpustakaan pribadi, kosakata tersimpan, statistik WPM & akurasi.',
     icon: '📖',
     url: 'ketik-buku.html',
+    category: 'Belajar',
     enabled: true,
   },
   {
@@ -57,6 +62,7 @@ window.GEMBEL_APPS = [
     desc: 'Upload file apa aja (maks 50MB) — semua member yang login bisa lihat & download, lo cuma bisa hapus punya lo sendiri.',
     icon: '📤',
     url: 'save%20file/index.html',
+    category: 'Utilitas',
     enabled: true,
   },
   {
@@ -65,6 +71,7 @@ window.GEMBEL_APPS = [
     desc: 'Lacak stok bahan dapur & tanggal basinya biar gak ada yang kebuang. Bisa dipakai bareng orang lain per dapur (kos, rumah) lewat kode undangan.',
     icon: '🥬',
     url: 'masak.html',
+    category: 'Rumah Tangga',
     enabled: true,
   },
   {
@@ -73,6 +80,7 @@ window.GEMBEL_APPS = [
     desc: 'Log latihan panahan — catat sesi, setup panah/busur per anak panah (sayap, rotasi), titik incar, dan statistik akurasi. Data tersimpan di akun lo.',
     icon: '🏹',
     url: 'archery.html',
+    category: 'Hobi & Olahraga',
     enabled: true,
   },
   {
@@ -81,6 +89,7 @@ window.GEMBEL_APPS = [
     desc: 'Manajemen turnamen bulutangkis — kategori, format gugur langsung atau grup, bagan otomatis, dan skor pertandingan. Admin kelola turnamen, member lain bisa daftarin tim & pantau bagan live.',
     icon: '🏸',
     url: 'tournament.html',
+    category: 'Hobi & Olahraga',
     enabled: true,
   },
   {
@@ -89,6 +98,7 @@ window.GEMBEL_APPS = [
     desc: 'Card-catalog buat apa aja yang worth di-inget — quick capture, tag, cari lewat command palette (Ctrl+K). Data tersimpan di akun lo.',
     icon: '🗂️',
     url: 'drawer.html',
+    category: 'Utilitas',
     enabled: true,
   },
   {
@@ -97,6 +107,7 @@ window.GEMBEL_APPS = [
     desc: 'QRIS + pencatatan donasi bulanan — siapa nyumbang berapa, pengeluaran kemana aja, saldo bulan ini. Link publik bisa dilihat siapa aja tanpa login.',
     icon: '🙏',
     url: 'donasi.html',
+    category: 'Keuangan',
     enabled: true,
   },
   // These three are real projects still being built -- the tile is here so they're visible on the
@@ -109,6 +120,7 @@ window.GEMBEL_APPS = [
     desc: 'Masih dikerjain — belum live. Tile ini nunjukin progress-nya di dashboard.',
     icon: '🛠️',
     url: 'coming-soon.html?app=Mokondo&domain=mokondo.com&icon=%F0%9F%9B%A0%EF%B8%8F',
+    category: 'Coming Soon',
     enabled: true,
   },
   {
@@ -117,6 +129,7 @@ window.GEMBEL_APPS = [
     desc: 'Masih dikerjain — belum live. Tile ini nunjukin progress-nya di dashboard.',
     icon: '🏛️',
     url: 'coming-soon.html?app=YourLegacy&domain=yourlegacy.com&icon=%F0%9F%8F%9B%EF%B8%8F',
+    category: 'Coming Soon',
     enabled: true,
   },
   {
@@ -125,6 +138,7 @@ window.GEMBEL_APPS = [
     desc: 'Masih dikerjain — belum live. Tile ini nunjukin progress-nya di dashboard.',
     icon: '⚙️',
     url: 'coming-soon.html?app=Bitworks&domain=bitworks.com&icon=%E2%9A%99%EF%B8%8F',
+    category: 'Coming Soon',
     enabled: true,
   },
 ];

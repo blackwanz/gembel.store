@@ -40,6 +40,10 @@
   .field-row input, .field-row select{ flex:1;min-width:120px; }
   .empty-hint{ color:var(--text-faint);font-size:12.5px;padding:16px;text-align:center; }
   .share-box{ display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--surface-muted);border:1px solid var(--border);border-radius:var(--radius-md);padding:10px 12px;font-size:12px;word-break:break-all; }
+  .fund-switch{ display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;margin-bottom:14px; }
+  .fund-tab{ flex:0 0 auto;border:1px solid var(--border);background:var(--surface);color:var(--text-muted);border-radius:100px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap; }
+  .fund-tab.active{ background:var(--primary);color:#fff;border-color:var(--primary); }
+  .fund-tab.new{ border-style:dashed; }
 </style>
 </head>
 <body>
@@ -67,11 +71,14 @@
   "use strict";
 
   let CURRENT_USER = null;
+  let MY_FUNDS = []; // [{ ...fund, role }] -- every fund this user owns or is a member of
   let ACTIVE_FUND = null;
   let ACTIVE_ROLE = null; // 'owner' | 'editor' | null (public view)
   let ENTRIES = [];
   let mode = 'simple';
   let isPublicView = false;
+  let showNewFundForm = false;
+  let entriesChannel = null;
 
   function fmtRupiah(n){ return 'Rp' + Math.round(Number(n) || 0).toLocaleString('id-ID'); }
   function escapeHtml(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -131,6 +138,65 @@
       </div>`;
   }
 
+  function fundSwitchHTML(){
+    if(MY_FUNDS.length < 2 && !showNewFundForm) return '';
+    return `
+      <div class="fund-switch">
+        ${MY_FUNDS.map(f => `<button type="button" class="fund-tab ${f.id === ACTIVE_FUND.id && !showNewFundForm ? 'active' : ''}" data-fund="${f.id}">${escapeHtml(f.name)}</button>`).join('')}
+        <button type="button" class="fund-tab new ${showNewFundForm ? 'active' : ''}" id="fund-new-btn">+ Dana baru</button>
+      </div>`;
+  }
+
+  function newFundFormHTML(){
+    return `
+      <div class="panel">
+        <div class="panel-head"><h2>Dana baru</h2></div>
+        <div class="panel-body">
+          <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">Misalnya "Dana Anak Sekolah" atau "Dana Bantuan Warga" -- tiap dana punya QRIS, anggota, dan saldo sendiri.</p>
+          <div class="field-row"><input type="text" id="new-fund-name-input" placeholder="Nama dana"></div>
+          <button class="btn btn-primary btn-block" id="new-fund-btn">Buat</button>
+        </div>
+      </div>`;
+  }
+
+  function wireNewFundForm(){
+    document.getElementById('new-fund-btn').addEventListener('click', async () => {
+      const input = document.getElementById('new-fund-name-input');
+      const name = input.value.trim();
+      if(!name) return;
+      const { data, error } = await supabase.from('donation_funds').insert({ owner_id: CURRENT_USER.id, name }).select().single();
+      if(error){ await gembelAlert('Gagal buat: ' + error.message); return; }
+      MY_FUNDS.push({ ...data, role: 'owner' });
+      showNewFundForm = false;
+      await selectFund(data.id);
+    });
+  }
+
+  async function selectFund(fundId){
+    const found = MY_FUNDS.find(f => f.id === fundId);
+    if(!found) return;
+    ACTIVE_FUND = found; ACTIVE_ROLE = found.role;
+    showNewFundForm = false;
+    mode = 'simple';
+    await refreshEntries();
+    subscribeActiveFund();
+  }
+
+  function subscribeActiveFund(){
+    if(entriesChannel){ supabase.removeChannel(entriesChannel); entriesChannel = null; }
+    entriesChannel = supabase.channel('donation_own_sync_' + ACTIVE_FUND.id)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'donation_entries', filter: `fund_id=eq.${ACTIVE_FUND.id}` }, refreshEntries)
+      .subscribe();
+  }
+
+  function wireFundSwitch(container){
+    container.querySelectorAll('[data-fund]').forEach(btn => {
+      btn.addEventListener('click', () => selectFund(btn.dataset.fund));
+    });
+    const newBtn = document.getElementById('fund-new-btn');
+    if(newBtn) newBtn.addEventListener('click', () => { showNewFundForm = true; render(); });
+  }
+
   function wireModeToggle(container){
     container.querySelectorAll('.mode-btn').forEach(btn => {
       btn.addEventListener('click', () => { mode = btn.dataset.mode; render(); });
@@ -168,11 +234,18 @@
       root.innerHTML = `<div class="empty-hint" style="padding-top:60px;">Belum ada dana yang di-setup.</div>`;
       return;
     }
+    if(!isPublicView && showNewFundForm){
+      root.innerHTML = `${fundSwitchHTML()}${newFundFormHTML()}`;
+      wireFundSwitch(root);
+      wireNewFundForm();
+      return;
+    }
     const stats = computeStats(ENTRIES);
     const canEdit = !isPublicView && (ACTIVE_ROLE === 'owner' || ACTIVE_ROLE === 'editor');
     const isOwner = !isPublicView && ACTIVE_ROLE === 'owner';
 
     root.innerHTML = `
+      ${isPublicView ? '' : fundSwitchHTML()}
       ${qrisBoxHTML(ACTIVE_FUND)}
       ${modeToggleHTML()}
       ${statGridHTML(stats)}
@@ -240,6 +313,7 @@
         </div>` : ''}
     `;
 
+    wireFundSwitch(root);
     wireModeToggle(root);
     if(canEdit) wireEntryForm();
     if(isOwner){ wireQrisUpload(); wireMembers(); wireShareToggle(); loadMembers(); }
@@ -359,41 +433,37 @@
 
   // ---------------- Authenticated (owner/editor) boot ----------------
   async function bootAuthenticated(){
-    const { data: ownedFund } = await supabase.from('donation_funds').select('*').eq('owner_id', CURRENT_USER.id).maybeSingle();
-    if(ownedFund){
-      ACTIVE_FUND = ownedFund; ACTIVE_ROLE = 'owner';
-    } else {
-      const { data: memberRow } = await supabase.from('donation_members').select('*, fund:donation_funds(*)').eq('user_id', CURRENT_USER.id).maybeSingle();
-      if(memberRow && memberRow.fund){ ACTIVE_FUND = memberRow.fund; ACTIVE_ROLE = memberRow.role; }
-    }
+    const { data: ownedFunds } = await supabase.from('donation_funds').select('*').eq('owner_id', CURRENT_USER.id);
+    const { data: memberRows } = await supabase.from('donation_members').select('role, fund:donation_funds(*)').eq('user_id', CURRENT_USER.id);
 
-    if(!ACTIVE_FUND){
+    const byId = new Map();
+    (ownedFunds || []).forEach(f => byId.set(f.id, { ...f, role: 'owner' }));
+    (memberRows || []).forEach(r => { if(r.fund && !byId.has(r.fund.id)) byId.set(r.fund.id, { ...r.fund, role: r.role }); });
+    MY_FUNDS = [...byId.values()].sort((a,b) => (a.created_at||'').localeCompare(b.created_at||''));
+
+    if(!MY_FUNDS.length){
+      showNewFundForm = true;
+      ACTIVE_FUND = { id: null };
       const root = document.getElementById('app-root');
-      root.innerHTML = `
-        <div class="panel">
-          <div class="panel-head"><h2>Setup Dana</h2></div>
-          <div class="panel-body">
-            <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">Belum ada dana. Kasih nama dulu (misal "Dana Bulanan Ortu"), nanti bisa nambah QRIS, anggota, dan catatan.</p>
-            <div class="field-row"><input type="text" id="new-fund-name-input" placeholder="Nama dana"></div>
-            <button class="btn btn-primary btn-block" id="new-fund-btn">Buat</button>
-          </div>
-        </div>`;
+      root.innerHTML = newFundFormHTML();
+      document.querySelector('.panel-head h2').textContent = 'Setup Dana';
       document.getElementById('new-fund-btn').addEventListener('click', async () => {
         const name = document.getElementById('new-fund-name-input').value.trim();
         if(!name){ return; }
         const { data, error } = await supabase.from('donation_funds').insert({ owner_id: CURRENT_USER.id, name }).select().single();
         if(error){ await gembelAlert('Gagal buat: ' + error.message); return; }
-        ACTIVE_FUND = data; ACTIVE_ROLE = 'owner';
+        MY_FUNDS = [{ ...data, role: 'owner' }];
+        showNewFundForm = false;
+        ACTIVE_FUND = MY_FUNDS[0]; ACTIVE_ROLE = 'owner';
         await refreshEntries();
+        subscribeActiveFund();
       });
       return;
     }
 
+    ACTIVE_FUND = MY_FUNDS[0]; ACTIVE_ROLE = ACTIVE_FUND.role;
     await refreshEntries();
-
-    supabase.channel('donation_own_sync_' + CURRENT_USER.id)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'donation_entries', filter: `fund_id=eq.${ACTIVE_FUND.id}` }, refreshEntries)
-      .subscribe();
+    subscribeActiveFund();
   }
 
   document.addEventListener('DOMContentLoaded', async () => {

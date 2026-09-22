@@ -1,0 +1,10 @@
+{
+  "ssh_alias": "gembelstore",
+  "remote_script_dir": "~",
+  "scripts": ["bksource.sh", "dumpdb.sh"],
+  "downloads": [
+    { "remote_dir": "~/bksource", "pattern": "source_*.tar.gz" },
+    { "remote_dir": "~/backup_supabase", "pattern": "backup_*.dump" }
+  ],
+  "local_backup_dir": "../backups"
+}

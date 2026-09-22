@@ -215,6 +215,10 @@ footer.site-footer { border-top: 1px solid var(--border); padding: 32px 6%; text
 
 .apps-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
 
+.apps-toolbar { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
+.apps-search-input { width: 100%; padding: 11px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface); color: var(--text-main); font-family: inherit; font-size: 14px; box-sizing: border-box; }
+.apps-search-input:focus { outline: none; border-color: var(--primary); }
+
 /* Your in-flight requests — a vertical list (not a grid), collapsed to a few by default; see
    the "Lihat N lainnya" toggle in dashboard.html. Ticket cards themselves are unchanged, just
    stacked instead of tiled. */

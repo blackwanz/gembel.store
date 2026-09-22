@@ -144,3 +144,9 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Backup tool (local secrets + build artifacts)
+backup-tool/config.json
+backup-tool/build/
+backup-tool/dist/
+backup-tool/*.spec

@@ -82,11 +82,18 @@
     </div>
 
     <!-- Built-in apps — its own dedicated grid (auto-fill: widening the window/zooming out
-         reveals more columns), no longer sharing space with the request list above. -->
+         reveals more columns), no longer sharing space with the request list above. Search +
+         category chips filter this grid client-side (renderBuiltinApps re-renders from
+         window.GEMBEL_APPS on every change, no network round trip). -->
     <div class="section-label">App Bawaan</div>
+    <div class="apps-toolbar">
+      <input type="text" id="apps-search" class="apps-search-input" placeholder="🔍 Cari app…" oninput="renderBuiltinApps()">
+      <div class="filter-row" id="apps-category-filter"></div>
+    </div>
     <div class="apps-grid" id="apps-grid">
       <div id="builtin-apps-slot"></div>
     </div>
+    <p id="apps-empty" style="display:none;color:var(--text-faint);padding:18px 0;">Gak ada app yang cocok. Coba kata kunci lain.</p>
   </div>
 
   <!-- ===== TAB: PROFIL ===== -->
@@ -521,10 +528,40 @@ async function loadLeaderboard() {
 
 // Renders the first-party app tiles from assets/apps.config.js -- adding or
 // unplugging an app is a one-line edit there, not a dashboard.html change.
+let activeAppCategory = 'all';
+
+// Category chips are derived from whatever's actually in GEMBEL_APPS, so a new category
+// shows up automatically the next time an app is added there -- no second place to edit.
+function renderAppCategoryChips() {
+  const chipRow = document.getElementById('apps-category-filter');
+  if (!chipRow || !Array.isArray(window.GEMBEL_APPS)) return;
+  const categories = [...new Set(window.GEMBEL_APPS.filter(a => a.enabled).map(a => a.category || 'Lainnya'))];
+  chipRow.innerHTML = [`<div class="chip-filter${activeAppCategory === 'all' ? ' active' : ''}" data-cat="all">Semua</div>`]
+    .concat(categories.map(cat => `<div class="chip-filter${activeAppCategory === cat ? ' active' : ''}" data-cat="${escapeHtml(cat)}">${escapeHtml(cat)}</div>`))
+    .join('');
+  chipRow.querySelectorAll('.chip-filter').forEach(chip => {
+    chip.addEventListener('click', () => { activeAppCategory = chip.dataset.cat; renderBuiltinApps(); });
+  });
+}
+
 function renderBuiltinApps() {
   const slot = document.getElementById('builtin-apps-slot');
+  const emptyEl = document.getElementById('apps-empty');
   if (!slot || !Array.isArray(window.GEMBEL_APPS)) return;
-  slot.innerHTML = window.GEMBEL_APPS.filter(app => app.enabled).map(app => `
+
+  if (!document.getElementById('apps-category-filter').childElementCount) renderAppCategoryChips();
+
+  const query = (document.getElementById('apps-search')?.value || '').trim().toLowerCase();
+  const filtered = window.GEMBEL_APPS.filter(app => {
+    if (!app.enabled) return false;
+    if (activeAppCategory !== 'all' && (app.category || 'Lainnya') !== activeAppCategory) return false;
+    if (query && !`${app.name} ${app.desc}`.toLowerCase().includes(query)) return false;
+    return true;
+  });
+
+  if (emptyEl) emptyEl.style.display = filtered.length ? 'none' : 'block';
+
+  slot.innerHTML = filtered.map(app => `
     <div class="tool-card">
       <div class="tool-icon">${app.icon}</div>
       <div>
