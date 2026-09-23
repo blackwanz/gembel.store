@@ -140,7 +140,7 @@
   }
 
   function fundSwitchHTML(){
-    if(MY_FUNDS.length < 2 && !showNewFundForm) return '';
+    // Always shown (even with one fund) -- otherwise the "+ Dana baru" button is unreachable until a second fund exists.
     return `
       <div class="fund-switch">
         ${MY_FUNDS.map(f => `<button type="button" class="fund-tab ${f.id === ACTIVE_FUND.id && !showNewFundForm ? 'active' : ''}" data-fund="${f.id}">${escapeHtml(f.name)}</button>`).join('')}
@@ -153,7 +153,7 @@
       <div class="panel">
         <div class="panel-head"><h2>Dana baru</h2></div>
         <div class="panel-body">
-          <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">Misalnya "Dana Anak Sekolah" atau "Dana Bantuan Warga" -- tiap dana punya QRIS, anggota, dan saldo sendiri.</p>
+          <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">Misalnya "Dana Opung Cewe" atau "Dana Opung Cowo" -- tiap dana kayak dompet sendiri: punya QRIS, anggota, dan saldo masing-masing.</p>
           <div class="field-row"><input type="text" id="new-fund-name-input" placeholder="Nama dana"></div>
           <button class="btn btn-primary btn-block" id="new-fund-btn">Buat</button>
         </div>

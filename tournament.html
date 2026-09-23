@@ -376,6 +376,10 @@
   .mc-team{ display:flex; align-items:center; gap:6px; padding:3px 0; font-size:13px; font-weight:700; }
   .mc-team.tbd{ color:var(--text-faint); font-weight:600; font-style:italic; }
   .mc-team.winner{ color:var(--success); }
+  .mc-team.loser{ color:var(--text-faint); font-weight:600; }
+  .mc-team.loser .mc-name{ position:relative; }
+  .mc-team.loser .mc-name::after{ content:''; position:absolute; left:0; right:0; top:50%; height:1.5px; background:currentColor; transform:scaleX(0); transform-origin:left; animation:strike 0.35s ease forwards; animation-delay:0.1s; }
+  @keyframes strike{ to{ transform:scaleX(1); } }
   .mc-name-wrap{ flex:1; min-width:0; display:flex; flex-direction:column; }
   .mc-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .mc-score{ font-family:var(--font-mono); font-weight:700; }
@@ -387,6 +391,7 @@
   /* Cup switcher */
   .cup-card{ cursor:pointer; text-align:left; font:inherit; color:inherit; width:100%; background:var(--surface); }
   .cup-card:hover{ border-color:var(--line); }
+  .cup-card-actions{ display:flex; gap:6px; margin-top:4px; }
   .mc-editor{ margin-top:8px; padding-top:8px; border-top:1px dashed var(--line); display:flex; flex-direction:column; gap:8px; }
   .mc-editor-scores{ display:flex; align-items:center; gap:8px; }
   .mc-vs{ color:var(--text-faint); font-size:11px; }
@@ -483,6 +488,15 @@
   .status-bar-ready{ border-color:var(--success); background:var(--success-bg); }
   .my-teams-list{ display:flex; flex-direction:column; gap:8px; }
   .my-team-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; background:var(--surface-strong); border:1px solid var(--border); border-radius:var(--radius-md); padding:10px 12px; font-size:13px; }
+
+  /* Bagan Live -- registration list (shown before a bracket exists) */
+  .live-reg-list{ display:flex; flex-direction:column; gap:6px; }
+  .live-reg-row{ display:flex; align-items:center; gap:12px; background:var(--surface-strong); border:1px solid var(--border); border-radius:var(--radius-md); padding:9px 12px; }
+  .live-reg-num{ color:var(--text-faint); font-weight:800; font-size:12px; flex:none; width:28px; }
+  .live-reg-team{ flex:1; min-width:0; }
+  .live-reg-name{ font-weight:700; font-size:13.5px; }
+  .live-reg-players{ font-size:11.5px; color:var(--text-dim); }
+  .live-reg-time{ font-size:11px; color:var(--text-faint); flex:none; }
 
   @media (max-width:820px){
     .reg-grid{ grid-template-columns:1fr; }
@@ -898,6 +912,7 @@
       notifications: [],
       cupList: [],
       showCupSwitcher: false,
+      showArchivedCups: false,
       bracketSizeChoice: 'auto'
     }
   };
@@ -1035,6 +1050,28 @@
     if(res.error) throw res.error;
     return res.data;
   }
+  // 'sent' (partner has an account, got a real notification), 'no_account' (email doesn't match
+  // any registered profile -- nothing to invite yet), or null on failure. Only the team's own
+  // registered_by can call this (enforced inside the SECURITY DEFINER function itself, see
+  // db/migrations/0035_tournament_archive_and_invites.sql), so it's safe to fire right after a
+  // successful self-registration without any extra client-side gate.
+  async function invitePartner(teamId, partnerEmail){
+    var res = await supabase.rpc('invite_team_partner', { p_team_id: teamId, p_partner_email: partnerEmail });
+    if(res.error){ console.warn('Invite partner failed:', res.error.message); return null; }
+    return res.data;
+  }
+  // Non-admin score self-report. tournaments.data is admin-only to UPDATE via RLS, so this can't
+  // be the usual queueCloudSync() path -- submit_match_score (SECURITY DEFINER, see
+  // db/migrations/0036_player_score_submit.sql) does its own ownership check server-side and
+  // writes the match result + advances the winner into the next round in one step.
+  async function submitMatchScoreCloud(catId, r, i, scoreA, scoreB){
+    var res = await supabase.rpc('submit_match_score', {
+      p_tournament_id: S.tournamentId, p_category_id: catId, p_round: r, p_match_idx: i,
+      p_score_a: scoreA, p_score_b: scoreB
+    });
+    if(res.error) throw res.error;
+    return true;
+  }
   async function withdrawTeamCloud(teamId){
     var res = await supabase.from('tournament_teams').delete().eq('id', teamId);
     if(res.error) throw res.error;
@@ -1089,7 +1126,7 @@
   // Lightweight roster for the Cup switcher -- name/status only, never the (potentially huge)
   // `data` blob, since this just has to list every tournament, not load one.
   async function loadCupList(){
-    var res = await supabase.from('tournaments').select('id,name,registration_open,created_at').order('created_at', { ascending:false });
+    var res = await supabase.from('tournaments').select('id,name,registration_open,archived_at,created_at').order('created_at', { ascending:false });
     if(res.error){ console.warn('Load cup list failed:', res.error.message); return; }
     S.ui.cupList = res.data || [];
   }
@@ -1331,7 +1368,16 @@
     }
     return null;
   }
-  function matchCardHTML(cat, bracket, r, i, editable, searchTerm){
+  // A team counts as "mine" for live score-submission if the viewer is either the one who
+  // registered it (players[0], via registeredBy) or an accepted partner (players[1].userId, set
+  // by accept_team_invite) -- either half of the pair should be able to report the result.
+  function isMyTeam(team){
+    if(!team) return false;
+    if(team.registeredBy===S.currentUserId) return true;
+    var p2 = team.players[1];
+    return !!(p2 && p2.userId===S.currentUserId);
+  }
+  function matchCardHTML(cat, bracket, r, i, editable, searchTerm, liveMode){
     var m = bracket.rounds[r][i];
     var teamA = teamById(cat, m.teamAId);
     var teamB = teamById(cat, m.teamBId);
@@ -1353,7 +1399,11 @@
     // eligible card means "score this match".
     function rowHtml(team, isWinner, score, side){
       var slotAttrs = editable ? ' data-action="edit-slot" data-round="'+r+'" data-idx="'+i+'" data-side="'+side+'"' : '';
-      return '<div class="mc-team '+(isWinner?'winner':'')+' '+(!team?'tbd':'')+'"'+slotAttrs+'>'+
+      // .loser plays a one-shot strikethrough animation (see CSS) the moment a winner exists --
+      // it replays on every render, same "keyframe with forwards fill" trick as .verify-badge.verified,
+      // which is fine: once struck through it just stays struck through on later re-renders too.
+      var loserClass = (m.winnerId && !m.isBye && team && !isWinner) ? ' loser' : '';
+      return '<div class="mc-team '+(isWinner?'winner':'')+loserClass+' '+(!team?'tbd':'')+'"'+slotAttrs+'>'+
         '<span class="mc-name-wrap"><span class="mc-name">'+(team?escapeHtml(team.name):'— TBD')+'</span>'+
         (team && team.subtitle ? '<span class="mc-subtitle">'+escapeHtml(team.subtitle)+'</span>' : '') +
         '</span>'+
@@ -1387,11 +1437,24 @@
         '<button class="btn btn-sm btn-primary" data-action="declare-winner" data-round="'+r+'" data-idx="'+i+'" data-winner="B">'+escapeHtml(teamB.name)+' Menang</button>' +
         '<button class="btn btn-sm btn-ghost" data-action="close-match-editor">Tutup</button>' +
         '</div></div>';
+    } else if(liveMode && !editable && !m.winnerId && !m.isBye && teamA && teamB && (isMyTeam(teamA) || isMyTeam(teamB))){
+      // Non-admin, live tab, viewer's own team, still undecided -- self-report a score. Goes
+      // through the exact same setMatchWinner() as an admin override, so it advances the bracket
+      // identically; an admin can always change it afterward from the regular Bagan tab.
+      html += '<div class="mc-editor">' +
+        '<div class="hint" style="margin-bottom:6px;">Tim lo lagi main di sini -- submit skor kalau pertandingan udah selesai.</div>' +
+        '<div class="mc-editor-scores">' +
+        '<input type="number" min="0" id="liveScoreA_'+matchKey+'" class="score-input mono" placeholder="Skor '+escapeHtml(teamA.name)+'">' +
+        '<span class="mc-vs">vs</span>' +
+        '<input type="number" min="0" id="liveScoreB_'+matchKey+'" class="score-input mono" placeholder="Skor '+escapeHtml(teamB.name)+'">' +
+        '</div>' +
+        '<button class="btn btn-sm btn-primary btn-block" data-action="submit-player-score" data-round="'+r+'" data-idx="'+i+'" style="margin-top:8px;">Kirim Skor</button>' +
+        '</div>';
     }
     html += '</div>';
     return html;
   }
-  function renderBracketTree(cat, editable, searchTerm){
+  function renderBracketTree(cat, editable, searchTerm, liveMode){
     var bracket = cat.bracket;
     var cols = bracket.rounds.map(function(round, r){
       var isLast = r===bracket.rounds.length-1;
@@ -1399,17 +1462,17 @@
       if(!isLast){
         var pairsHtml = '';
         for(var i=0;i<round.length;i+=2){
-          pairsHtml += '<div class="pair">' + matchCardHTML(cat,bracket,r,i,editable,searchTerm) + (round[i+1]?matchCardHTML(cat,bracket,r,i+1,editable,searchTerm):'') + '</div>';
+          pairsHtml += '<div class="pair">' + matchCardHTML(cat,bracket,r,i,editable,searchTerm,liveMode) + (round[i+1]?matchCardHTML(cat,bracket,r,i+1,editable,searchTerm,liveMode):'') + '</div>';
         }
         inner = pairsHtml;
       } else {
-        inner = '<div class="final-wrap">'+matchCardHTML(cat,bracket,r,0,editable,searchTerm)+'</div>';
+        inner = '<div class="final-wrap">'+matchCardHTML(cat,bracket,r,0,editable,searchTerm,liveMode)+'</div>';
       }
       return '<div class="round-col"><div class="round-header">'+(isLast?'Final':'Babak '+(r+1))+'</div><div class="round-body">'+inner+'</div></div>';
     }).join('');
     return '<div class="bracket-scroll"><div class="bracket-canvas" data-cat="'+cat.id+'"><div class="bracket-tree">'+cols+'</div></div></div>';
   }
-  function renderBracketPaged(cat, editable, searchTerm){
+  function renderBracketPaged(cat, editable, searchTerm, liveMode){
     var bracket = cat.bracket;
     var roundIdx = S.ui.bracketRound[cat.id] || 0;
     if(roundIdx >= bracket.rounds.length) roundIdx = 0;
@@ -1423,12 +1486,12 @@
     var totalPages = Math.max(1, Math.ceil(round.length/perPage));
     if(page>totalPages) page = totalPages;
     var start = (page-1)*perPage;
-    var items = round.slice(start, start+perPage).map(function(m,localI){ return matchCardHTML(cat,bracket,roundIdx,start+localI,editable,searchTerm); }).join('');
+    var items = round.slice(start, start+perPage).map(function(m,localI){ return matchCardHTML(cat,bracket,roundIdx,start+localI,editable,searchTerm,liveMode); }).join('');
     return '<div class="round-chips-wrap"><div class="round-chips">'+chips+'</div></div>' +
       '<div class="match-grid">'+items+'</div>' +
       renderPagination(page,totalPages,'bracket-page');
   }
-  function renderBracketSection(cat, editable){
+  function renderBracketSection(cat, editable, liveMode){
     if(!cat.bracket){
       return '<div class="empty-state">'+ICONS.empty+'<div>Bagan belum dibuat untuk kategori ini.</div></div>';
     }
@@ -1456,7 +1519,7 @@
         '<span class="zoom-hint">'+cat.bracket.size+' slot &middot; '+cat.bracket.rounds.length+' babak &mdash; "Lihat Semua" menyusutkan seluruh bagan jadi satu bentuk kecil, keren buat turnamen besar.</span>' +
         '</div>';
     }
-    var body = mode==='paged' ? renderBracketPaged(cat, editable, searchTerm) : renderBracketTree(cat, editable, searchTerm);
+    var body = mode==='paged' ? renderBracketPaged(cat, editable, searchTerm, liveMode) : renderBracketTree(cat, editable, searchTerm, liveMode);
     return toolbar + zoomBar + body;
   }
 
@@ -1584,18 +1647,25 @@
   function notifKindLabel(kind){
     if(kind==='archery_gift') return '🎁 KIRIMAN DATA';
     if(kind==='tournament_schedule') return '📅 JADWAL PERTANDINGAN';
+    if(kind==='team_invite') return '🤝 UNDANGAN TIM';
     return '📢 PENGUMUMAN';
   }
   function renderNotifDropdown(){
     if(!S.ui.notifOpen) return '';
     var list = S.ui.notifications;
     var body = list.length ? list.map(function(n){
-      var clickable = !!n.link_url;
+      // A team invite needs an actual accept_team_invite RPC call (which one email answers it
+      // matters), not just a navigate-on-click like every other notification kind -- so it gets
+      // its own explicit button instead of being the whole card's click target.
+      var isInvite = n.kind==='team_invite' && n.payload && n.payload.team_id;
+      var clickable = !isInvite && !!n.link_url;
       return '<div class="notif-item'+(clickable?' clickable':'')+'"'+(clickable?' data-action="open-notif-link" data-link="'+escapeHtml(n.link_url)+'"':'')+'>' +
         '<div class="notif-item-main"><div class="notif-item-kind">'+notifKindLabel(n.kind)+'</div>' +
         '<div class="notif-item-title">'+escapeHtml(n.title)+'</div>' +
         '<div class="notif-item-msg">'+escapeHtml(n.message)+'</div>' +
-        '<div class="notif-item-time">'+fmtRelativeTime(n.created_at)+'</div></div>' +
+        '<div class="notif-item-time">'+fmtRelativeTime(n.created_at)+'</div>' +
+        (isInvite ? '<button class="btn btn-sm btn-primary" style="margin-top:6px;" data-action="accept-team-invite" data-team="'+escapeHtml(n.payload.team_id)+'" data-tournament="'+escapeHtml(n.payload.tournament_id)+'" data-notif="'+n.id+'">Terima Undangan</button>' : '') +
+        '</div>' +
         '<button class="notif-item-dismiss" data-action="dismiss-notif" data-id="'+n.id+'" title="Hapus notifikasi">'+ICONS.close+'</button>' +
         '</div>';
     }).join('') : '<div class="notif-empty">Belum ada notifikasi.</div>';
@@ -1630,7 +1700,7 @@
     if(!cat) return '<div class="panel empty-state">'+ICONS.empty+'<div>Belum ada kategori turnamen. Buat kategori baru untuk mulai.</div></div>';
     var tabs = [['ringkasan','Ringkasan'],['pengaturan','Pengaturan'],['tim','Tim']];
     if(cat.format==='groups') tabs.push(['grup','Grup']);
-    tabs.push(['bagan','Bagan']);
+    tabs.push(['bagan','Bagan'], ['live','Bagan Live']);
     var nav = tabs.map(function(t){
       return '<button class="subnav-btn '+(S.ui.adminTab===t[0]?'active':'')+'" data-action="admin-tab" data-tab="'+t[0]+'">'+t[1]+'</button>';
     }).join('');
@@ -1640,6 +1710,7 @@
     else if(S.ui.adminTab==='tim') body = renderAdminTim(cat);
     else if(S.ui.adminTab==='grup') body = renderAdminGrup(cat);
     else if(S.ui.adminTab==='bagan') body = renderAdminBagan(cat);
+    else if(S.ui.adminTab==='live') body = renderBaganLive(cat);
     return '<div class="subnav">'+nav+'</div>' + body;
   }
   function renderAdminRingkasan(){
@@ -1830,7 +1901,7 @@
       '<button class="subnav-btn '+(S.ui.playerTab==='daftar'?'active':'')+'" data-action="player-tab" data-tab="daftar">Daftar Tim</button>' +
       '<button class="subnav-btn '+(S.ui.playerTab==='bagan'?'active':'')+'" data-action="player-tab" data-tab="bagan">Bagan Live</button>' +
       '</div>';
-    var body = S.ui.playerTab==='daftar' ? renderPlayerDaftar(cat) : renderPlayerBagan(cat);
+    var body = S.ui.playerTab==='daftar' ? renderPlayerDaftar(cat) : renderBaganLive(cat);
     return nav + body;
   }
   function verifyCard(key, title, inputHtml){
@@ -1875,11 +1946,18 @@
         var scheduleLine = (nextMatch && nextMatch.scheduledDate)
           ? '<div class="hint" style="margin-top:2px;">📅 '+nextMatch.roundLabel+' vs '+escapeHtml(nextMatch.opponent)+' &mdash; '+escapeHtml(fmtMatchDate(nextMatch.scheduledDate, nextMatch.scheduledTime))+'</div>'
           : (nextMatch ? '<div class="hint" style="margin-top:2px;">'+nextMatch.roundLabel+' vs '+escapeHtml(nextMatch.opponent)+' &mdash; jadwal belum ditentukan panitia.</div>' : '');
+        var p2 = t.players[1] || {};
+        var reinviteBtn = '<button class="btn btn-sm" data-action="reinvite-partner" data-team="'+t.id+'" style="margin-left:6px;">Undang Ulang</button>';
+        var partnerLine = '';
+        if(p2.inviteStatus==='accepted') partnerLine = '<div class="hint" style="margin-top:2px;">🤝 Partner sudah bergabung.</div>';
+        else if(p2.inviteStatus==='pending') partnerLine = '<div class="hint" style="margin-top:2px;">🤝 Menunggu partner menerima undangan.'+reinviteBtn+'</div>';
+        else if(p2.inviteStatus==='no_account') partnerLine = '<div class="hint" style="margin-top:2px;color:#e5484d;">🤝 Partner belum punya akun di sini.'+reinviteBtn+'</div>';
+        else partnerLine = '<div class="hint" style="margin-top:2px;color:#e5484d;">🤝 Undangan partner belum terkirim.'+reinviteBtn+'</div>';
         return '<div class="my-team-row" style="flex-direction:column;align-items:stretch;gap:4px;">' +
           '<div style="display:flex;justify-content:space-between;align-items:center;">' +
           '<span>'+escapeHtml(t.name)+' '+statusPill(t.status)+'</span>' +
           (t.status==='active' && S.registrationOpen ? '<button class="btn btn-sm btn-danger" data-action="withdraw-self-team" data-team="'+t.id+'">Batalkan</button>' : '') +
-          '</div>' + scheduleLine +
+          '</div>' + scheduleLine + partnerLine +
           '</div>';
       }).join('') + '</div></div>') : '';
 
@@ -1935,9 +2013,31 @@
       '</div>';
     return form;
   }
-  function renderPlayerBagan(cat){
-    return '<div class="panel"><div class="panel-head"><div><div class="panel-title">Bagan Live — '+escapeHtml(cat.name)+'</div><div class="panel-desc">Bagan diperbarui otomatis mengikuti pengaturan panitia.</div></div></div>' +
-      renderBracketSection(cat, false) + '</div>';
+  // Shared by both admin's "Bagan Live" tab and player's "Bagan Live" tab -- isAdminView()
+  // decides which controls show, same as everywhere else in this app. Before a bracket exists,
+  // shows the growing list of registrations instead of an empty state -- registration doesn't
+  // wait on the bracket being built, so this is "genuinely live" from the very first signup.
+  function renderBaganLive(cat){
+    if(!cat.bracket){
+      var activeTeams = cat.teams.filter(function(t){ return t.status==='active'; })
+        .slice().sort(function(a,b){ return b.createdAt - a.createdAt; });
+      var rows = activeTeams.map(function(t, idx){
+        return '<div class="live-reg-row"><span class="live-reg-num mono">#'+(activeTeams.length-idx)+'</span>' +
+          '<div class="live-reg-team"><div class="live-reg-name">'+escapeHtml(t.name)+'</div>' +
+          '<div class="live-reg-players">'+escapeHtml(t.players[0].name)+' &amp; '+escapeHtml(t.players[1].name)+'</div></div>' +
+          '<span class="live-reg-time">'+fmtRelativeTime(t.createdAt)+'</span></div>';
+      }).join('');
+      return '<div class="panel">' +
+        '<div class="panel-head"><div><div class="panel-title">Bagan Live</div><div class="panel-desc">Bagan belum disusun panitia &mdash; ini daftar tim yang udah mendaftar, apdet otomatis tiap ada pendaftar baru.</div></div></div>' +
+        (activeTeams.length ? '<div class="live-reg-list">'+rows+'</div>' : '<div class="empty-state">'+ICONS.empty+'<div>Belum ada tim yang mendaftar.</div></div>') +
+        '</div>';
+    }
+    return '<div class="panel">' +
+      '<div class="panel-head"><div><div class="panel-title">Bagan Live</div><div class="panel-desc">'+
+      (isAdminView() ? 'Atur jadwal &amp; menangkan pertandingan langsung dari sini.' : 'Klik pertandingan tim lo buat submit skor begitu selesai main.')+
+      '</div></div></div>' +
+      renderBracketSection(cat, isAdminView(), true) +
+      '</div>';
   }
 
   /* ---------------- DRAWER / TOASTS / MODAL ---------------- */
@@ -2096,12 +2196,28 @@
   // than one over time"), this was the only piece actually missing: a place to see/pick/create
   // among them instead of the app just always grabbing "the one most-recently-created" tournament.
   function renderCupSwitcher(){
-    var list = S.ui.cupList;
+    var all = S.ui.cupList;
+    var archivedCount = all.filter(function(c){ return c.archived_at; }).length;
+    var list = all.filter(function(c){ return S.ui.showArchivedCups ? !!c.archived_at : !c.archived_at; });
     var cards = list.map(function(c){
-      return '<button class="cat-summary-card cup-card" data-action="open-cup" data-id="'+c.id+'">' +
+      var archived = !!c.archived_at;
+      // A <div> here, not a <button> -- the archive/delete buttons inside it need their OWN
+      // data-action to take precedence over the card's "open-cup" (nested <button> elements
+      // aren't valid HTML and browsers mangle them; the click-delegation's closest() already
+      // makes an inner button win over an outer div's data-action, no nesting needed).
+      var adminActions = isAdminView() ? (
+        '<div class="cup-card-actions">' +
+        (archived
+          ? '<button class="btn btn-sm" data-action="unarchive-cup" data-id="'+c.id+'">Buka Arsip</button>'
+          : '<button class="btn btn-sm" data-action="archive-cup" data-id="'+c.id+'">Arsipkan</button>') +
+        '<button class="btn btn-sm btn-danger" data-action="delete-cup" data-id="'+c.id+'">Hapus</button>' +
+        '</div>'
+      ) : '';
+      return '<div class="cat-summary-card cup-card" data-action="open-cup" data-id="'+c.id+'">' +
         '<div class="cat-summary-title">'+escapeHtml(c.name)+'</div>' +
-        '<div class="cat-summary-meta">'+(c.registration_open ? '<span class="tag tag-open">Pendaftaran dibuka</span>' : '<span class="tag">Pendaftaran ditutup</span>')+'</div>' +
-        '</button>';
+        '<div class="cat-summary-meta">'+(archived ? '<span class="tag">Diarsipkan</span>' : (c.registration_open ? '<span class="tag tag-open">Pendaftaran dibuka</span>' : '<span class="tag">Pendaftaran ditutup</span>'))+'</div>' +
+        adminActions +
+        '</div>';
     }).join('');
     var createForm = isAdminView() ? (
       '<div class="panel" style="margin-top:18px;"><div class="panel-head"><div><div class="panel-title">Buat Cup Baru</div>' +
@@ -2112,12 +2228,13 @@
       '</div>'
     ) : '';
     var backBtn = S.tournamentId ? '<button class="icon-btn" data-action="close-cup-switcher">'+ICONS.close+' Kembali</button>' : '';
+    var archiveToggle = archivedCount>0 ? '<button class="icon-btn" data-action="toggle-archived-cups">'+(S.ui.showArchivedCups ? ICONS.grid+' Lihat Cup Aktif' : ICONS.grid+' Lihat Arsip ('+archivedCount+')')+'</button>' : '';
     return '<div class="shell">' +
       '<div class="topbar"><div class="brand"><div class="brand-mark">'+ICONS.shuttle+'</div>' +
-      '<div class="brand-text"><span class="brand-title">Rally Bracket</span><span class="brand-sub">Pilih Cup</span></div></div>' + backBtn + '</div>' +
-      '<div class="panel-title" style="margin:18px 2px 10px;font-size:19px;">Semua Turnamen</div>' +
-      (list.length ? '<div class="cat-summary-grid">'+cards+'</div>' : '<div class="panel empty-state">'+ICONS.empty+'<div>Belum ada turnamen'+(isAdminView()?'. Buat satu di bawah.':' yang dibuat oleh panitia.')+'</div></div>') +
-      createForm +
+      '<div class="brand-text"><span class="brand-title">Rally Bracket</span><span class="brand-sub">Pilih Cup</span></div></div>' + archiveToggle + backBtn + '</div>' +
+      '<div class="panel-title" style="margin:18px 2px 10px;font-size:19px;">'+(S.ui.showArchivedCups?'Cup Diarsipkan':'Semua Turnamen')+'</div>' +
+      (list.length ? '<div class="cat-summary-grid">'+cards+'</div>' : '<div class="panel empty-state">'+ICONS.empty+'<div>'+(S.ui.showArchivedCups ? 'Belum ada Cup yang diarsipkan.' : 'Belum ada turnamen'+(isAdminView()?'. Buat satu di bawah.':' yang dibuat oleh panitia.'))+'</div></div>') +
+      (S.ui.showArchivedCups ? '' : createForm) +
       '</div>';
   }
   /* ---------------- ROOT RENDER ---------------- */
@@ -2143,7 +2260,7 @@
     }
     var curCat = getCat();
     if(curCat && curCat.bracket){
-      var showingBagan = (isAdminView() && S.ui.adminTab==='bagan') || (!isAdminView() && S.ui.playerTab==='bagan');
+      var showingBagan = (isAdminView() && (S.ui.adminTab==='bagan' || S.ui.adminTab==='live')) || (!isAdminView() && S.ui.playerTab==='bagan');
       if(showingBagan) layoutBracketZoom(curCat);
     }
   }
@@ -2236,9 +2353,17 @@
     var cat = S.categories.filter(function(c){ return c.id === (val('regCategorySelect') || getCat().id); })[0] || getCat();
     if(!cat){ toast('Belum ada kategori untuk didaftari.', 'error'); return; }
     // Dedupe client-side: one registration per user per category (RLS doesn't enforce this for
-    // v1, per the task's own call -- this is a UX guard, not a security boundary).
-    var already = cat.teams.some(function(t){ return t.registeredBy && t.registeredBy===S.currentUserId; });
+    // v1, per the task's own call -- this is a UX guard, not a security boundary). Admin is
+    // exempt -- they legitimately add teams on other people's behalf.
+    var already = !S.isAdmin && cat.teams.some(function(t){ return t.registeredBy && t.registeredBy===S.currentUserId; });
     if(already){ toast('Anda sudah mendaftarkan tim di kategori ini.', 'error'); return; }
+    // Someone who already accepted a partner invite elsewhere in this category is already
+    // committed to that team -- same one-team-per-person rule as above, just checked against
+    // players[1].userId (set by accept_team_invite) instead of registeredBy.
+    var alreadyPartner = !S.isAdmin && cat.teams.some(function(t){
+      return t.players[1] && t.players[1].userId===S.currentUserId && t.players[1].inviteStatus==='accepted';
+    });
+    if(alreadyPartner){ toast('Anda sudah jadi partner di tim lain pada kategori ini.', 'error'); return; }
     var teamName = val('teamNameInput').trim();
     var p1n = val('p1NameInput').trim(), p1e = val('p1EmailInput').trim();
     var p2n = val('p2NameInput').trim(), p2e = val('p2EmailInput').trim();
@@ -2271,10 +2396,24 @@
       S.ui.registrationChecks.email = false;
       S.ui.registrationChecks.partnerEmail = false;
       toast('Tim "'+teamName+'" berhasil didaftarkan — semua verifikasi lengkap!');
+      render();
+      // Fires after the team already exists (the invite links to team.id) -- doesn't block the
+      // registration itself on whether the partner has an account or the RPC round-trip.
+      var inviteStatus = await invitePartner(team.id, p2e);
+      if(inviteStatus==='sent'){
+        team.players[1].inviteStatus = inviteStatus;
+        toast('Undangan dikirim ke partner via notifikasi.');
+      } else if(inviteStatus==='no_account'){
+        team.players[1].inviteStatus = inviteStatus;
+        toast('Partner belum punya akun di sini -- minta dia daftar dulu, lalu undang ulang.', 'error');
+      } else {
+        toast('Tim terdaftar, tapi undangan partner gagal terkirim -- coba "Undang Ulang" di panel Tim Saya.', 'error');
+      }
+      render();
     }catch(e){
       toast('Gagal mendaftar: '+e.message, 'error');
+      render();
     }
-    render();
   }
 
   /* ---------------- EVENT DELEGATION ---------------- */
@@ -2289,11 +2428,18 @@
     'create-tournament':1, 'delete-dummy-teams':1, 'edit-slot':1, 'save-slot-editor':1,
     'close-slot-editor':1, 'edit-team':1, 'save-team-editor':1, 'close-team-editor':1,
     'save-match-schedule':1, 'switch-view':1, 'open-verify-detail':1, 'close-verify-detail':1,
-    'disqualify-from-verify':1
+    'disqualify-from-verify':1, 'archive-cup':1, 'unarchive-cup':1, 'delete-cup':1
   };
   app.addEventListener('click', function(e){
     var btn = e.target.closest('[data-action]');
     if(!btn) return;
+    // A plain form control clicked just to focus/use it (the match editor's date/time/score
+    // inputs, the W.O. checkbox's label) has no data-action of its own, so it was bubbling up to
+    // whatever ANCESTOR happens to have one -- for score/schedule inputs, that's the match card's
+    // own "open-match-editor" toggle, so clicking into the date field to set it closed the whole
+    // editor immediately. Only a control that owns a data-action ITSELF should ever act; one just
+    // bubbling up from a control the user was actually trying to type/click into should not.
+    if(btn !== e.target && /^(INPUT|SELECT|TEXTAREA|LABEL)$/.test(e.target.tagName)) return;
     var action = btn.dataset.action;
     if(ADMIN_ONLY_ACTIONS[action] && !S.isAdmin) return;
     var cat = getCat();
@@ -2326,6 +2472,47 @@
         S.ui.showCupSwitcher = false;
         render();
         return;
+      case 'toggle-archived-cups':
+        S.ui.showArchivedCups = !S.ui.showArchivedCups;
+        render();
+        return;
+      case 'archive-cup': {
+        var archiveId = btn.dataset.id;
+        openConfirm('Arsipkan Cup ini? Cup gak akan muncul lagi di daftar utama, tapi datanya tetap aman dan bisa dibuka lagi lewat "Lihat Arsip".', function(){
+          supabase.from('tournaments').update({ archived_at: new Date().toISOString() }).eq('id', archiveId).then(function(res){
+            if(res.error){ toast('Gagal mengarsipkan: '+res.error.message, 'error'); return; }
+            toast('Cup diarsipkan.');
+            loadCupList().then(render);
+          });
+        });
+        return;
+      }
+      case 'unarchive-cup': {
+        var unarchiveId = btn.dataset.id;
+        supabase.from('tournaments').update({ archived_at: null }).eq('id', unarchiveId).then(function(res){
+          if(res.error){ toast('Gagal membuka arsip: '+res.error.message, 'error'); return; }
+          toast('Cup diaktifkan kembali.');
+          loadCupList().then(render);
+        });
+        return;
+      }
+      case 'delete-cup': {
+        var deleteId = btn.dataset.id;
+        var deleteCup = S.ui.cupList.filter(function(c){ return c.id===deleteId; })[0];
+        openConfirm('Hapus permanen Cup "'+(deleteCup?deleteCup.name:'')+'" beserta seluruh tim, kategori, dan bagannya? Ini gak bisa dibatalkan.', function(){
+          supabase.from('tournaments').delete().eq('id', deleteId).then(function(res){
+            if(res.error){ toast('Gagal menghapus: '+res.error.message, 'error'); return; }
+            toast('Cup dihapus.');
+            if(S.tournamentId===deleteId){
+              if(realtimeChannel){ supabase.removeChannel(realtimeChannel); realtimeChannel = null; }
+              S.tournamentId = null;
+              setTournamentIdInUrl(null);
+            }
+            loadCupList().then(render);
+          });
+        });
+        return;
+      }
       case 'select-category':
         S.activeCategoryId = btn.dataset.id;
         S.ui.adminTab = 'ringkasan';
@@ -2640,6 +2827,40 @@
         queueCloudSync();
         break;
       }
+      case 'submit-player-score': {
+        var lr = parseInt(btn.dataset.round,10), li = parseInt(btn.dataset.idx,10);
+        var bracketL = cat.bracket;
+        var mL = bracketL.rounds[lr][li];
+        var teamAL = teamById(cat, mL.teamAId), teamBL = teamById(cat, mL.teamBId);
+        if(!teamAL || !teamBL || mL.winnerId || mL.isBye) return;
+        if(!(isMyTeam(teamAL) || isMyTeam(teamBL))) return; // stale button after a re-render elsewhere; nothing to do
+        var saL = document.getElementById('liveScoreA_'+lr+'-'+li);
+        var sbL = document.getElementById('liveScoreB_'+lr+'-'+li);
+        var scoreAL = saL && saL.value!=='' ? parseInt(saL.value,10) : NaN;
+        var scoreBL = sbL && sbL.value!=='' ? parseInt(sbL.value,10) : NaN;
+        if(isNaN(scoreAL) || isNaN(scoreBL) || scoreAL===scoreBL){
+          toast('Isi skor kedua tim -- gak boleh sama, harus ada yang menang.', 'error');
+          return;
+        }
+        // Applies the local mutation only AFTER the server confirms it -- unlike admin's
+        // declare-winner (queueCloudSync essentially can't fail for a valid admin session), this
+        // RPC can genuinely reject (network hiccup, ownership edge case), and there's no revert
+        // logic for setMatchWinner's next-round propagation -- easier to just not apply it
+        // optimistically than to unwind it if the write never actually landed.
+        btn.disabled = true; btn.textContent = 'Mengirim…';
+        var catIdL = cat.id;
+        submitMatchScoreCloud(catIdL, lr, li, scoreAL, scoreBL).then(function(){
+          var winnerIdL = scoreAL>scoreBL ? mL.teamAId : mL.teamBId;
+          mL.scoreA = scoreAL; mL.scoreB = scoreBL;
+          setMatchWinner(bracketL, lr, li, winnerIdL, false);
+          toast('Skor terkirim -- bagan diupdate!');
+          render();
+        }).catch(function(e){
+          toast('Gagal mengirim skor: '+e.message, 'error');
+          render();
+        });
+        return;
+      }
       case 'save-match-schedule': {
         var sr = parseInt(btn.dataset.round,10), si = parseInt(btn.dataset.idx,10);
         var dateInput = document.getElementById('scheduleDate_'+sr+'-'+si);
@@ -2715,6 +2936,21 @@
         if(notifLink) window.location.href = notifLink;
         return;
       }
+      case 'accept-team-invite': {
+        var inviteTeamId = btn.dataset.team, inviteTournamentId = btn.dataset.tournament, inviteNotifId = btn.dataset.notif;
+        btn.disabled = true; btn.textContent = 'Memproses…';
+        supabase.rpc('accept_team_invite', { p_team_id: inviteTeamId }).then(function(res){
+          if(res.error){ toast('Gagal menerima undangan: '+res.error.message, 'error'); render(); return; }
+          if(!res.data){ toast('Undangan sudah tidak berlaku (email tidak cocok, atau tim sudah dihapus).', 'error'); render(); return; }
+          toast('Berhasil gabung tim!');
+          S.ui.notifications = S.ui.notifications.filter(function(n){ return n.id!==inviteNotifId; });
+          S.ui.notifOpen = false;
+          supabase.from('notifications').delete().eq('id', inviteNotifId).then(function(){});
+          if(inviteTournamentId && inviteTournamentId!==S.tournamentId) switchToTournament(inviteTournamentId);
+          else render();
+        });
+        return;
+      }
       case 'dismiss-notif': {
         var dismissId = btn.dataset.id;
         S.ui.notifications = S.ui.notifications.filter(function(n){ return n.id!==dismissId; });
@@ -2760,6 +2996,21 @@
           }catch(e){
             toast('Gagal membatalkan: '+e.message, 'error');
           }
+          render();
+        });
+        return;
+      }
+      case 'reinvite-partner': {
+        var reinviteTeamId = btn.dataset.team;
+        var reinviteCat = getCat();
+        var reinviteTeam = reinviteCat ? teamById(reinviteCat, reinviteTeamId) : null;
+        if(!reinviteTeam || !reinviteTeam.players[1]) return;
+        var reinviteEmail = reinviteTeam.players[1].email;
+        invitePartner(reinviteTeamId, reinviteEmail).then(function(status){
+          if(!status){ toast('Gagal mengirim undangan.', 'error'); return; }
+          reinviteTeam.players[1].inviteStatus = status;
+          if(status==='sent') toast('Undangan dikirim ulang ke partner via notifikasi.');
+          else toast('Partner masih belum punya akun di sini.', 'error');
           render();
         });
         return;
@@ -2864,16 +3115,18 @@
     subscribeNotifications();
     subscribeProfile();
 
-    // ?t=<id> in the URL picks a specific Cup directly (a bookmark/shared link). With none, a
-    // single existing Cup opens automatically (nothing to choose between); zero or multiple Cups
-    // fall through to the switcher instead of silently guessing "the most recent one".
+    // ?t=<id> in the URL picks a specific Cup directly (a bookmark/shared link -- this works even
+    // for an archived one, since someone sharing that link clearly means to open it). With none, a
+    // single existing ACTIVE Cup opens automatically (nothing to choose between); zero or multiple
+    // active Cups fall through to the switcher instead of silently guessing "the most recent one".
     await loadCupList();
     var urlId = getTournamentIdFromUrl();
+    var activeCups = S.ui.cupList.filter(function(c){ return !c.archived_at; });
     if(urlId && S.ui.cupList.some(function(c){ return c.id===urlId; })){
       var found = await loadTournament(urlId);
       if(found) subscribeRealtime();
-    } else if(S.ui.cupList.length===1){
-      var found2 = await loadTournament(S.ui.cupList[0].id);
+    } else if(activeCups.length===1){
+      var found2 = await loadTournament(activeCups[0].id);
       if(found2){ subscribeRealtime(); setTournamentIdInUrl(S.tournamentId); }
     } else {
       S.ui.showCupSwitcher = true;

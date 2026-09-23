@@ -9,6 +9,111 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/app-theme.css">
+<style>
+/* ---- mobile tab strip (desktop uses .dash-tabs in the header) ---- */
+.dash-tabs-mobile { display: none; }
+@media (max-width: 760px) {
+  .dash-tabs-mobile {
+    display: flex; gap: 4px; padding: 8px 5%; background: var(--surface);
+    border-bottom: 1px solid var(--border); overflow-x: auto;
+  }
+  .dash-tabs-mobile .dash-tab { flex: 1; text-align: center; white-space: nowrap; }
+  /* header was overflowing on phones (theme toggle + Keluar pushed off-screen) -- the name
+     chip collapses to just the avatar; name/plan are on the Profil tab anyway */
+  .dash-top { padding: 12px 16px; gap: 10px; flex-wrap: wrap; }
+  .dash-top > div:last-child { flex-wrap: wrap; justify-content: flex-end; margin-left: auto; }
+  .dash-top > div { gap: 8px !important; }
+  .dash-top .logo { white-space: nowrap; }
+  .dash-top .user-chip { padding: 3px; }
+  .dash-top .user-chip > div:last-child { display: none; }
+  #upgrade-btn { white-space: nowrap; }
+}
+.dash-tab { cursor: pointer; }
+
+/* ---- Profil ---- */
+.profile-card { max-width: 720px; }
+.profile-hero {
+  display: flex; align-items: center; gap: 18px; padding: 26px 24px;
+  background: linear-gradient(135deg, var(--primary-soft) 0%, var(--surface) 75%);
+  border-bottom: 1px solid var(--border);
+}
+.profile-avatar { width: 68px; height: 68px; font-size: 23px; flex-shrink: 0; }
+.profile-hero-text { min-width: 0; flex: 1; }
+.profile-name { font-family: var(--font-display); font-weight: 700; font-size: 20px; color: var(--text-main); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-email { color: var(--text-muted); font-size: 13.5px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-badges { display: flex; gap: 6px; margin-top: 9px; flex-wrap: wrap; }
+.profile-edit-btn { flex-shrink: 0; align-self: flex-start; }
+
+.profile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border); }
+.profile-item { background: var(--surface); padding: 16px 24px; min-width: 0; }
+.profile-item.wide { grid-column: 1 / -1; }
+.profile-item .k { font-size: 11.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--text-faint); margin-bottom: 5px; }
+.profile-item .v { font-size: 14.5px; color: var(--text-main); overflow-wrap: anywhere; white-space: pre-line; }
+
+.profile-form { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; padding: 22px 24px 24px; }
+.profile-form .wide { grid-column: 1 / -1; }
+.profile-form .field { margin-bottom: 12px; }
+.profile-form select, .profile-form textarea {
+  width: 100%; background: var(--surface-muted); border: 1px solid var(--border); color: var(--text-main);
+  padding: 11px 13px; border-radius: var(--radius-sm); font-size: 14px; font-family: inherit; transition: border-color var(--transition);
+}
+.profile-form textarea { min-height: 84px; resize: vertical; }
+.profile-form select:focus, .profile-form textarea:focus { outline: none; border-color: var(--primary); background: var(--surface); }
+.profile-form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px; }
+
+@media (max-width: 600px) {
+  .profile-hero { flex-wrap: wrap; padding: 20px 16px; }
+  .profile-edit-btn { width: 100%; order: 3; }
+  .profile-grid, .profile-form { grid-template-columns: 1fr; }
+  .profile-item { padding: 14px 16px; }
+  .profile-form { padding: 18px 16px 20px; }
+  .profile-form-actions .btn { flex: 1; }
+}
+
+/* ---- Leaderboard ---- */
+#tab-leaderboard { max-width: 720px; }
+.lb-me {
+  align-items: center; justify-content: space-between; gap: 16px; padding: 18px 22px; margin-bottom: 22px;
+  border-radius: var(--radius-lg); background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+  color: #fff; box-shadow: var(--shadow-soft);
+}
+.lb-me-label { font-size: 11.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; opacity: .8; }
+.lb-me-rank { font-family: var(--font-display); font-weight: 800; font-size: 26px; line-height: 1.2; }
+.lb-me-rank small, .lb-me-points small { font-size: 13px; font-weight: 500; opacity: .85; }
+.lb-me-points { font-size: 22px; font-weight: 700; white-space: nowrap; }
+
+.lb-podium { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; align-items: end; margin-bottom: 22px; }
+.lb-podium:empty { display: none; }
+.lb-podium-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-card);
+  padding: 18px 12px; text-align: center; min-width: 0;
+}
+.lb-podium-card.place-1 { padding-top: 28px; padding-bottom: 26px; border-color: var(--warning-border); background: var(--warning-bg); }
+.lb-podium-card.me { outline: 2px solid var(--primary); outline-offset: -2px; }
+.lb-medal { font-size: 28px; line-height: 1; margin-bottom: 8px; }
+.lb-podium-card.place-1 .lb-medal { font-size: 36px; }
+.lb-podium-avatar { width: 44px; height: 44px; margin: 0 auto 8px; font-size: 15px; }
+.lb-podium-name { font-weight: 600; font-size: 14px; color: var(--text-main); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lb-podium-points { font-size: 12.5px; color: var(--text-muted); margin-top: 3px; }
+
+.lb-list { display: flex; flex-direction: column; }
+.lb-row { display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--border); }
+.lb-row:last-child { border-bottom: 0; }
+.lb-row.me { background: var(--primary-soft); }
+.lb-rank { width: 34px; color: var(--text-faint); font-size: 13px; flex-shrink: 0; }
+.lb-avatar { width: 32px; height: 32px; font-size: 12px; flex-shrink: 0; }
+.lb-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; color: var(--text-main); }
+.lb-you { font-size: 10.5px; font-weight: 700; color: var(--primary-text); background: var(--primary-soft-strong); padding: 2px 6px; border-radius: 100px; margin-left: 4px; }
+.lb-points { font-size: 13.5px; color: var(--text-main); white-space: nowrap; }
+.lb-points small { color: var(--text-faint); }
+.lb-empty { padding: 22px 20px; color: var(--text-faint); text-align: center; }
+
+@media (max-width: 600px) {
+  .lb-podium { gap: 8px; }
+  .lb-podium-card { padding: 14px 6px; }
+  .lb-row { padding: 12px 14px; }
+}
+</style>
 </head>
 <body>
 
@@ -18,6 +123,7 @@
     <div class="dash-tabs">
       <div class="dash-tab active" data-tab="apps" onclick="switchTab('apps')">My Apps</div>
       <div class="dash-tab" data-tab="profil" onclick="switchTab('profil')">Profil</div>
+      <div class="dash-tab" data-tab="leaderboard" onclick="switchTab('leaderboard')">Leaderboard</div>
     </div>
   </div>
   <div style="display:flex;align-items:center;gap:14px;">
@@ -33,6 +139,14 @@
     <button class="theme-toggle" onclick="toggleTheme()" title="Ganti tema">🌙</button>
     <button class="btn btn-ghost btn-sm" onclick="logout()">Keluar</button>
   </div>
+</div>
+
+<!-- app-theme.css hides .dash-tabs under 760px, which left Profil/Leaderboard unreachable on
+     phones -- this is the same three tabs as a bottom-of-header strip, mobile only. -->
+<div class="dash-tabs-mobile">
+  <div class="dash-tab active" data-tab="apps" onclick="switchTab('apps')">My Apps</div>
+  <div class="dash-tab" data-tab="profil" onclick="switchTab('profil')">Profil</div>
+  <div class="dash-tab" data-tab="leaderboard" onclick="switchTab('leaderboard')">Leaderboard</div>
 </div>
 
 <div class="dash-body">
@@ -98,6 +212,8 @@
   </div>
 
   <!-- ===== TAB: PROFIL ===== -->
+  <!-- One card, two modes: read-only by default, "Edit profil" swaps the same card body into
+       the form (no separate display card + edit card showing the same data twice). -->
   <div id="tab-profil" class="tab-panel" style="display:none;">
     <div class="dash-head">
       <div>
@@ -105,49 +221,28 @@
         <p>Info akun lo.</p>
       </div>
     </div>
-    <div class="panel" style="max-width:440px;">
-      <div style="display:flex;align-items:center;gap:16px;padding:22px 20px;border-bottom:1px solid var(--border);">
-        <div class="avatar" id="profile-hero-avatar" style="width:56px;height:56px;font-size:19px;flex-shrink:0;">··</div>
-        <div style="min-width:0;">
-          <div style="font-family:'Sora',sans-serif;font-weight:700;font-size:17px;color:var(--text-main);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="profile-hero-name">…</div>
-          <div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap;" id="profile-hero-badges"></div>
-        </div>
-      </div>
-      <div class="panel-head"><h2>Detail akun</h2></div>
-      <table class="data-table">
-        <tr><td style="color:var(--text-faint);width:120px;">Email</td><td id="profil-email">—</td>
-          <td style="text-align:right;"><button class="btn btn-ghost btn-sm" onclick="toggleChangeEmail()">Ganti</button></td></tr>
-        <tr><td style="color:var(--text-faint);">Tgl. lahir</td><td id="profil-dob" colspan="2">—</td></tr>
-        <tr><td style="color:var(--text-faint);">No. HP</td><td id="profil-phone" colspan="2">—</td></tr>
-        <tr><td style="color:var(--text-faint);">Pembayaran</td><td id="profil-wallet" colspan="2">—</td></tr>
-        <tr><td style="color:var(--text-faint);">Member sejak</td><td id="profil-since" colspan="2">—</td></tr>
-      </table>
-      <div id="change-email-box" style="display:none;padding:14px 20px;border-top:1px solid var(--border);">
-        <div class="field">
-          <label>Email baru</label>
-          <input type="email" id="new-email-input" placeholder="email-baru@contoh.com" maxlength="200">
-        </div>
-        <div style="display:flex;gap:8px;">
-          <button class="btn btn-primary btn-sm" id="change-email-btn" onclick="submitChangeEmail()">Kirim link konfirmasi</button>
-          <button class="btn btn-ghost btn-sm" onclick="toggleChangeEmail()">Batal</button>
-        </div>
-        <p style="color:var(--text-faint);font-size:12.5px;margin-top:8px;">Link konfirmasi dikirim ke email lama & baru lo. Email cuma resmi ganti setelah lo klik link itu.</p>
-      </div>
-    </div>
 
-    <div class="panel" style="max-width:440px;margin-top:18px;">
-      <div class="panel-head"><h2>🏆 Leaderboard Bulan Ini</h2><span class="count" id="leaderboard-month-label"></span></div>
-      <table class="data-table">
-        <tbody id="leaderboard-list">
-          <tr><td style="color:var(--text-faint);padding:16px 20px;">Memuat…</td></tr>
-        </tbody>
-      </table>
-    </div>
+    <div class="panel profile-card">
+      <div class="profile-hero">
+        <div class="avatar profile-avatar" id="profile-hero-avatar">··</div>
+        <div class="profile-hero-text">
+          <div class="profile-name" id="profile-hero-name">…</div>
+          <div class="profile-email" id="profil-email">—</div>
+          <div class="profile-badges" id="profile-hero-badges"></div>
+        </div>
+        <button class="btn btn-ghost btn-sm profile-edit-btn" id="profile-edit-btn" onclick="setProfileEditing(true)">✏️ Edit profil</button>
+      </div>
 
-    <div class="panel" style="max-width:440px;margin-top:18px;">
-      <div class="panel-head"><h2>Update profil</h2></div>
-      <div style="padding:4px 2px;">
-        <div class="field">
+      <div id="profile-view" class="profile-grid">
+        <div class="profile-item"><div class="k">Tanggal lahir</div><div class="v" id="profil-dob">—</div></div>
+        <div class="profile-item"><div class="k">No. HP</div><div class="v" id="profil-phone">—</div></div>
+        <div class="profile-item"><div class="k">Pembayaran</div><div class="v" id="profil-wallet">—</div></div>
+        <div class="profile-item"><div class="k">Member sejak</div><div class="v" id="profil-since">—</div></div>
+        <div class="profile-item wide"><div class="k">Bio</div><div class="v" id="profil-bio">—</div></div>
+      </div>
+
+      <div id="profile-edit" class="profile-form" style="display:none;">
+        <div class="field wide">
           <label>Nama lengkap</label>
           <input type="text" id="edit-name" placeholder="Nama lengkap lo" maxlength="80">
         </div>
@@ -169,19 +264,40 @@
             <option value="bank">Transfer Bank</option>
           </select>
         </div>
-        <div class="field" id="wallet-number-field" style="display:none;">
-          <label id="wallet-number-label">No. HP</label>
-          <input type="text" id="edit-wallet-number" placeholder="08xxxxxxxxxx" maxlength="120">
-        </div>
         <div class="field" id="bank-name-field" style="display:none;">
           <label>Nama bank</label>
           <input type="text" id="edit-bank-name" placeholder="cth: BCA, Mandiri, BRI" maxlength="80">
         </div>
-        <div class="field">
-          <label>Bio</label>
-          <textarea id="edit-bio" placeholder="Cerita singkat tentang lo…" maxlength="300" style="min-height:70px;"></textarea>
+        <div class="field" id="wallet-number-field" style="display:none;">
+          <label id="wallet-number-label">No. HP</label>
+          <input type="text" id="edit-wallet-number" placeholder="08xxxxxxxxxx" maxlength="120">
         </div>
-        <button class="btn btn-primary btn-block" id="save-profile-btn" onclick="saveProfile()">Simpan profil</button>
+        <div class="field wide">
+          <label>Bio</label>
+          <textarea id="edit-bio" placeholder="Cerita singkat tentang lo…" maxlength="300"></textarea>
+        </div>
+        <div class="profile-form-actions wide">
+          <button class="btn btn-ghost" onclick="setProfileEditing(false)">Batal</button>
+          <button class="btn btn-primary" id="save-profile-btn" onclick="saveProfile()">Simpan profil</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== TAB: LEADERBOARD ===== -->
+  <div id="tab-leaderboard" class="tab-panel" style="display:none;">
+    <div class="dash-head">
+      <div>
+        <h1>🏆 Leaderboard</h1>
+        <p>Ranking poin member bulan <span id="leaderboard-month-label">ini</span>.</p>
+      </div>
+    </div>
+
+    <div class="lb-me" id="leaderboard-me" style="display:none;"></div>
+    <div class="lb-podium" id="leaderboard-podium"></div>
+    <div class="panel lb-panel">
+      <div class="lb-list" id="leaderboard-list">
+        <div class="lb-empty">Memuat…</div>
       </div>
     </div>
   </div>
@@ -202,10 +318,16 @@
 let CURRENT_USER = null;
 let CURRENT_PROFILE = null;
 
+const DASH_TABS = ['apps', 'profil', 'leaderboard'];
+
+// Mirrors the tab into the URL hash (replaceState, so tab clicks don't pile up history entries)
+// so dashboard.html#leaderboard / #profil deep-link and survive a reload.
 function switchTab(name) {
+  if (!DASH_TABS.includes(name)) name = 'apps';
   document.querySelectorAll('.dash-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-  document.getElementById('tab-apps').style.display = name === 'apps' ? 'block' : 'none';
-  document.getElementById('tab-profil').style.display = name === 'profil' ? 'block' : 'none';
+  DASH_TABS.forEach(t => { document.getElementById('tab-' + t).style.display = t === name ? 'block' : 'none'; });
+  history.replaceState(null, '', name === 'apps' ? location.pathname + location.search : '#' + name);
+  if (name === 'leaderboard' && CURRENT_USER) loadLeaderboard();
 }
 
 function statusLabel(s) {
@@ -417,16 +539,6 @@ function fillProfile() {
 
   document.getElementById('profil-email').textContent = CURRENT_USER.email;
 
-  // isi form update profil
-  document.getElementById('edit-name').value = CURRENT_PROFILE?.full_name || '';
-  document.getElementById('edit-dob').value = CURRENT_PROFILE?.dob || '';
-  document.getElementById('edit-phone').value = CURRENT_PROFILE?.phone || '';
-  document.getElementById('edit-wallet').value = CURRENT_PROFILE?.wallet_type || 'nothing';
-  document.getElementById('edit-wallet-number').value = CURRENT_PROFILE?.wallet_number || '';
-  document.getElementById('edit-bank-name').value = CURRENT_PROFILE?.bank_name || '';
-  updatePaymentFieldsUI();
-  document.getElementById('edit-bio').value = CURRENT_PROFILE?.bio || '';
-
   // profile hero card
   document.getElementById('profile-hero-avatar').textContent = initials(name);
   document.getElementById('profile-hero-avatar').classList.toggle('admin', CURRENT_PROFILE?.role === 'admin');
@@ -444,6 +556,26 @@ function fillProfile() {
   document.getElementById('profil-since').textContent = CURRENT_PROFILE?.created_at
     ? new Date(CURRENT_PROFILE.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
     : '—';
+  document.getElementById('profil-bio').textContent = CURRENT_PROFILE?.bio || '—';
+}
+
+// The form is only filled when entering edit mode -- fillProfile() also runs on the realtime
+// profile-UPDATE channel, and refilling the inputs there would wipe whatever's being typed.
+function setProfileEditing(on) {
+  if (on) {
+    document.getElementById('edit-name').value = CURRENT_PROFILE?.full_name || '';
+    document.getElementById('edit-dob').value = CURRENT_PROFILE?.dob || '';
+    document.getElementById('edit-phone').value = CURRENT_PROFILE?.phone || '';
+    document.getElementById('edit-wallet').value = CURRENT_PROFILE?.wallet_type || 'nothing';
+    document.getElementById('edit-wallet-number').value = CURRENT_PROFILE?.wallet_number || '';
+    document.getElementById('edit-bank-name').value = CURRENT_PROFILE?.bank_name || '';
+    document.getElementById('edit-bio').value = CURRENT_PROFILE?.bio || '';
+    updatePaymentFieldsUI();
+  }
+  document.getElementById('profile-view').style.display = on ? 'none' : 'grid';
+  document.getElementById('profile-edit').style.display = on ? 'grid' : 'none';
+  document.getElementById('profile-edit-btn').style.display = on ? 'none' : '';
+  if (on) document.getElementById('edit-name').focus();
 }
 
 const PAYMENT_METHOD_LABELS = { gopay: 'GoPay', dana: 'DANA', linkaja: 'LinkAja', bank: 'Transfer Bank' };
@@ -451,11 +583,13 @@ const PAYMENT_METHOD_LABELS = { gopay: 'GoPay', dana: 'DANA', linkaja: 'LinkAja'
 // Same "which fields does this method need" logic drives both the edit form (toggling which
 // inputs show) and the read-only summary below -- keeping them in one place means adding a new
 // payment method later can't update one without the other.
+// Plain text on purpose: the caller assigns it via textContent, so escaping here would show
+// "&amp;" etc. literally.
 function paymentSummary(profile) {
   const method = profile?.wallet_type || 'nothing';
   if (method === 'nothing') return '—';
-  if (method === 'bank') return `Transfer Bank ${escapeHtml(profile?.bank_name || '—')}: ${escapeHtml(profile?.wallet_number || '—')}`;
-  return `${PAYMENT_METHOD_LABELS[method] || method}: ${escapeHtml(profile?.wallet_number || '—')}`;
+  if (method === 'bank') return `Transfer Bank ${profile?.bank_name || '—'} · ${profile?.wallet_number || '—'}`;
+  return `${PAYMENT_METHOD_LABELS[method] || method} · ${profile?.wallet_number || '—'}`;
 }
 
 // onchange handler for #edit-wallet, and also called from fillProfile() (programmatic .value
@@ -486,34 +620,7 @@ async function saveProfile() {
   if (error) { await gembelAlert('Gagal simpan: ' + error.message); return; }
   CURRENT_PROFILE = await getProfile(CURRENT_USER.id);
   fillProfile();
-  btn.textContent = 'Tersimpan ✓';
-  setTimeout(() => { btn.textContent = 'Simpan profil'; }, 1800);
-}
-
-function toggleChangeEmail() {
-  const box = document.getElementById('change-email-box');
-  const open = box.style.display === 'block';
-  box.style.display = open ? 'none' : 'block';
-  if (!open) document.getElementById('new-email-input').value = '';
-}
-
-// Supabase's default flow requires confirming the change via links sent to both the old and new
-// address ("secure email change") before auth.users.email actually updates -- so this can't
-// optimistically update CURRENT_USER/profiles right away. public.profiles.email only catches up
-// once that's confirmed, via the on_auth_user_email_change trigger
-// (db/migrations/0034_profile_verification_fields.sql).
-async function submitChangeEmail() {
-  const input = document.getElementById('new-email-input');
-  const newEmail = input.value.trim();
-  if (!newEmail) { input.focus(); return; }
-  if (newEmail === CURRENT_USER.email) { await gembelAlert('Itu email lo yang sekarang.'); return; }
-  const btn = document.getElementById('change-email-btn');
-  btn.disabled = true; btn.textContent = 'Mengirim…';
-  const { error } = await supabase.auth.updateUser({ email: newEmail });
-  btn.disabled = false; btn.textContent = 'Kirim link konfirmasi';
-  if (error) { await gembelAlert('Gagal ganti email: ' + error.message); return; }
-  toggleChangeEmail();
-  await gembelAlert('Link konfirmasi dikirim ke ' + newEmail + ' (dan email lama lo). Email baru aktif setelah lo klik link di keduanya.');
+  setProfileEditing(false);
 }
 
 function currentMonthFirstDay() {
@@ -521,11 +628,21 @@ function currentMonthFirstDay() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
 }
 
+function lbRowHTML(row, rank, name, isMe) {
+  return `
+    <div class="lb-row${isMe ? ' me' : ''}">
+      <span class="lb-rank mono">#${rank}</span>
+      <span class="avatar lb-avatar">${escapeHtml(initials(name))}</span>
+      <span class="lb-name">${escapeHtml(name)}${isMe ? ' <span class="lb-you">LO</span>' : ''}</span>
+      <span class="lb-points mono">${Number(row.points).toLocaleString('id-ID')}<small> poin</small></span>
+    </div>`;
+}
+
 // Points are set manually by an admin (admin.html) -- this just reads and
 // ranks whatever's there for the current month.
 async function loadLeaderboard() {
   const periodMonth = currentMonthFirstDay();
-  document.getElementById('leaderboard-month-label').textContent = new Date(periodMonth).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+  document.getElementById('leaderboard-month-label').textContent = new Date(periodMonth + 'T00:00:00').toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
 
   const { data, error } = await supabase
     .from('leaderboard_points')
@@ -534,25 +651,42 @@ async function loadLeaderboard() {
     .order('points', { ascending: false });
 
   const listEl = document.getElementById('leaderboard-list');
-  if (error) { listEl.innerHTML = '<tr><td style="color:var(--text-faint);padding:16px 20px;">Gagal load leaderboard.</td></tr>'; return; }
-  if (!data || data.length === 0) { listEl.innerHTML = '<tr><td style="color:var(--text-faint);padding:16px 20px;">Belum ada data bulan ini.</td></tr>'; return; }
+  const podiumEl = document.getElementById('leaderboard-podium');
+  const meEl = document.getElementById('leaderboard-me');
+  podiumEl.innerHTML = '';
+  meEl.style.display = 'none';
+  if (error) { listEl.innerHTML = '<div class="lb-empty">Gagal load leaderboard.</div>'; return; }
+  if (!data || data.length === 0) { listEl.innerHTML = '<div class="lb-empty">🏁 Belum ada poin bulan ini. Jadi yang pertama!</div>'; return; }
 
   const userIds = [...new Set(data.map(r => r.user_id))];
   const { data: profs } = await supabase.from('profiles').select('id, full_name, email').in('id', userIds);
   const nameMap = {};
   (profs || []).forEach(p => { nameMap[p.id] = p.full_name || p.email || 'Member'; });
+  const nameOf = row => nameMap[row.user_id] || 'Member';
 
-  listEl.innerHTML = data.map((row, i) => {
-    const isMe = row.user_id === CURRENT_USER.id;
-    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`;
-    return `
-      <tr${isMe ? ' style="background:var(--primary-soft);"' : ''}>
-        <td style="width:36px;">${medal}</td>
-        <td>${escapeHtml(nameMap[row.user_id] || 'Member')}${isMe ? ' <span style="color:var(--text-faint);">(lo)</span>' : ''}</td>
-        <td style="text-align:right;font-family:var(--font-mono);">${Number(row.points).toLocaleString('id-ID')} poin</td>
-      </tr>
-    `;
-  }).join('');
+  // "Posisi lo" strip -- the one thing a member actually opens this page to check.
+  const myIdx = data.findIndex(r => r.user_id === CURRENT_USER.id);
+  meEl.style.display = 'flex';
+  meEl.innerHTML = myIdx >= 0
+    ? `<div><div class="lb-me-label">Posisi lo</div><div class="lb-me-rank">#${myIdx + 1} <small>dari ${data.length}</small></div></div>
+       <div class="lb-me-points mono">${Number(data[myIdx].points).toLocaleString('id-ID')}<small> poin</small></div>`
+    : `<div><div class="lb-me-label">Posisi lo</div><div class="lb-me-rank"><small>Belum masuk ranking bulan ini</small></div></div>`;
+
+  // Podium shows 2nd-1st-3rd left to right (1st in the middle, tallest), classic layout.
+  const medals = ['🥇', '🥈', '🥉'];
+  const top = data.slice(0, 3).map((row, i) => ({ row, i }));
+  const order = top.length === 3 ? [top[1], top[0], top[2]] : top;
+  podiumEl.innerHTML = order.map(({ row, i }) => `
+    <div class="lb-podium-card place-${i + 1}${row.user_id === CURRENT_USER.id ? ' me' : ''}">
+      <div class="lb-medal">${medals[i]}</div>
+      <div class="avatar lb-podium-avatar">${escapeHtml(initials(nameOf(row)))}</div>
+      <div class="lb-podium-name">${escapeHtml(nameOf(row))}</div>
+      <div class="lb-podium-points mono">${Number(row.points).toLocaleString('id-ID')} poin</div>
+    </div>`).join('');
+
+  const rest = data.slice(3);
+  listEl.parentElement.style.display = rest.length ? '' : 'none';
+  listEl.innerHTML = rest.map((row, i) => lbRowHTML(row, i + 4, nameOf(row), row.user_id === CURRENT_USER.id)).join('');
 }
 
 // Renders the first-party app tiles from assets/apps.config.js -- adding or
@@ -608,9 +742,8 @@ function renderBuiltinApps() {
   CURRENT_USER = ctx.user;
   CURRENT_PROFILE = ctx.profile;
   fillProfile();
-  if (location.hash === '#profil') switchTab('profil');
+  if (location.hash) switchTab(location.hash.slice(1)); // also loads the leaderboard if that's the tab
   renderBuiltinApps();
-  loadLeaderboard();
   await loadRequests();
 
   // live-update ticket status the moment an admin changes it
