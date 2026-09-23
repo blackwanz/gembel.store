@@ -299,6 +299,13 @@
   .dots{ display:flex; gap:4px; }
   .dot{ width:9px; height:9px; border-radius:50%; background:var(--border); }
   .dot.done{ background:var(--success); }
+  .dots-btn{ display:flex; align-items:center; gap:7px; border:none; background:transparent; padding:2px; cursor:pointer; }
+  .dots-count{ font-size:11px; font-weight:700; color:var(--text-faint); font-family:var(--font-mono); }
+  .dots-btn:hover .dots-count{ color:var(--text); }
+  .verify-detail-row{ display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); }
+  .verify-detail-row:last-of-type{ border-bottom:none; }
+  .verify-detail-label{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; color:var(--text-faint); }
+  .verify-detail-value{ font-size:13.5px; font-weight:600; margin-top:2px; }
 
   .status-select{ width:auto; padding:6px 8px; font-size:12px; font-weight:700; }
 
@@ -375,6 +382,11 @@
   .tag{ font-size:9.5px; font-weight:800; padding:1px 6px; border-radius:6px; text-transform:uppercase; }
   .tag-withdrawn{ background:var(--warning-bg); color:var(--warning); }
   .tag-dq{ background:var(--danger-bg); color:var(--danger); }
+  .tag-open{ background:var(--success-bg); color:var(--success); }
+
+  /* Cup switcher */
+  .cup-card{ cursor:pointer; text-align:left; font:inherit; color:inherit; width:100%; background:var(--surface); }
+  .cup-card:hover{ border-color:var(--line); }
   .mc-editor{ margin-top:8px; padding-top:8px; border-top:1px dashed var(--line); display:flex; flex-direction:column; gap:8px; }
   .mc-editor-scores{ display:flex; align-items:center; gap:8px; }
   .mc-vs{ color:var(--text-faint); font-size:11px; }
@@ -521,7 +533,8 @@
     empty: '<svg width="34" height="34" viewBox="0 0 24 24" fill="none"><path d="M4 20V10l8-6 8 6v10a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z" stroke="currentColor" stroke-width="1.6"/></svg>',
     user: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3.4" stroke="currentColor" stroke-width="1.8"/><path d="M5 20c1-4 4-6 7-6s6 2 7 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
     edit: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 20l1-4.4L15.6 5 19 8.4 8.4 19 4 20z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
-    bell: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M6 10a6 6 0 0 1 12 0c0 4.2 1.4 5.6 2 6.2a.6.6 0 0 1-.4 1H4.4a.6.6 0 0 1-.4-1c.6-.6 2-2 2-6.2Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M10 19a2 2 0 0 0 4 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>'
+    bell: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M6 10a6 6 0 0 1 12 0c0 4.2 1.4 5.6 2 6.2a.6.6 0 0 1-.4 1H4.4a.6.6 0 0 1-.4-1c.6-.6 2-2 2-6.2Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M10 19a2 2 0 0 0 4 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+    grid: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.8"/><rect x="13" y="4" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.8"/><rect x="4" y="13" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.8"/><rect x="13" y="13" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.8"/></svg>'
   };
 
   /* ---------------- NAME / DUMMY DATA POOLS ---------------- */
@@ -619,9 +632,13 @@
   function makeMatch(a,b){
     return { id: uid('m'), teamAId: a?a.id:null, teamBId: b?b.id:null, winnerId:null, scoreA:null, scoreB:null, walkover:false, isBye:false };
   }
-  function generateKnockoutBracket(teams){
+  function generateKnockoutBracket(teams, forcedSize){
     var n = teams.length;
-    var size = nextPow2(n);
+    // Manual size (from the "Ukuran Bagan" picker) lets an admin build the bracket's shape ahead
+    // of full registration -- e.g. lock in 16 slots when only 5 teams exist yet, leaving the rest
+    // null/TBD for assignSlotTeam to fill in later as more teams register. Ignored if it's
+    // actually too small to fit what's already registered (falls back to the auto size).
+    var size = (forcedSize && forcedSize>=nextPow2(n)) ? forcedSize : nextPow2(n);
     var order = seedOrder(size);
     var slots = order.map(function(seedNum){ return seedNum<=n ? teams[seedNum-1] : null; });
     var round0 = [];
@@ -694,12 +711,13 @@
     if(changed && m.winnerId) clearDownstream(bracket, r, i);
     queueCloudSync();
   }
-  function fmtMatchDate(iso){
+  function fmtMatchDate(iso, time){
     if(!iso) return '';
     var parts = iso.split('-');
     if(parts.length!==3) return iso;
     var d = new Date(Number(parts[0]), Number(parts[1])-1, Number(parts[2]));
-    return d.toLocaleDateString('id-ID', { weekday:'short', day:'numeric', month:'short', year:'numeric' });
+    var out = d.toLocaleDateString('id-ID', { weekday:'short', day:'numeric', month:'short', year:'numeric' });
+    return time ? out+', '+time : out;
   }
   // Sets/clears a match's scheduled date and notifies both teams' account holders via the site's
   // real notification system (public.notifications, same table archery gifts and admin
@@ -708,12 +726,13 @@
   // no account to notify for that side. RLS on notifications already allows any admin to insert a
   // row for ANY user_id (notifications_insert only checks the INSERTER's role, not the target),
   // so this is a plain insert, no RPC needed.
-  async function saveMatchSchedule(cat, r, i, dateStr){
+  async function saveMatchSchedule(cat, r, i, dateStr, timeStr){
     var bracket = cat.bracket;
     if(!bracket || !bracket.rounds[r] || !bracket.rounds[r][i]) return;
     var m = bracket.rounds[r][i];
     var teamA = teamById(cat, m.teamAId), teamB = teamById(cat, m.teamBId);
     m.scheduledDate = dateStr || null;
+    m.scheduledTime = dateStr ? (timeStr || null) : null; // a time with no date is meaningless
     queueCloudSync();
     render();
     if(!dateStr){ toast('Jadwal dihapus.'); return; }
@@ -730,7 +749,7 @@
       return {
         user_id: uid,
         title: '📅 Jadwal Pertandingan',
-        message: matchLabel + ' ('+cat.name+' · '+roundLabel+') dijadwalkan main '+fmtMatchDate(dateStr)+'.',
+        message: matchLabel + ' ('+cat.name+' · '+roundLabel+') dijadwalkan main '+fmtMatchDate(dateStr, timeStr)+'.',
         kind: 'tournament_schedule',
         link_url: 'tournament.html',
         payload: { tournament_id: S.tournamentId, category_id: cat.id, round: r, match: i },
@@ -871,11 +890,15 @@
       // teamEditor: {teamId} while editing an existing team's name/subtitle from the Daftar Tim list.
       slotEditor: null,
       teamEditor: null,
+      verifyDetail: null,
       // View-only for an admin: which side of the app they see (see header comment above).
       // Never used for permission checks -- those always read S.isAdmin directly.
       viewAsPlayer: false,
       notifOpen: false,
-      notifications: []
+      notifications: [],
+      cupList: [],
+      showCupSwitcher: false,
+      bracketSizeChoice: 'auto'
     }
   };
   function isAdminView(){ return S.isAdmin && !S.ui.viewAsPlayer; }
@@ -1030,8 +1053,13 @@
       if(team.registeredBy && team.registeredBy===S.currentUserId) S.ui.myTeamIds.push(team.id);
     });
   }
-  async function loadTournament(){
-    var res = await supabase.from('tournaments').select('*').order('created_at', { ascending:false }).limit(1).maybeSingle();
+  // With a specific id (the normal path now -- see the Cup switcher), loads exactly that
+  // tournament. Without one, falls back to the single most-recent row, which only still makes
+  // sense as a fallback for an old bookmark/link from before multi-Cup existed.
+  async function loadTournament(id){
+    var q = supabase.from('tournaments').select('*');
+    q = id ? q.eq('id', id) : q.order('created_at', { ascending:false }).limit(1);
+    var res = await q.maybeSingle();
     if(res.error){ console.warn('Load tournament failed:', res.error.message); return false; }
     if(!res.data) return false;
     var row = res.data;
@@ -1058,18 +1086,51 @@
     S.activeCategoryId = null;
     return true;
   }
+  // Lightweight roster for the Cup switcher -- name/status only, never the (potentially huge)
+  // `data` blob, since this just has to list every tournament, not load one.
+  async function loadCupList(){
+    var res = await supabase.from('tournaments').select('id,name,registration_open,created_at').order('created_at', { ascending:false });
+    if(res.error){ console.warn('Load cup list failed:', res.error.message); return; }
+    S.ui.cupList = res.data || [];
+  }
+  function getTournamentIdFromUrl(){
+    try{ return new URLSearchParams(window.location.search).get('t') || null; }catch(e){ return null; }
+  }
+  function setTournamentIdInUrl(id){
+    try{
+      var url = new URL(window.location.href);
+      if(id) url.searchParams.set('t', id); else url.searchParams.delete('t');
+      window.history.pushState({ tournamentId: id||null }, '', url.toString());
+    }catch(e){}
+  }
+  // The one place that moves between Cups -- tears down the old realtime channel (its filter is
+  // baked to the OLD tournament id, so it has to be replaced, not reused), loads the new
+  // tournament's data, and resets the tab state that wouldn't make sense carried over from a
+  // completely different tournament's categories.
+  async function switchToTournament(id){
+    if(realtimeChannel){ supabase.removeChannel(realtimeChannel); realtimeChannel = null; }
+    var ok = await loadTournament(id);
+    if(!ok){ toast('Turnamen tidak ditemukan.', 'error'); S.ui.showCupSwitcher = true; render(); return; }
+    subscribeRealtime();
+    setTournamentIdInUrl(S.tournamentId);
+    S.ui.showCupSwitcher = false;
+    S.ui.adminTab = 'ringkasan';
+    S.ui.playerTab = 'daftar';
+    render();
+  }
   var realtimeChannel = null;
   function subscribeRealtime(){
     if(realtimeChannel) return;
-    realtimeChannel = supabase.channel('tournament_sync_'+S.tournamentId)
-      .on('postgres_changes', { event:'*', schema:'public', table:'tournaments', filter:'id=eq.'+S.tournamentId }, async function(){
+    var subscribedId = S.tournamentId;
+    realtimeChannel = supabase.channel('tournament_sync_'+subscribedId)
+      .on('postgres_changes', { event:'*', schema:'public', table:'tournaments', filter:'id=eq.'+subscribedId }, async function(){
         var wasAdmin = S.isAdmin;
-        await loadTournament();
+        await loadTournament(subscribedId);
         S.isAdmin = wasAdmin; // loadTournament doesn't touch role
         if(!S.categories.some(function(c){ return c.id===S.activeCategoryId; })) S.activeCategoryId = S.categories[0] ? S.categories[0].id : null;
         render();
       })
-      .on('postgres_changes', { event:'*', schema:'public', table:'tournament_teams', filter:'tournament_id=eq.'+S.tournamentId }, async function(){
+      .on('postgres_changes', { event:'*', schema:'public', table:'tournament_teams', filter:'tournament_id=eq.'+subscribedId }, async function(){
         await loadTournamentTeams();
         render();
       })
@@ -1249,6 +1310,27 @@
       '<button class="page-btn" data-action="'+action+'" data-page="'+Math.min(total,current+1)+'" '+ex+' '+nextDisabled+'>›</button>' +
       '</div>';
   }
+  // Lets a player see their own next match time from the registration tab, without having to
+  // find their team somewhere inside the (possibly huge) bracket tree themselves.
+  function findTeamNextMatch(cat, teamId){
+    if(!cat.bracket) return null;
+    var rounds = cat.bracket.rounds;
+    for(var r=0;r<rounds.length;r++){
+      for(var i=0;i<rounds[r].length;i++){
+        var m = rounds[r][i];
+        if((m.teamAId===teamId || m.teamBId===teamId) && !m.winnerId && !m.isBye){
+          var oppId = m.teamAId===teamId ? m.teamBId : m.teamAId;
+          var opp = oppId ? teamById(cat, oppId) : null;
+          return {
+            roundLabel: (r===rounds.length-1) ? 'Final' : 'Babak '+(r+1),
+            opponent: opp ? opp.name : 'TBD',
+            scheduledDate: m.scheduledDate, scheduledTime: m.scheduledTime
+          };
+        }
+      }
+    }
+    return null;
+  }
   function matchCardHTML(cat, bracket, r, i, editable, searchTerm){
     var m = bracket.rounds[r][i];
     var teamA = teamById(cat, m.teamAId);
@@ -1282,15 +1364,17 @@
     var html = '<div class="match-card '+stateClass+' '+(highlight?'highlight':'')+'" id="matchcard_'+matchKey+'" '+
       (editable && teamA && teamB && !m.isBye ? 'data-action="open-match-editor" data-match="'+matchKey+'"' : '') + '>';
     html += '<div class="mc-round-tag">'+(isFinal?'Final':'Babak '+(r+1))+(m.isBye?' · BYE':'')+(m.walkover?' · W.O.':'')+'</div>';
-    if(m.scheduledDate) html += '<div class="mc-schedule-tag">📅 '+escapeHtml(fmtMatchDate(m.scheduledDate))+'</div>';
+    if(m.scheduledDate) html += '<div class="mc-schedule-tag">📅 '+escapeHtml(fmtMatchDate(m.scheduledDate, m.scheduledTime))+'</div>';
     html += rowHtml(teamA, m.winnerId && m.winnerId===m.teamAId, m.scoreA, 'A');
     html += rowHtml(teamB, m.winnerId && m.winnerId===m.teamBId, m.scoreB, 'B');
     if(editable && isOpen && teamA && teamB){
       html += '<div class="mc-editor">' +
         '<div class="field" style="margin-bottom:10px;">' +
-        '<label for="scheduleDate_'+matchKey+'">Tanggal main</label>' +
+        '<label for="scheduleDate_'+matchKey+'">Tanggal &amp; jam main</label>' +
         '<div class="field-inline"><input type="date" id="scheduleDate_'+matchKey+'" value="'+(m.scheduledDate||'')+'" style="flex:1;">' +
-        '<button class="btn btn-sm" data-action="save-match-schedule" data-round="'+r+'" data-idx="'+i+'">Simpan Jadwal &amp; Notif Pemain</button></div>' +
+        '<input type="time" id="scheduleTime_'+matchKey+'" value="'+(m.scheduledTime||'')+'" style="flex:none;width:110px;">' +
+        '</div>' +
+        '<button class="btn btn-sm btn-block" data-action="save-match-schedule" data-round="'+r+'" data-idx="'+i+'" style="margin-top:8px;">Simpan Jadwal &amp; Notif Pemain</button>' +
         '</div>' +
         '<div class="mc-editor-scores">' +
         '<input type="number" min="0" id="scoreA_'+matchKey+'" class="score-input mono" placeholder="Skor" value="'+(m.scoreA!=null?m.scoreA:'')+'">' +
@@ -1488,6 +1572,7 @@
       '<div class="brand"><div class="brand-mark">'+ICONS.shuttle+'</div>' +
       '<div class="brand-text"><span class="brand-title">'+escapeHtml(S.tournamentName||'Rally Bracket')+'</span><span class="brand-sub">Manajemen Turnamen Bulutangkis</span></div></div>' +
       roleControl +
+      '<button class="icon-btn" data-action="open-cup-switcher" title="Ganti Cup">'+ICONS.grid+' Ganti Cup</button>' +
       '<button class="icon-btn notif-bell" data-action="toggle-notif" title="Notifikasi">'+ICONS.bell+
         (notifCount>0 ? '<span class="notif-badge">'+(notifCount>9?'9+':notifCount)+'</span>' : '')+'</button>' +
       '<button class="icon-btn" data-action="toggle-rules">'+ICONS.book+' Peraturan</button>' +
@@ -1647,11 +1732,13 @@
     var pageItems = filtered.slice(start, start+perPage);
     var rows = pageItems.map(function(t){
       var checksArr = ['dob','email','payment'];
-      var dots = checksArr.map(function(k){ return '<span class="dot '+(t.checks[k]?'done':'')+'"></span>'; }).join('');
+      var checksLabel = { dob:'Tanggal Lahir', email:'Email', payment:'Pembayaran' };
+      var doneCount = checksArr.filter(function(k){ return t.checks[k]; }).length;
+      var dots = checksArr.map(function(k){ return '<span class="dot '+(t.checks[k]?'done':'')+'" title="'+checksLabel[k]+': '+(t.checks[k]?'lengkap':'belum lengkap')+'"></span>'; }).join('');
       return '<tr>' +
         '<td data-label="Tim"><span class="team-cell-name">'+escapeHtml(t.name)+'</span>'+(t.subtitle?'<span class="mc-subtitle">'+escapeHtml(t.subtitle)+'</span>':'')+'</td>' +
         '<td data-label="Pemain"><div class="players-cell">'+escapeHtml(t.players[0].name)+' <span class="em">('+escapeHtml(t.players[0].email)+')</span><br>'+escapeHtml(t.players[1].name)+' <span class="em">('+escapeHtml(t.players[1].email)+')</span></div></td>' +
-        '<td data-label="Verifikasi"><div class="dots">'+dots+'</div></td>' +
+        '<td data-label="Verifikasi"><button class="dots-btn" data-action="open-verify-detail" data-team="'+t.id+'" title="Lihat detail verifikasi (klik buat cek data GoPay/bank dll)"><div class="dots">'+dots+'</div><span class="dots-count">'+doneCount+'/'+checksArr.length+'</span></button></td>' +
         '<td data-label="Status">'+statusPill(t.status)+'</td>' +
         '<td data-label="Aksi"><div class="field-inline" style="gap:6px;">' +
         '<select class="status-select" data-team="'+t.id+'" data-action-name="team-status-select">' +
@@ -1714,10 +1801,24 @@
       '<div class="table-wrap"><table class="standings-table"><thead><tr><th>#</th><th>Tim</th><th>M</th><th>W</th><th>L</th><th>Sel.</th><th>Poin</th></tr></thead><tbody>'+rows+'</tbody></table></div>' +
       '<div class="grp-matches">'+matches+'</div></div>';
   }
+  var BRACKET_SIZE_OPTIONS = [8,16,32,64,128];
   function renderAdminBagan(cat){
+    // "Otomatis" keeps today's behavior (size derived from active team count, needs >=2 teams).
+    // Picking an explicit size instead builds an empty/TBD bracket of that shape up front --
+    // teams that exist yet get seeded in, the rest stay open for assignSlotTeam (click any
+    // TBD/bye slot) to fill in as more teams register.
+    var sizePicker = cat.format==='knockout'
+      ? '<div class="field-inline" style="align-items:center;">' +
+        '<select id="bracketSizeSelect" data-action-name="bracket-size-select" style="width:auto;">' +
+        '<option value="auto" '+(S.ui.bracketSizeChoice==='auto'?'selected':'')+'>Otomatis (sesuai tim aktif)</option>' +
+        BRACKET_SIZE_OPTIONS.map(function(s){ return '<option value="'+s+'" '+(S.ui.bracketSizeChoice===String(s)?'selected':'')+'>'+s+' slot (kosongan)</option>'; }).join('') +
+        '</select>' +
+        '<button class="btn" data-action="generate-bracket">'+(cat.bracket?'Buat Ulang':'Buat Bagan')+'</button>' +
+        '</div>'
+      : '';
     return '<div class="panel">' +
-      '<div class="panel-head"><div><div class="panel-title">Bagan Pertandingan</div><div class="panel-desc">Klik pertandingan untuk memasukkan skor dan menentukan pemenang.</div></div>' +
-      (cat.format==='knockout' ? '<button class="btn" data-action="generate-bracket">'+(cat.bracket?'Buat Ulang':'Buat Bagan')+'</button>' : '') +
+      '<div class="panel-head"><div><div class="panel-title">Bagan Pertandingan</div><div class="panel-desc">Klik pertandingan untuk memasukkan skor dan menentukan pemenang. Klik nama tim (termasuk slot kosong/TBD) untuk menempatkan tim langsung.</div></div>' +
+      sizePicker +
       '</div>' + renderBracketSection(cat, true) + '</div>';
   }
 
@@ -1770,8 +1871,15 @@
     var alreadyRegisteredHere = myTeams.length>0;
     var myTeamsHtml = myTeams.length ? ('<div class="panel"><div class="panel-title" style="font-size:16px;">Tim Saya di Kategori Ini</div><div class="my-teams-list" style="margin-top:10px;">' +
       myTeams.map(function(t){
-        return '<div class="my-team-row"><span>'+escapeHtml(t.name)+' '+statusPill(t.status)+'</span>' +
+        var nextMatch = t.status==='active' ? findTeamNextMatch(cat, t.id) : null;
+        var scheduleLine = (nextMatch && nextMatch.scheduledDate)
+          ? '<div class="hint" style="margin-top:2px;">📅 '+nextMatch.roundLabel+' vs '+escapeHtml(nextMatch.opponent)+' &mdash; '+escapeHtml(fmtMatchDate(nextMatch.scheduledDate, nextMatch.scheduledTime))+'</div>'
+          : (nextMatch ? '<div class="hint" style="margin-top:2px;">'+nextMatch.roundLabel+' vs '+escapeHtml(nextMatch.opponent)+' &mdash; jadwal belum ditentukan panitia.</div>' : '');
+        return '<div class="my-team-row" style="flex-direction:column;align-items:stretch;gap:4px;">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+          '<span>'+escapeHtml(t.name)+' '+statusPill(t.status)+'</span>' +
           (t.status==='active' && S.registrationOpen ? '<button class="btn btn-sm btn-danger" data-action="withdraw-self-team" data-team="'+t.id+'">Batalkan</button>' : '') +
+          '</div>' + scheduleLine +
           '</div>';
       }).join('') + '</div></div>') : '';
 
@@ -1953,27 +2061,72 @@
     toast('Tim diperbarui.');
     render();
   }
-
-  /* ---------------- NO-TOURNAMENT GATES ---------------- */
-  function renderCreateTournamentForm(){
-    return '<div class="panel"><div class="panel-head"><div><div class="panel-title">Buat Turnamen</div>' +
-      '<div class="panel-desc">Belum ada turnamen. Buat satu untuk mulai menambahkan kategori dan membuka pendaftaran.</div></div></div>' +
-      '<div class="field"><label for="newTournamentName">Nama Turnamen</label>' +
-      '<div class="field-inline"><input id="newTournamentName" placeholder="cth: Turnamen Bulutangkis RW 04 2026" style="flex:1;min-width:220px;">' +
-      '<button class="btn btn-primary" data-action="create-tournament">'+ICONS.plus+' Buat Turnamen</button></div></div>' +
-      '</div>';
+  // What the Daftar Tim dots can't show: the actual dob/payment VALUES the registrant submitted,
+  // so an admin can eyeball whether a GoPay number etc. looks legit before deciding to
+  // disqualify -- a filled-in check only proves the field wasn't left empty, not that it's real.
+  function renderVerifyDetailModal(){
+    var vd = S.ui.verifyDetail;
+    if(!vd) return '';
+    var cat = getCat();
+    var team = cat ? teamById(cat, vd.teamId) : null;
+    if(!team) return '';
+    var c = team.checks;
+    var rows = [
+      ['Tanggal Lahir', c.dob, team.dob ? escapeHtml(fmtDobDisplay(team.dob)) : 'Belum diisi'],
+      ['Email', c.email, escapeHtml(team.players[0].email)+' &amp; '+escapeHtml(team.players[1].email)],
+      ['Pembayaran', c.payment, teamPaymentLabel(team)]
+    ];
+    var body = rows.map(function(r){
+      return '<div class="verify-detail-row"><span class="verify-badge '+(r[1]?'verified':'')+'">'+(r[1]?ICONS.check:ICONS.dot)+'</span>' +
+        '<div><div class="verify-detail-label">'+r[0]+'</div><div class="verify-detail-value">'+r[2]+'</div></div></div>';
+    }).join('');
+    return '<div class="modal-overlay"><div class="slot-editor-box">' +
+      '<h3 style="font-size:18px;margin-bottom:4px;">Detail Verifikasi</h3>' +
+      '<div class="hint" style="margin-bottom:14px;">'+escapeHtml(team.name)+'</div>' +
+      body +
+      '<div class="confirm-actions" style="margin-top:16px;">' +
+      '<button class="btn btn-ghost" data-action="close-verify-detail">Tutup</button>' +
+      (team.status!=='disqualified' ? '<button class="btn btn-danger" data-action="disqualify-from-verify" data-team="'+team.id+'">Diskualifikasi</button>' : '') +
+      '</div></div></div>';
   }
-  function renderNoTournamentPlayer(){
-    return '<div class="panel empty-state">'+ICONS.empty+'<div>Belum ada turnamen yang dibuat oleh panitia. Coba lagi nanti.</div></div>';
+
+  /* ---------------- CUP SWITCHER ---------------- */
+  // Multiple tournaments ("Cups") can exist and stay open at once -- the DB/RLS already allowed
+  // this from day one (db/migrations/0028_tournaments.sql's own comment: "an admin can run more
+  // than one over time"), this was the only piece actually missing: a place to see/pick/create
+  // among them instead of the app just always grabbing "the one most-recently-created" tournament.
+  function renderCupSwitcher(){
+    var list = S.ui.cupList;
+    var cards = list.map(function(c){
+      return '<button class="cat-summary-card cup-card" data-action="open-cup" data-id="'+c.id+'">' +
+        '<div class="cat-summary-title">'+escapeHtml(c.name)+'</div>' +
+        '<div class="cat-summary-meta">'+(c.registration_open ? '<span class="tag tag-open">Pendaftaran dibuka</span>' : '<span class="tag">Pendaftaran ditutup</span>')+'</div>' +
+        '</button>';
+    }).join('');
+    var createForm = isAdminView() ? (
+      '<div class="panel" style="margin-top:18px;"><div class="panel-head"><div><div class="panel-title">Buat Cup Baru</div>' +
+      '<div class="panel-desc">Turnamen baru berjalan sendiri-sendiri -- kategori, tim, dan bagannya gak nyampur sama Cup lain.</div></div></div>' +
+      '<div class="field"><label for="newTournamentName">Nama Turnamen</label>' +
+      '<div class="field-inline"><input id="newTournamentName" placeholder="cth: Basket Cup 2026" style="flex:1;min-width:220px;">' +
+      '<button class="btn btn-primary" data-action="create-tournament">'+ICONS.plus+' Buat Cup</button></div></div>' +
+      '</div>'
+    ) : '';
+    var backBtn = S.tournamentId ? '<button class="icon-btn" data-action="close-cup-switcher">'+ICONS.close+' Kembali</button>' : '';
+    return '<div class="shell">' +
+      '<div class="topbar"><div class="brand"><div class="brand-mark">'+ICONS.shuttle+'</div>' +
+      '<div class="brand-text"><span class="brand-title">Rally Bracket</span><span class="brand-sub">Pilih Cup</span></div></div>' + backBtn + '</div>' +
+      '<div class="panel-title" style="margin:18px 2px 10px;font-size:19px;">Semua Turnamen</div>' +
+      (list.length ? '<div class="cat-summary-grid">'+cards+'</div>' : '<div class="panel empty-state">'+ICONS.empty+'<div>Belum ada turnamen'+(isAdminView()?'. Buat satu di bawah.':' yang dibuat oleh panitia.')+'</div></div>') +
+      createForm +
+      '</div>';
   }
   /* ---------------- ROOT RENDER ---------------- */
   function renderApp(){
-    if(!S.tournamentId){
-      return '<div class="shell">' + renderTopbar() + (isAdminView() ? renderCreateTournamentForm() : renderNoTournamentPlayer()) + '</div>' +
-        renderRulesDrawer() + renderConfirmModal() + renderNotifDropdown();
+    if(S.ui.showCupSwitcher || !S.tournamentId){
+      return renderCupSwitcher() + renderNotifDropdown();
     }
     return '<div class="shell">' + renderTopbar() + renderCategoryTabs() + (isAdminView() ? renderAdmin() : renderPlayer()) + '</div>' +
-      renderRulesDrawer() + renderConfirmModal() + renderSlotEditorModal() + renderTeamEditorModal() + renderNotifDropdown();
+      renderRulesDrawer() + renderConfirmModal() + renderSlotEditorModal() + renderTeamEditorModal() + renderVerifyDetailModal() + renderNotifDropdown();
   }
   function render(){
     var active = document.activeElement;
@@ -2019,6 +2172,16 @@
     if(!currentUserPaymentComplete()) return '';
     if(m==='bank') return 'Transfer Bank '+escapeHtml(S.currentUserBankName)+': '+escapeHtml(S.currentUserPaymentNumber);
     return escapeHtml(PAYMENT_METHOD_LABELS[m]||m)+': '+escapeHtml(S.currentUserPaymentNumber);
+  }
+  // Admin-facing counterpart of currentUserPaymentLabel() -- reads a registered team's own
+  // paymentMethod/paymentNumber/bankName (snapshotted at registration time, see submitRegistration)
+  // instead of S.currentUser*, so the "Detail Verifikasi" modal can show what that specific
+  // registrant submitted.
+  function teamPaymentLabel(team){
+    var m = team.paymentMethod;
+    if(!m || m==='nothing' || !team.paymentNumber) return 'Belum diisi';
+    if(m==='bank') return 'Transfer Bank '+escapeHtml(team.bankName||'—')+': '+escapeHtml(team.paymentNumber);
+    return escapeHtml(PAYMENT_METHOD_LABELS[m]||m)+': '+escapeHtml(team.paymentNumber);
   }
   function fmtDobDisplay(dob){
     var d = new Date(dob+'T00:00:00');
@@ -2125,7 +2288,8 @@
     'delete-category':1, 'toggle-rules-edit':1, 'save-rules':1, 'toggle-registration':1,
     'create-tournament':1, 'delete-dummy-teams':1, 'edit-slot':1, 'save-slot-editor':1,
     'close-slot-editor':1, 'edit-team':1, 'save-team-editor':1, 'close-team-editor':1,
-    'save-match-schedule':1, 'switch-view':1
+    'save-match-schedule':1, 'switch-view':1, 'open-verify-detail':1, 'close-verify-detail':1,
+    'disqualify-from-verify':1
   };
   app.addEventListener('click', function(e){
     var btn = e.target.closest('[data-action]');
@@ -2139,12 +2303,29 @@
         return;
       case 'create-tournament': {
         var tname = val('newTournamentName').trim() || 'Turnamen Baru';
-        createTournamentAdmin(tname).then(function(ok){
-          if(ok){ subscribeRealtime(); toast('Turnamen "'+tname+'" dibuat'); }
+        if(realtimeChannel){ supabase.removeChannel(realtimeChannel); realtimeChannel = null; }
+        createTournamentAdmin(tname).then(async function(ok){
+          if(ok){
+            subscribeRealtime();
+            setTournamentIdInUrl(S.tournamentId);
+            S.ui.showCupSwitcher = false;
+            await loadCupList();
+            toast('Turnamen "'+tname+'" dibuat');
+          }
           render();
         });
         return;
       }
+      case 'open-cup':
+        switchToTournament(btn.dataset.id);
+        return;
+      case 'open-cup-switcher':
+        loadCupList().then(function(){ S.ui.showCupSwitcher = true; render(); });
+        return;
+      case 'close-cup-switcher':
+        S.ui.showCupSwitcher = false;
+        render();
+        return;
       case 'select-category':
         S.activeCategoryId = btn.dataset.id;
         S.ui.adminTab = 'ringkasan';
@@ -2210,7 +2391,17 @@
           return;
         }
         S.ui.lastDummyCount = n;
-        bulkCreateDummyTeams(cat, n);
+        // Generating used to fire instantly -- easy to fat-finger a count and end up with a pile
+        // of junk teams stacked on top of whatever's already registered (this ADDS n teams, it
+        // never replaces). Only worth confirming when there's existing data it could clutter;
+        // an empty category has nothing to lose so it skips straight to generating.
+        if(cat.teams.length > 0){
+          openConfirm('Kategori ini sudah punya '+cat.teams.length+' tim. Menambahkan '+n+' tim contoh baru di atasnya, bukan menggantikan. Lanjutkan?', function(){
+            bulkCreateDummyTeams(cat, n);
+          });
+        } else {
+          bulkCreateDummyTeams(cat, n);
+        }
         return;
       }
       case 'delete-dummy-teams': {
@@ -2249,9 +2440,19 @@
       }
       case 'generate-bracket': {
         var activeTeams = cat.teams.filter(function(t){ return t.status==='active'; });
-        if(activeTeams.length<2){ toast('Minimal 2 tim aktif diperlukan untuk membuat bagan.', 'error'); return; }
+        var chosenSize = (S.ui.bracketSizeChoice!=='auto') ? parseInt(S.ui.bracketSizeChoice,10) : null;
+        if(chosenSize){
+          var minNeeded = nextPow2(activeTeams.length);
+          if(chosenSize < minNeeded){
+            toast('Ukuran bagan kekecilan buat '+activeTeams.length+' tim aktif -- pilih minimal '+minNeeded+' slot.', 'error');
+            return;
+          }
+        } else if(activeTeams.length<2){
+          toast('Minimal 2 tim aktif buat bagan otomatis -- atau pilih ukuran bagan manual di dropdown buat bikin bagan kosong duluan.', 'error');
+          return;
+        }
         var doGen = function(){
-          cat.bracket = generateKnockoutBracket(shuffle(activeTeams));
+          cat.bracket = generateKnockoutBracket(shuffle(activeTeams), chosenSize);
           delete S.ui.bracketZoom[cat.id];
           toast('Bagan berhasil dibuat');
           S.ui.adminTab='bagan';
@@ -2332,6 +2533,23 @@
       case 'save-team-editor':
         submitTeamEditor();
         return;
+      case 'open-verify-detail':
+        S.ui.verifyDetail = { teamId: btn.dataset.team };
+        render();
+        return;
+      case 'close-verify-detail':
+        S.ui.verifyDetail = null;
+        render();
+        return;
+      case 'disqualify-from-verify': {
+        var dqTeamId = btn.dataset.team;
+        openConfirm('Diskualifikasi tim ini karena data verifikasi (GoPay/bank/dll) tidak valid?', function(){
+          setTeamStatus(cat.id, dqTeamId, 'disqualified');
+          S.ui.verifyDetail = null;
+          render();
+        });
+        return;
+      }
       case 'edit-slot':
         if(!cat.bracket) return;
         S.ui.slotEditor = { r: parseInt(btn.dataset.round,10), i: parseInt(btn.dataset.idx,10), side: btn.dataset.side };
@@ -2425,7 +2643,8 @@
       case 'save-match-schedule': {
         var sr = parseInt(btn.dataset.round,10), si = parseInt(btn.dataset.idx,10);
         var dateInput = document.getElementById('scheduleDate_'+sr+'-'+si);
-        saveMatchSchedule(cat, sr, si, dateInput ? dateInput.value : '');
+        var timeInput = document.getElementById('scheduleTime_'+sr+'-'+si);
+        saveMatchSchedule(cat, sr, si, dateInput ? dateInput.value : '', timeInput ? timeInput.value : '');
         return;
       }
       case 'save-group-match': {
@@ -2569,6 +2788,12 @@
       render();
     } else if(el.id==='regCategorySelect'){
       // no state change needed; read at submit time
+    } else if(actionName==='bracket-size-select'){
+      // Backed by state (not just read from the DOM at click time) because render() replaces
+      // this whole <select> on every re-render -- a live tournament's realtime updates fire
+      // often enough that an admin picking "16 slot" and then clicking "Buat Bagan" a moment
+      // later could otherwise silently land back on "Otomatis" with no visual warning.
+      S.ui.bracketSizeChoice = el.value;
     }
   });
 
@@ -2639,9 +2864,31 @@
     subscribeNotifications();
     subscribeProfile();
 
-    var found = await loadTournament();
-    if(found) subscribeRealtime();
+    // ?t=<id> in the URL picks a specific Cup directly (a bookmark/shared link). With none, a
+    // single existing Cup opens automatically (nothing to choose between); zero or multiple Cups
+    // fall through to the switcher instead of silently guessing "the most recent one".
+    await loadCupList();
+    var urlId = getTournamentIdFromUrl();
+    if(urlId && S.ui.cupList.some(function(c){ return c.id===urlId; })){
+      var found = await loadTournament(urlId);
+      if(found) subscribeRealtime();
+    } else if(S.ui.cupList.length===1){
+      var found2 = await loadTournament(S.ui.cupList[0].id);
+      if(found2){ subscribeRealtime(); setTournamentIdInUrl(S.tournamentId); }
+    } else {
+      S.ui.showCupSwitcher = true;
+    }
     render();
+
+    window.addEventListener('popstate', function(){
+      var id = getTournamentIdFromUrl();
+      if(id){ if(id!==S.tournamentId) switchToTournament(id); }
+      else if(S.tournamentId){
+        if(realtimeChannel){ supabase.removeChannel(realtimeChannel); realtimeChannel = null; }
+        S.tournamentId = null;
+        loadCupList().then(function(){ S.ui.showCupSwitcher = true; render(); });
+      }
+    });
   }
   boot();
 })();
