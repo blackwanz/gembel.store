@@ -26,9 +26,13 @@
  through instead of a raw insert.
 
  Admin detection is real: S.isAdmin comes from requireAuth()'s
- profile.role === 'admin', not a client-side toggle. The
- prototype's role-switch buttons are gone; the topbar shows a
- read-only badge for the role that was actually detected.
+ profile.role === 'admin', not a client-side toggle -- every admin-only
+ action and RLS policy still gates on that, never on anything below.
+ The topbar's role-switch DOES let an admin flip which UI they see
+ (S.ui.viewAsPlayer), so an admin who's also competing can use the
+ player registration/bracket views themselves -- but it only changes
+ what renders, not S.isAdmin, so it can't be used to gain or drop
+ privilege. A non-admin still gets a plain read-only "Pemain" badge.
 
  The prototype's own bracket-generation/scoring/rendering engine
  (generateKnockoutBracket, setMatchWinner, assignGroups,
@@ -175,6 +179,28 @@
   .icon-btn{ display:inline-flex; align-items:center; gap:7px; border:1px solid var(--border); background:var(--surface-strong); color:var(--text); padding:8px 13px; border-radius:999px; font-weight:700; font-size:13px; cursor:pointer; }
   .icon-btn svg{ width:16px; height:16px; flex:none; }
   .icon-btn:hover{ border-color:var(--line); }
+
+  /* Notification bell */
+  .notif-bell{ position:relative; padding:8px 10px; }
+  .notif-badge{ position:absolute; top:-4px; right:-4px; min-width:16px; height:16px; padding:0 4px; border-radius:999px; background:#e5484d; color:#fff; font-size:10px; font-weight:800; display:flex; align-items:center; justify-content:center; line-height:1; }
+  .notif-panel{ position:fixed; top:calc(76px + env(safe-area-inset-top,0px)); right:16px; width:min(380px,92vw); max-height:min(70vh,520px); background:var(--bg-elev); border:1px solid var(--border); border-radius:var(--radius-lg); box-shadow:var(--shadow); z-index:66; display:flex; flex-direction:column; opacity:0; transform:translateY(-8px); pointer-events:none; transition:opacity 0.18s ease, transform 0.18s ease; }
+  .notif-panel.open{ opacity:1; transform:translateY(0); pointer-events:auto; }
+  .notif-panel-head{ display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid var(--border); flex:none; }
+  .notif-panel-head h3{ font-size:15px; font-weight:800; margin:0; }
+  .notif-panel-body{ overflow-y:auto; padding:6px; display:flex; flex-direction:column; gap:2px; }
+  .notif-empty{ padding:26px 16px; text-align:center; color:var(--text-faint); font-size:13px; }
+  .notif-item{ display:flex; gap:6px; align-items:flex-start; padding:9px 8px; border-radius:10px; }
+  .notif-item:hover{ background:var(--surface-strong); }
+  .notif-item.clickable{ cursor:pointer; }
+  .notif-item-main{ flex:1; min-width:0; }
+  .notif-item-kind{ font-size:10px; font-weight:800; letter-spacing:0.03em; text-transform:uppercase; color:var(--text-faint); margin-bottom:2px; }
+  .notif-item-title{ font-weight:700; font-size:13.5px; }
+  .notif-item-msg{ font-size:12.5px; color:var(--text-dim); margin-top:2px; white-space:pre-wrap; overflow-wrap:break-word; }
+  .notif-item-time{ font-size:11px; color:var(--text-faint); margin-top:4px; }
+  .notif-item-dismiss{ border:none; background:transparent; padding:4px; border-radius:999px; cursor:pointer; color:var(--text-faint); flex:none; }
+  .notif-item-dismiss:hover{ color:var(--text); background:var(--border); }
+  .notif-panel-foot{ flex:none; padding:8px 12px 12px; }
+  .notif-panel-foot .btn{ width:100%; }
 
   /* Category tabs */
   .cat-tabs-row{ display:flex; align-items:center; gap:8px; overflow-x:auto; padding:2px 2px 10px; margin-bottom:10px; }
@@ -494,7 +520,8 @@
     trash: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0 1 13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     empty: '<svg width="34" height="34" viewBox="0 0 24 24" fill="none"><path d="M4 20V10l8-6 8 6v10a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z" stroke="currentColor" stroke-width="1.6"/></svg>',
     user: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3.4" stroke="currentColor" stroke-width="1.8"/><path d="M5 20c1-4 4-6 7-6s6 2 7 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
-    edit: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 20l1-4.4L15.6 5 19 8.4 8.4 19 4 20z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>'
+    edit: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 20l1-4.4L15.6 5 19 8.4 8.4 19 4 20z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
+    bell: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M6 10a6 6 0 0 1 12 0c0 4.2 1.4 5.6 2 6.2a.6.6 0 0 1-.4 1H4.4a.6.6 0 0 1-.4-1c.6-.6 2-2 2-6.2Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M10 19a2 2 0 0 0 4 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>'
   };
 
   /* ---------------- NAME / DUMMY DATA POOLS ---------------- */
@@ -535,8 +562,7 @@
     var checks = {
       dob: fullVerified || (partial && Math.random()<0.5),
       email: fullVerified || (partial && Math.random()<0.7),
-      gopay: fullVerified || (partial && Math.random()<0.4),
-      rekening: fullVerified || (partial && Math.random()<0.3)
+      payment: fullVerified || (partial && Math.random()<0.4)
     };
     var status = 'active';
     if(randomizeStatus!==false){
@@ -555,7 +581,7 @@
         { name:p2, email: randomEmail(p2), partnerVerified: checks.email }
       ],
       checks: checks,
-      dob:'', gopayNumber:'', bankName:'', bankAccount:''
+      dob:'', paymentMethod:'nothing', paymentNumber:'', bankName:''
     };
   }
 
@@ -565,6 +591,18 @@
     });
   }
   function val(id){ var el = document.getElementById(id); return el ? el.value : ''; }
+  function fmtRelativeTime(iso){
+    var d = new Date(iso);
+    if(isNaN(d.getTime())) return '';
+    var mins = Math.floor((Date.now()-d.getTime())/60000);
+    if(mins<1) return 'baru saja';
+    if(mins<60) return mins+' menit lalu';
+    var hrs = Math.floor(mins/60);
+    if(hrs<24) return hrs+' jam lalu';
+    var days = Math.floor(hrs/24);
+    if(days<7) return days+' hari lalu';
+    return d.toLocaleDateString('id-ID', { day:'numeric', month:'short', year:'numeric' });
+  }
 
   /* ---------------- BRACKET ENGINE ---------------- */
   function nextPow2(n){ var p=1; while(p<n) p*=2; return Math.max(p,2); }
@@ -803,6 +841,12 @@
     tournamentName: '',
     registrationOpen: false,
     currentUserId: null,
+    currentUserName: '',
+    currentUserEmail: '',
+    currentUserDob: '',
+    currentUserPaymentMethod: 'nothing',
+    currentUserPaymentNumber: '',
+    currentUserBankName: '',
     activeCategoryId: null,
     categories: [],
     rulesText: "PERATURAN TURNAMEN\n\n1. Sistem Pertandingan\n   - Format mengikuti pengaturan tiap kategori: gugur langsung atau fase grup dilanjutkan babak gugur.\n   - Setiap pertandingan memakai sistem rally point, best of 3 game, tiap game hingga 21 poin (deuce maksimal 30 poin).\n\n2. Kehadiran & Walkover (W.O.)\n   - Pemain wajib hadir di lapangan maksimal 15 menit setelah nama tim dipanggil.\n   - Keterlambatan lebih dari 15 menit dinyatakan kalah W.O. dan lawan otomatis melaju ke babak berikutnya.\n\n3. Pendaftaran Tim\n   - Satu tim terdiri dari 2 pemain (ganda) yang wajib mengisi data diri lengkap dan email aktif.\n   - Verifikasi tanggal lahir, email, GoPay, dan rekening bank wajib diselesaikan sebelum pendaftaran ditutup.\n   - Panitia berhak mendiskualifikasi tim jika data yang diberikan tidak valid.\n\n4. Pengunduran Diri & Diskualifikasi\n   - Tim yang mengundurkan diri sebelum bertanding dicatat sebagai W.O.; lawan melaju otomatis.\n   - Tim yang terbukti melanggar ketentuan dapat didiskualifikasi panitia kapan saja selama turnamen berlangsung.\n\n5. Perlengkapan\n   - Shuttlecock disediakan panitia, menggunakan bulu angsa standar pertandingan.\n   - Pemain wajib memakai sepatu indoor non-marking.\n\n6. Keputusan Wasit\n   - Keputusan wasit dan panitia bersifat final dan mengikat.",
@@ -819,16 +863,22 @@
       openMatch: null,
       rulesEditing: false,
       confirmOpen: false, confirmMsg: '', confirmCb: null,
-      registrationChecks: { dob:false, email:false, gopay:false, rekening:false, partnerEmail:false },
+      registrationChecks: { dob:false, email:false, payment:false, partnerEmail:false },
       myTeamIds: [],
       lastDummyCount: 16,
       // slotEditor: {r,i,side} while the "place a team directly at this bracket slot" popup is
       // open (any round, any slot state, whether the tournament is mid-progress or not).
       // teamEditor: {teamId} while editing an existing team's name/subtitle from the Daftar Tim list.
       slotEditor: null,
-      teamEditor: null
+      teamEditor: null,
+      // View-only for an admin: which side of the app they see (see header comment above).
+      // Never used for permission checks -- those always read S.isAdmin directly.
+      viewAsPlayer: false,
+      notifOpen: false,
+      notifications: []
     }
   };
+  function isAdminView(){ return S.isAdmin && !S.ui.viewAsPlayer; }
 
   function getCat(){
     for(var i=0;i<S.categories.length;i++) if(S.categories[i].id===S.activeCategoryId) return S.categories[i];
@@ -897,8 +947,8 @@
       status: p.status || 'active',
       createdAt: row.created_at ? Date.parse(row.created_at) : Date.now(),
       players: p.players || [{name:'',email:''},{name:'',email:''}],
-      checks: p.checks || { dob:false, email:false, gopay:false, rekening:false },
-      dob: p.dob||'', gopayNumber: p.gopayNumber||'', bankName: p.bankName||'', bankAccount: p.bankAccount||'',
+      checks: p.checks || { dob:false, email:false, payment:false },
+      dob: p.dob||'', paymentMethod: p.paymentMethod||'nothing', paymentNumber: p.paymentNumber||'', bankName: p.bankName||'',
       registeredBy: row.registered_by,
       categoryId: row.category_id
     };
@@ -906,7 +956,7 @@
   function teamToPayload(t){
     return {
       status: t.status, players: t.players, checks: t.checks,
-      dob: t.dob, gopayNumber: t.gopayNumber, bankName: t.bankName, bankAccount: t.bankAccount,
+      dob: t.dob, paymentMethod: t.paymentMethod, paymentNumber: t.paymentNumber, bankName: t.bankName,
       subtitle: t.subtitle || '', isDummy: !!t.isDummy, manualSeed: !!t.manualSeed
     };
   }
@@ -1425,13 +1475,50 @@
 
   /* ---------------- TOPBAR / TABS ---------------- */
   function renderTopbar(){
-    // Role is DETECTED (profile.role from requireAuth()), not chosen -- this is a read-only
-    // badge, not a switch. See boot() for where S.isAdmin/S.role actually get set.
+    // Role is DETECTED (profile.role from requireAuth()) and can't be chosen client-side. What
+    // CAN be chosen (admin only) is which UI renders -- see isAdminView() / the header comment.
+    var roleControl = S.isAdmin
+      ? '<div class="role-switch">' +
+          '<button class="role-btn '+(!S.ui.viewAsPlayer?'active':'')+'" data-action="switch-view" data-mode="admin">Admin</button>' +
+          '<button class="role-btn '+(S.ui.viewAsPlayer?'active':'')+'" data-action="switch-view" data-mode="player">Pemain</button>' +
+        '</div>'
+      : '<span class="rb-role-badge player">Pemain</span>';
+    var notifCount = S.ui.notifications.length;
     return '<div class="topbar">' +
       '<div class="brand"><div class="brand-mark">'+ICONS.shuttle+'</div>' +
       '<div class="brand-text"><span class="brand-title">'+escapeHtml(S.tournamentName||'Rally Bracket')+'</span><span class="brand-sub">Manajemen Turnamen Bulutangkis</span></div></div>' +
-      '<span class="rb-role-badge '+(S.isAdmin?'':'player')+'">'+(S.isAdmin?'Admin':'Pemain')+'</span>' +
+      roleControl +
+      '<button class="icon-btn notif-bell" data-action="toggle-notif" title="Notifikasi">'+ICONS.bell+
+        (notifCount>0 ? '<span class="notif-badge">'+(notifCount>9?'9+':notifCount)+'</span>' : '')+'</button>' +
       '<button class="icon-btn" data-action="toggle-rules">'+ICONS.book+' Peraturan</button>' +
+      '</div>';
+  }
+  // kind/link_url come from db/migrations/0031_archery_gifts.sql -- same notifications table
+  // dashboard.html renders, so a match-schedule or archery-gift notice shows the same label/link
+  // here as it does there, instead of looking like a plain-text mismatch between the two pages.
+  function notifKindLabel(kind){
+    if(kind==='archery_gift') return '🎁 KIRIMAN DATA';
+    if(kind==='tournament_schedule') return '📅 JADWAL PERTANDINGAN';
+    return '📢 PENGUMUMAN';
+  }
+  function renderNotifDropdown(){
+    if(!S.ui.notifOpen) return '';
+    var list = S.ui.notifications;
+    var body = list.length ? list.map(function(n){
+      var clickable = !!n.link_url;
+      return '<div class="notif-item'+(clickable?' clickable':'')+'"'+(clickable?' data-action="open-notif-link" data-link="'+escapeHtml(n.link_url)+'"':'')+'>' +
+        '<div class="notif-item-main"><div class="notif-item-kind">'+notifKindLabel(n.kind)+'</div>' +
+        '<div class="notif-item-title">'+escapeHtml(n.title)+'</div>' +
+        '<div class="notif-item-msg">'+escapeHtml(n.message)+'</div>' +
+        '<div class="notif-item-time">'+fmtRelativeTime(n.created_at)+'</div></div>' +
+        '<button class="notif-item-dismiss" data-action="dismiss-notif" data-id="'+n.id+'" title="Hapus notifikasi">'+ICONS.close+'</button>' +
+        '</div>';
+    }).join('') : '<div class="notif-empty">Belum ada notifikasi.</div>';
+    return '<div class="drawer-overlay open" data-action="toggle-notif"></div>' +
+      '<div class="notif-panel open">' +
+      '<div class="notif-panel-head"><h3>Notifikasi</h3><button class="icon-btn" data-action="toggle-notif">'+ICONS.close+'</button></div>' +
+      '<div class="notif-panel-body">'+body+'</div>' +
+      (list.length ? '<div class="notif-panel-foot"><button class="btn btn-ghost btn-sm" data-action="clear-all-notif">Hapus semua</button></div>' : '') +
       '</div>';
   }
   function renderCategoryTabs(){
@@ -1475,7 +1562,7 @@
     S.categories.forEach(function(c){
       c.teams.forEach(function(t){
         totalTeams++;
-        var allDone = t.checks.dob && t.checks.email && t.checks.gopay && t.checks.rekening;
+        var allDone = t.checks.dob && t.checks.email && t.checks.payment;
         if(allDone) fullVerified++; else pendingVerif++;
       });
     });
@@ -1559,7 +1646,7 @@
     var start = (page-1)*perPage;
     var pageItems = filtered.slice(start, start+perPage);
     var rows = pageItems.map(function(t){
-      var checksArr = ['dob','email','gopay','rekening'];
+      var checksArr = ['dob','email','payment'];
       var dots = checksArr.map(function(k){ return '<span class="dot '+(t.checks[k]?'done':'')+'"></span>'; }).join('');
       return '<tr>' +
         '<td data-label="Tim"><span class="team-cell-name">'+escapeHtml(t.name)+'</span>'+(t.subtitle?'<span class="mc-subtitle">'+escapeHtml(t.subtitle)+'</span>':'')+'</td>' +
@@ -1654,7 +1741,23 @@
       '<button class="btn btn-sm btn-block" data-action="verify-check" data-check="'+key+'">Verifikasi</button>' +
       '</div>';
   }
+  // dob/payment cards: no input, no button -- checked reflects the account profile as-is. If
+  // it's missing, the only way to fix it is a real trip to the profile page, not a client-side
+  // "verify" click that can't actually change what's in the database.
+  function profileCheckCard(key, title, valueText){
+    var checked = S.ui.registrationChecks[key];
+    var body = checked
+      ? '<div class="hint">'+valueText+'</div>'
+      : '<div class="hint" style="color:#e5484d;">Belum diisi di profil.</div>' +
+        '<a class="btn btn-sm btn-block" href="dashboard.html#profil" target="_blank" style="margin-top:8px;">Lengkapi di Profil</a>';
+    return '<div class="verify-card">' +
+      '<div class="verify-card-head"><span class="verify-card-title">'+title+'</span>' +
+      '<span class="verify-badge '+(checked?'verified':'')+'" id="badge_'+key+'">'+(checked?ICONS.check:ICONS.dot)+'</span></div>' +
+      body +
+      '</div>';
+  }
   function renderPlayerDaftar(cat){
+    syncProfileChecks();
     var catSelect = '';
     if(S.categories.length>1){
       catSelect = '<div class="field" style="margin-bottom:14px;"><label for="regCategorySelect">Daftar ke Kategori</label>' +
@@ -1710,11 +1813,11 @@
       '<button class="btn btn-sm" data-action="verify-partner-email" style="margin-top:8px;">Kirim &amp; Verifikasi Email Partner</button>' +
       '</div>' +
       '<div style="margin-top:16px;"><label style="font-size:12px;font-weight:700;color:var(--text-dim);">Verifikasi Tambahan</label>' +
+      '<div class="hint" style="margin-top:4px;">Tanggal lahir &amp; pembayaran diambil langsung dari Profil akun lo &mdash; lengkapi di sana kalau belum kecentang.</div>' +
       '<div class="verify-grid" style="margin-top:8px;">' +
-      verifyCard('dob','Tanggal Lahir','<input type="date" id="dobInput">') +
-      verifyCard('email','Email Tim','<div class="hint">Mengecek format &amp; keaktifan kedua email di atas.</div>') +
-      verifyCard('gopay','GoPay','<input id="gopayInput" placeholder="Nomor GoPay">') +
-      verifyCard('rekening','Rekening Bank','<input id="rekeningInput" placeholder="Nama Bank &amp; No. Rekening">') +
+      profileCheckCard('dob','Tanggal Lahir', S.currentUserDob ? escapeHtml(fmtDobDisplay(S.currentUserDob)) : '') +
+      profileCheckCard('payment','Pembayaran', currentUserPaymentLabel()) +
+      verifyCard('email','Email Tim','<div class="hint">Mengecek format email Player 1 &amp; Player 2 di atas.</div>') +
       '</div></div>' +
       '<div class="status-bar" id="regStatusBar" style="margin-top:16px;"><span id="regStatusText">Lengkapi data &amp; verifikasi di atas.</span></div>' +
       '<button class="btn btn-primary btn-block" data-action="submit-registration" style="margin-top:14px;">Daftar Sekarang</button>' +
@@ -1805,8 +1908,8 @@
       var newTeam = {
         name: name, subtitle: subtitle, status:'active',
         players:[{name:'',email:''},{name:'',email:''}],
-        checks:{dob:false,email:false,gopay:false,rekening:false},
-        dob:'', gopayNumber:'', bankName:'', bankAccount:'',
+        checks:{dob:false,email:false,payment:false},
+        dob:'', paymentMethod:'nothing', paymentNumber:'', bankName:'',
         manualSeed:true, isDummy:false
       };
       var saved = await createTeamRowAdmin(cat.id, newTeam);
@@ -1866,11 +1969,11 @@
   /* ---------------- ROOT RENDER ---------------- */
   function renderApp(){
     if(!S.tournamentId){
-      return '<div class="shell">' + renderTopbar() + (S.isAdmin ? renderCreateTournamentForm() : renderNoTournamentPlayer()) + '</div>' +
-        renderRulesDrawer() + renderConfirmModal();
+      return '<div class="shell">' + renderTopbar() + (isAdminView() ? renderCreateTournamentForm() : renderNoTournamentPlayer()) + '</div>' +
+        renderRulesDrawer() + renderConfirmModal() + renderNotifDropdown();
     }
-    return '<div class="shell">' + renderTopbar() + renderCategoryTabs() + (S.isAdmin ? renderAdmin() : renderPlayer()) + '</div>' +
-      renderRulesDrawer() + renderConfirmModal() + renderSlotEditorModal() + renderTeamEditorModal();
+    return '<div class="shell">' + renderTopbar() + renderCategoryTabs() + (isAdminView() ? renderAdmin() : renderPlayer()) + '</div>' +
+      renderRulesDrawer() + renderConfirmModal() + renderSlotEditorModal() + renderTeamEditorModal() + renderNotifDropdown();
   }
   function render(){
     var active = document.activeElement;
@@ -1887,34 +1990,66 @@
     }
     var curCat = getCat();
     if(curCat && curCat.bracket){
-      var showingBagan = (S.isAdmin && S.ui.adminTab==='bagan') || (!S.isAdmin && S.ui.playerTab==='bagan');
+      var showingBagan = (isAdminView() && S.ui.adminTab==='bagan') || (!isAdminView() && S.ui.playerTab==='bagan');
       if(showingBagan) layoutBracketZoom(curCat);
     }
   }
 
   /* ---------------- REGISTRATION HELPERS (imperative) ---------------- */
   function fillSelfDummy(){
-    var name = randomPersonName();
     var nameEl = document.getElementById('p1NameInput');
     var emailEl = document.getElementById('p1EmailInput');
-    if(nameEl) nameEl.value = name;
-    if(emailEl) emailEl.value = randomEmail(name);
-    toast('Data Anda diisi otomatis (contoh) — silakan sunting bila perlu');
+    if(nameEl) nameEl.value = S.currentUserName || '';
+    if(emailEl) emailEl.value = S.currentUserEmail || '';
+    if(!S.currentUserName){
+      toast('Email lo sudah terisi, tapi nama belum ada di profil — lengkapi dulu di halaman Profil (dashboard)', 'error');
+    } else {
+      toast('Nama & email lo diisi otomatis dari profil — silakan sunting bila perlu');
+    }
   }
+  var PAYMENT_METHOD_LABELS = { gopay:'GoPay', dana:'DANA', linkaja:'LinkAja', bank:'Transfer Bank' };
+  function currentUserPaymentComplete(){
+    var m = S.currentUserPaymentMethod;
+    if(!m || m==='nothing' || !S.currentUserPaymentNumber) return false;
+    if(m==='bank' && !S.currentUserBankName) return false;
+    return true;
+  }
+  function currentUserPaymentLabel(){
+    var m = S.currentUserPaymentMethod;
+    if(!currentUserPaymentComplete()) return '';
+    if(m==='bank') return 'Transfer Bank '+escapeHtml(S.currentUserBankName)+': '+escapeHtml(S.currentUserPaymentNumber);
+    return escapeHtml(PAYMENT_METHOD_LABELS[m]||m)+': '+escapeHtml(S.currentUserPaymentNumber);
+  }
+  function fmtDobDisplay(dob){
+    var d = new Date(dob+'T00:00:00');
+    if(isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('id-ID', { day:'numeric', month:'long', year:'numeric' });
+  }
+  // dob/payment aren't "verified" by clicking a button -- they're a live read of the account
+  // profile, so this just re-derives them from S.currentUser* every render. Real per-submission
+  // checks (email format) stay separate, below.
+  function syncProfileChecks(){
+    S.ui.registrationChecks.dob = !!S.currentUserDob;
+    S.ui.registrationChecks.payment = currentUserPaymentComplete();
+  }
+  function isValidEmail(e){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e); }
   function updateRegStatusBar(){
     var bar = document.getElementById('regStatusBar');
     var text = document.getElementById('regStatusText');
     if(!bar || !text) return;
     var c = S.ui.registrationChecks;
-    var done = (c.dob?1:0)+(c.email?1:0)+(c.gopay?1:0)+(c.rekening?1:0)+(c.partnerEmail?1:0);
-    if(done===5){
+    var done = (c.dob?1:0)+(c.payment?1:0)+(c.email?1:0)+(c.partnerEmail?1:0);
+    if(done===4){
       bar.classList.add('status-bar-ready');
       text.textContent = 'Semua verifikasi selesai — tim siap didaftarkan!';
     } else {
       bar.classList.remove('status-bar-ready');
-      text.textContent = done + '/5 verifikasi selesai. Lengkapi verifikasi lalu daftarkan tim.';
+      text.textContent = done + '/4 verifikasi selesai. Lengkapi verifikasi lalu daftarkan tim.';
     }
   }
+  // Only 'email' (both players' address format) and 'partnerEmail' still go through a click --
+  // dob/payment are read straight off the profile (syncProfileChecks). The badge really does
+  // reflect whether the input is actually valid now, not a timer that always resolves true.
   function runVerification(key){
     var badge = document.getElementById('badge_'+key);
     if(!badge) return;
@@ -1922,12 +2057,16 @@
     badge.classList.add('verifying');
     badge.innerHTML = ICONS.spinner;
     setTimeout(function(){
+      var ok = key==='partnerEmail'
+        ? isValidEmail(val('p2EmailInput').trim())
+        : (isValidEmail(val('p1EmailInput').trim()) && isValidEmail(val('p2EmailInput').trim()));
       badge.classList.remove('verifying');
-      badge.classList.add('verified');
-      badge.innerHTML = ICONS.check;
-      S.ui.registrationChecks[key] = true;
+      S.ui.registrationChecks[key] = ok;
+      badge.classList.toggle('verified', ok);
+      badge.innerHTML = ok ? ICONS.check : ICONS.dot;
       updateRegStatusBar();
-    }, 1000 + Math.random()*700);
+      if(!ok) toast(key==='partnerEmail' ? 'Format email partner belum valid.' : 'Format email tim belum valid — cek email Player 1 & 2.', 'error');
+    }, 400);
   }
   async function submitRegistration(){
     if(!S.registrationOpen){ toast('Pendaftaran sedang ditutup oleh panitia.', 'error'); return; }
@@ -1944,21 +2083,31 @@
       toast('Lengkapi nama tim serta nama & email kedua pemain.', 'error');
       return;
     }
+    syncProfileChecks();
     var checks = S.ui.registrationChecks;
+    if(!checks.dob || !checks.payment || !checks.email || !checks.partnerEmail){
+      toast('Selesaikan semua verifikasi tambahan dulu sebelum mendaftar.', 'error');
+      render();
+      return;
+    }
     var payload = {
       status:'active',
       players: [ {name:p1n, email:p1e}, {name:p2n, email:p2e, partnerVerified: checks.partnerEmail} ],
-      checks: { dob:checks.dob, email:checks.email, gopay:checks.gopay, rekening:checks.rekening },
-      dob: val('dobInput'), gopayNumber: val('gopayInput'), bankName:'', bankAccount: val('rekeningInput')
+      checks: { dob:checks.dob, email:checks.email, payment:checks.payment },
+      dob: S.currentUserDob, paymentMethod: S.currentUserPaymentMethod,
+      paymentNumber: S.currentUserPaymentNumber,
+      bankName: S.currentUserPaymentMethod==='bank' ? S.currentUserBankName : ''
     };
     try{
       var row = await registerTeamCloud(cat.id, teamName, payload);
       var team = teamRowToTeam(row);
       cat.teams.push(team);
       S.ui.myTeamIds.push(team.id);
-      S.ui.registrationChecks = { dob:false, email:false, gopay:false, rekening:false, partnerEmail:false };
-      var complete = checks.dob && checks.email && checks.gopay && checks.rekening && checks.partnerEmail;
-      toast(complete ? 'Tim "'+teamName+'" berhasil didaftarkan!' : 'Tim "'+teamName+'" didaftarkan dengan verifikasi belum lengkap.');
+      // Only the per-submission checks reset -- dob/payment stay however they honestly are,
+      // since they're a live read of the profile, not something this registration "used up".
+      S.ui.registrationChecks.email = false;
+      S.ui.registrationChecks.partnerEmail = false;
+      toast('Tim "'+teamName+'" berhasil didaftarkan — semua verifikasi lengkap!');
     }catch(e){
       toast('Gagal mendaftar: '+e.message, 'error');
     }
@@ -1976,7 +2125,7 @@
     'delete-category':1, 'toggle-rules-edit':1, 'save-rules':1, 'toggle-registration':1,
     'create-tournament':1, 'delete-dummy-teams':1, 'edit-slot':1, 'save-slot-editor':1,
     'close-slot-editor':1, 'edit-team':1, 'save-team-editor':1, 'close-team-editor':1,
-    'save-match-schedule':1
+    'save-match-schedule':1, 'switch-view':1
   };
   app.addEventListener('click', function(e){
     var btn = e.target.closest('[data-action]');
@@ -2335,6 +2484,37 @@
       case 'quick-self-fill':
         fillSelfDummy();
         return;
+      case 'switch-view':
+        if(!S.isAdmin) return;
+        S.ui.viewAsPlayer = (btn.dataset.mode === 'player');
+        break;
+      case 'toggle-notif':
+        S.ui.notifOpen = !S.ui.notifOpen;
+        break;
+      case 'open-notif-link': {
+        var notifLink = btn.dataset.link;
+        if(notifLink) window.location.href = notifLink;
+        return;
+      }
+      case 'dismiss-notif': {
+        var dismissId = btn.dataset.id;
+        S.ui.notifications = S.ui.notifications.filter(function(n){ return n.id!==dismissId; });
+        render();
+        supabase.from('notifications').delete().eq('id', dismissId).then(function(res){
+          if(res.error) toast('Gagal menghapus notifikasi: '+res.error.message, 'error');
+        });
+        return;
+      }
+      case 'clear-all-notif': {
+        var clearIds = S.ui.notifications.map(function(n){ return n.id; });
+        S.ui.notifications = [];
+        S.ui.notifOpen = false;
+        render();
+        if(clearIds.length) supabase.from('notifications').delete().in('id', clearIds).then(function(res){
+          if(res.error) toast('Gagal menghapus notifikasi: '+res.error.message, 'error');
+        });
+        return;
+      }
       case 'verify-partner-email': {
         var p2email = val('p2EmailInput').trim();
         if(!p2email){ toast('Minta partner mengisi emailnya terlebih dahulu', 'error'); return; }
@@ -2415,12 +2595,49 @@
   });
 
   /* ---------------- INIT ---------------- */
+  async function loadNotifications(){
+    var res = await supabase.from('notifications').select('*').eq('user_id', S.currentUserId).order('created_at', { ascending:false });
+    if(res.error){ console.warn('Load notifications failed:', res.error.message); return; }
+    S.ui.notifications = res.data || [];
+  }
+  function subscribeNotifications(){
+    supabase.channel('rb_notifications_'+S.currentUserId)
+      .on('postgres_changes', { event:'*', schema:'public', table:'notifications', filter:'user_id=eq.'+S.currentUserId }, async function(){
+        await loadNotifications();
+        render();
+      })
+      .subscribe();
+  }
+  function applyProfileFields(profile){
+    S.currentUserName = (profile && profile.full_name) || '';
+    S.currentUserDob = (profile && profile.dob) || '';
+    S.currentUserPaymentMethod = (profile && profile.wallet_type) || 'nothing';
+    S.currentUserPaymentNumber = (profile && profile.wallet_number) || '';
+    S.currentUserBankName = (profile && profile.bank_name) || '';
+  }
+  // Keeps the registration form's "Verifikasi Tambahan" cards honest if the profile gets edited
+  // in another tab (e.g. dashboard.html) while this one's still open -- without this, S.currentUser*
+  // would only ever reflect whatever was true at boot().
+  function subscribeProfile(){
+    supabase.channel('rb_profile_'+S.currentUserId)
+      .on('postgres_changes', { event:'UPDATE', schema:'public', table:'profiles', filter:'id=eq.'+S.currentUserId }, function(payload){
+        applyProfileFields(payload.new);
+        render();
+      })
+      .subscribe();
+  }
   async function boot(){
     var ctx = await requireAuth('index.html');
     if(!ctx) return; // requireAuth already redirected to login
     S.currentUserId = ctx.user.id;
+    S.currentUserEmail = ctx.user.email || '';
+    applyProfileFields(ctx.profile);
     S.isAdmin = !!(ctx.profile && ctx.profile.role === 'admin');
     S.role = S.isAdmin ? 'admin' : 'player';
+
+    await loadNotifications();
+    subscribeNotifications();
+    subscribeProfile();
 
     var found = await loadTournament();
     if(found) subscribeRealtime();

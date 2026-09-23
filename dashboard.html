@@ -114,11 +114,24 @@
       </div>
       <div class="panel-head"><h2>Detail akun</h2></div>
       <table class="data-table">
-        <tr><td style="color:var(--text-faint);width:120px;">Email</td><td id="profil-email">—</td></tr>
-        <tr><td style="color:var(--text-faint);">No. HP</td><td id="profil-phone">—</td></tr>
-        <tr><td style="color:var(--text-faint);">Wallet</td><td id="profil-wallet">—</td></tr>
-        <tr><td style="color:var(--text-faint);">Member sejak</td><td id="profil-since">—</td></tr>
+        <tr><td style="color:var(--text-faint);width:120px;">Email</td><td id="profil-email">—</td>
+          <td style="text-align:right;"><button class="btn btn-ghost btn-sm" onclick="toggleChangeEmail()">Ganti</button></td></tr>
+        <tr><td style="color:var(--text-faint);">Tgl. lahir</td><td id="profil-dob" colspan="2">—</td></tr>
+        <tr><td style="color:var(--text-faint);">No. HP</td><td id="profil-phone" colspan="2">—</td></tr>
+        <tr><td style="color:var(--text-faint);">Pembayaran</td><td id="profil-wallet" colspan="2">—</td></tr>
+        <tr><td style="color:var(--text-faint);">Member sejak</td><td id="profil-since" colspan="2">—</td></tr>
       </table>
+      <div id="change-email-box" style="display:none;padding:14px 20px;border-top:1px solid var(--border);">
+        <div class="field">
+          <label>Email baru</label>
+          <input type="email" id="new-email-input" placeholder="email-baru@contoh.com" maxlength="200">
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-primary btn-sm" id="change-email-btn" onclick="submitChangeEmail()">Kirim link konfirmasi</button>
+          <button class="btn btn-ghost btn-sm" onclick="toggleChangeEmail()">Batal</button>
+        </div>
+        <p style="color:var(--text-faint);font-size:12.5px;margin-top:8px;">Link konfirmasi dikirim ke email lama & baru lo. Email cuma resmi ganti setelah lo klik link itu.</p>
+      </div>
     </div>
 
     <div class="panel" style="max-width:440px;margin-top:18px;">
@@ -138,20 +151,30 @@
           <input type="text" id="edit-name" placeholder="Nama lengkap lo" maxlength="80">
         </div>
         <div class="field">
+          <label>Tanggal lahir</label>
+          <input type="date" id="edit-dob">
+        </div>
+        <div class="field">
           <label>No. HP</label>
           <input type="tel" id="edit-phone" placeholder="08xxxxxxxxxx" maxlength="20">
         </div>
         <div class="field">
-          <label>Online wallet</label>
-          <select id="edit-wallet" onchange="document.getElementById('wallet-number-field').style.display = this.value === 'nothing' ? 'none' : 'block'">
+          <label>Metode pembayaran</label>
+          <select id="edit-wallet" onchange="updatePaymentFieldsUI()">
             <option value="nothing">Nggak ada</option>
             <option value="gopay">GoPay</option>
-            <option value="btc">Bitcoin (BTC)</option>
+            <option value="dana">DANA</option>
+            <option value="linkaja">LinkAja</option>
+            <option value="bank">Transfer Bank</option>
           </select>
         </div>
         <div class="field" id="wallet-number-field" style="display:none;">
-          <label>Nomor / alamat wallet</label>
-          <input type="text" id="edit-wallet-number" placeholder="No. GoPay atau alamat BTC" maxlength="120">
+          <label id="wallet-number-label">No. HP</label>
+          <input type="text" id="edit-wallet-number" placeholder="08xxxxxxxxxx" maxlength="120">
+        </div>
+        <div class="field" id="bank-name-field" style="display:none;">
+          <label>Nama bank</label>
+          <input type="text" id="edit-bank-name" placeholder="cth: BCA, Mandiri, BRI" maxlength="80">
         </div>
         <div class="field">
           <label>Bio</label>
@@ -443,11 +466,12 @@ function fillProfile() {
 
   // isi form update profil
   document.getElementById('edit-name').value = CURRENT_PROFILE?.full_name || '';
+  document.getElementById('edit-dob').value = CURRENT_PROFILE?.dob || '';
   document.getElementById('edit-phone').value = CURRENT_PROFILE?.phone || '';
-  const w = CURRENT_PROFILE?.wallet_type || 'nothing';
-  document.getElementById('edit-wallet').value = w;
-  document.getElementById('wallet-number-field').style.display = w === 'nothing' ? 'none' : 'block';
+  document.getElementById('edit-wallet').value = CURRENT_PROFILE?.wallet_type || 'nothing';
   document.getElementById('edit-wallet-number').value = CURRENT_PROFILE?.wallet_number || '';
+  document.getElementById('edit-bank-name').value = CURRENT_PROFILE?.bank_name || '';
+  updatePaymentFieldsUI();
   document.getElementById('edit-bio').value = CURRENT_PROFILE?.bio || '';
 
   // profile hero card
@@ -459,13 +483,37 @@ function fillProfile() {
     : (elite ? '<span class="plan-badge elite">ELITE ⭐</span>' : '<span class="plan-badge free">FREE</span>');
   document.getElementById('profile-hero-badges').innerHTML = planBadge;
 
+  document.getElementById('profil-dob').textContent = CURRENT_PROFILE?.dob
+    ? new Date(CURRENT_PROFILE.dob + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
+    : '—';
   document.getElementById('profil-phone').textContent = CURRENT_PROFILE?.phone || '—';
-  document.getElementById('profil-wallet').textContent = w === 'nothing'
-    ? '—'
-    : `${w === 'gopay' ? 'GoPay' : 'Bitcoin'}: ${escapeHtml(CURRENT_PROFILE?.wallet_number || '—')}`;
+  document.getElementById('profil-wallet').textContent = paymentSummary(CURRENT_PROFILE);
   document.getElementById('profil-since').textContent = CURRENT_PROFILE?.created_at
     ? new Date(CURRENT_PROFILE.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
     : '—';
+}
+
+const PAYMENT_METHOD_LABELS = { gopay: 'GoPay', dana: 'DANA', linkaja: 'LinkAja', bank: 'Transfer Bank' };
+
+// Same "which fields does this method need" logic drives both the edit form (toggling which
+// inputs show) and the read-only summary below -- keeping them in one place means adding a new
+// payment method later can't update one without the other.
+function paymentSummary(profile) {
+  const method = profile?.wallet_type || 'nothing';
+  if (method === 'nothing') return '—';
+  if (method === 'bank') return `Transfer Bank ${escapeHtml(profile?.bank_name || '—')}: ${escapeHtml(profile?.wallet_number || '—')}`;
+  return `${PAYMENT_METHOD_LABELS[method] || method}: ${escapeHtml(profile?.wallet_number || '—')}`;
+}
+
+// onchange handler for #edit-wallet, and also called from fillProfile() (programmatic .value
+// assignment doesn't fire onchange) so the right fields are already visible on page load.
+function updatePaymentFieldsUI() {
+  const method = document.getElementById('edit-wallet').value;
+  const isBank = method === 'bank';
+  document.getElementById('wallet-number-field').style.display = method === 'nothing' ? 'none' : 'block';
+  document.getElementById('bank-name-field').style.display = isBank ? 'block' : 'none';
+  document.getElementById('wallet-number-label').textContent = isBank ? 'No. rekening' : 'No. HP';
+  document.getElementById('edit-wallet-number').placeholder = isBank ? 'Nomor rekening' : '08xxxxxxxxxx';
 }
 
 async function saveProfile() {
@@ -474,9 +522,11 @@ async function saveProfile() {
   const wallet = document.getElementById('edit-wallet').value;
   const { error } = await supabase.from('profiles').update({
     full_name: document.getElementById('edit-name').value.trim() || null,
+    dob: document.getElementById('edit-dob').value || null,
     phone: document.getElementById('edit-phone').value.trim() || null,
     wallet_type: wallet,
     wallet_number: wallet === 'nothing' ? null : (document.getElementById('edit-wallet-number').value.trim() || null),
+    bank_name: wallet === 'bank' ? (document.getElementById('edit-bank-name').value.trim() || null) : null,
     bio: document.getElementById('edit-bio').value.trim() || null,
   }).eq('id', CURRENT_USER.id);
   btn.disabled = false; btn.textContent = 'Simpan profil';
@@ -485,6 +535,32 @@ async function saveProfile() {
   fillProfile();
   btn.textContent = 'Tersimpan ✓';
   setTimeout(() => { btn.textContent = 'Simpan profil'; }, 1800);
+}
+
+function toggleChangeEmail() {
+  const box = document.getElementById('change-email-box');
+  const open = box.style.display === 'block';
+  box.style.display = open ? 'none' : 'block';
+  if (!open) document.getElementById('new-email-input').value = '';
+}
+
+// Supabase's default flow requires confirming the change via links sent to both the old and new
+// address ("secure email change") before auth.users.email actually updates -- so this can't
+// optimistically update CURRENT_USER/profiles right away. public.profiles.email only catches up
+// once that's confirmed, via the on_auth_user_email_change trigger
+// (db/migrations/0034_profile_verification_fields.sql).
+async function submitChangeEmail() {
+  const input = document.getElementById('new-email-input');
+  const newEmail = input.value.trim();
+  if (!newEmail) { input.focus(); return; }
+  if (newEmail === CURRENT_USER.email) { await gembelAlert('Itu email lo yang sekarang.'); return; }
+  const btn = document.getElementById('change-email-btn');
+  btn.disabled = true; btn.textContent = 'Mengirim…';
+  const { error } = await supabase.auth.updateUser({ email: newEmail });
+  btn.disabled = false; btn.textContent = 'Kirim link konfirmasi';
+  if (error) { await gembelAlert('Gagal ganti email: ' + error.message); return; }
+  toggleChangeEmail();
+  await gembelAlert('Link konfirmasi dikirim ke ' + newEmail + ' (dan email lama lo). Email baru aktif setelah lo klik link di keduanya.');
 }
 
 function currentMonthFirstDay() {
@@ -579,6 +655,7 @@ function renderBuiltinApps() {
   CURRENT_USER = ctx.user;
   CURRENT_PROFILE = ctx.profile;
   fillProfile();
+  if (location.hash === '#profil') switchTab('profil');
   renderBuiltinApps();
   loadLeaderboard();
   await loadRequests();
