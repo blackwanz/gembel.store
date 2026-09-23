@@ -33,6 +33,7 @@
       </div>
     </div>
     <button class="btn btn-ghost btn-sm" onclick="window.location.href='dashboard.html'">My Apps</button>
+    <span data-notif-bell-mount></span>
     <button class="theme-toggle" onclick="toggleTheme()" title="Ganti tema">🌙</button>
     <button class="btn btn-ghost btn-sm" onclick="logout()">Keluar</button>
   </div>
@@ -156,13 +157,19 @@
         <h2>Kirim Notifikasi ke Semua Member</h2>
       </div>
       <div style="padding:18px 20px;">
-        <p style="color:var(--text-faint);font-size:12.5px;margin-bottom:12px;">Muncul di list "Request App Kamu" tiap member — cocok buat kabar maintenance, promo, atau update sistem. Terkirim sebagai satu salinan per member, jadi kalau ada yang hapus punya dia, punya yang lain nggak ikut ilang.</p>
+        <p style="color:var(--text-faint);font-size:12.5px;margin-bottom:12px;">Muncul di 🔔 panel notifikasi tiap member (ada badge belum dibaca, di semua halaman app). Tipe <b>Maintenance</b> juga tampil sebagai banner di atas halaman sampai member klik "Oke, ngerti". Terkirim sebagai satu salinan per member, jadi kalau ada yang hapus punya dia, punya yang lain nggak ikut ilang.</p>
 
         <div class="filter-row" style="margin-bottom:14px;">
           <div class="chip-filter" onclick="fillNotifyTemplate('maintenance')">🛠 Maintenance</div>
           <div class="chip-filter" onclick="fillNotifyTemplate('promo')">🎉 Promo</div>
           <div class="chip-filter" onclick="fillNotifyTemplate('update')">📢 Update Sistem</div>
         </div>
+
+        <label class="field-label" style="display:block;font-size:11.5px;color:var(--text-faint);margin-bottom:4px;">Tipe</label>
+        <select id="notify-kind-input" style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text-main);font-family:inherit;font-size:14px;margin-bottom:12px;box-sizing:border-box;">
+          <option value="announcement">📢 Pengumuman (panel notifikasi aja)</option>
+          <option value="maintenance">🛠 Maintenance (panel + banner di atas halaman)</option>
+        </select>
 
         <label class="field-label" style="display:block;font-size:11.5px;color:var(--text-faint);margin-bottom:4px;">Judul</label>
         <input type="text" id="notify-title-input" placeholder="Judul singkat" style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text-main);font-family:inherit;font-size:14px;margin-bottom:12px;box-sizing:border-box;">
@@ -232,6 +239,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/dist/umd/supabase.min.js"></script>
 <script src="assets/supabaseClient.js"></script>
+<script src="assets/notif-bell.js"></script>
 <script src="assets/auth.js"></script>
 <script src="assets/popup.js"></script>
 <script>
@@ -329,6 +337,7 @@ function switchTab(name) {
 // ---- Notifikasi: blast an announcement to every member ----
 const NOTIFY_TEMPLATES = {
   maintenance: {
+    kind: 'maintenance',
     title: 'Maintenance Terjadwal',
     message: 'Sistem bakal maintenance sebentar buat perbaikan. Selama proses ini beberapa fitur mungkin nggak bisa diakses. Makasih buat pengertiannya!',
   },
@@ -344,6 +353,7 @@ const NOTIFY_TEMPLATES = {
 function fillNotifyTemplate(kind) {
   const t = NOTIFY_TEMPLATES[kind];
   if (!t) return;
+  document.getElementById('notify-kind-input').value = t.kind || 'announcement';
   document.getElementById('notify-title-input').value = t.title;
   document.getElementById('notify-message-input').value = t.message;
 }
@@ -351,19 +361,21 @@ function fillNotifyTemplate(kind) {
 async function blastNotification() {
   const title = document.getElementById('notify-title-input').value.trim();
   const message = document.getElementById('notify-message-input').value.trim();
+  const kind = document.getElementById('notify-kind-input').value;
   if (!title || !message) { await gembelAlert('Isi judul dan pesan dulu.'); return; }
 
   const { data: profiles, error: pErr } = await supabase.from('profiles').select('id');
   if (pErr) { await gembelAlert('Gagal ambil daftar member: ' + pErr.message); return; }
   if (!profiles || profiles.length === 0) { await gembelAlert('Nggak ada member buat dikirimin.'); return; }
 
-  if (!(await gembelConfirm(`Kirim notifikasi ini ke ${profiles.length} member?\n\n"${title}"`))) return;
+  const kindNote = kind === 'maintenance' ? ' (+ banner maintenance)' : '';
+  if (!(await gembelConfirm(`Kirim notifikasi ini ke ${profiles.length} member${kindNote}?\n\n"${title}"`))) return;
 
   const btn = document.getElementById('notify-blast-btn');
   btn.disabled = true;
   btn.textContent = 'Ngirim…';
 
-  const rows = profiles.map(p => ({ user_id: p.id, title, message, created_by: CURRENT_USER.id }));
+  const rows = profiles.map(p => ({ user_id: p.id, title, message, kind, created_by: CURRENT_USER.id }));
   const { error } = await supabase.from('notifications').insert(rows);
 
   btn.disabled = false;
@@ -373,6 +385,7 @@ async function blastNotification() {
 
   document.getElementById('notify-title-input').value = '';
   document.getElementById('notify-message-input').value = '';
+  document.getElementById('notify-kind-input').value = 'announcement';
   await gembelAlert(`Terkirim ke ${profiles.length} member.`);
 }
 

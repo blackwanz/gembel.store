@@ -29,6 +29,7 @@
       </div>
     </div>
     <button class="btn btn-primary btn-sm" id="upgrade-btn" style="display:none;" onclick="openPaymentModal(CURRENT_PROFILE, () => location.reload())">⭐ Upgrade Elite</button>
+    <span data-notif-bell-mount></span>
     <button class="theme-toggle" onclick="toggleTheme()" title="Ganti tema">🌙</button>
     <button class="btn btn-ghost btn-sm" onclick="logout()">Keluar</button>
   </div>
@@ -189,6 +190,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/dist/umd/supabase.min.js"></script>
 <script src="assets/supabaseClient.js"></script>
+<script src="assets/notif-bell.js"></script>
 <script src="assets/auth.js"></script>
 <script src="assets/popup.js"></script>
 <script src="assets/site-config.js"></script>
@@ -248,30 +250,6 @@ function renderTicket(req) {
     </div>`;
 }
 
-// Admin announcements (maintenance notices, etc.) -- rendered as the same card shape as a
-// request ticket so they live in the same list, just visually distinct (accent-colored left
-// edge, a 📢 badge instead of a status badge, no action buttons). One row per recipient (see
-// db/migrations/0017_notifications.sql), so deleting "mine" never touches anyone else's copy.
-function renderNotificationHTML(n) {
-  // "announcement" (admin broadcast) is the only kind that existed before -- anything else
-  // (currently just "archery_gift") is clickable and carries its own label/icon instead of the
-  // generic megaphone, so a gift notice doesn't look like a maintenance notice.
-  const clickable = !!n.link_url;
-  const kindLabel = n.kind === 'archery_gift' ? '🎁 KIRIMAN DATA' : '📢 PENGUMUMAN';
-  return `
-    <div class="ticket notif-ticket" data-type="notification" data-id="${n.id}" data-link="${n.link_url ? escapeHtml(n.link_url) : ''}"
-         title="${clickable ? 'Klik buat buka · klik kanan buat opsi' : 'Klik kanan buat opsi'}" style="${clickable ? 'cursor:pointer;' : ''}">
-      <div class="ticket-head">
-        <span class="ticket-num mono">${kindLabel}</span>
-      </div>
-      <h3>${escapeHtml(n.title)}</h3>
-      <p class="prompt" style="-webkit-line-clamp:unset;">${escapeHtml(n.message)}</p>
-      <div class="ticket-foot">
-        <span class="ticket-time">${fmtRelativeTime(n.created_at)}</span>
-      </div>
-    </div>`;
-}
-
 // hitung mundur sisa akses free tier tiap detik
 setInterval(() => {
   let anyExpired = false;
@@ -291,7 +269,6 @@ function updateStats(requests) {
 }
 
 let lastRequestsData = [];
-let lastNotificationsData = [];
 let requestsExpanded = false;
 const REQUESTS_COMPACT_LIMIT = 3;
 // Still-in-flight requests surface first regardless of date — those are the ones that
@@ -299,25 +276,16 @@ const REQUESTS_COMPACT_LIMIT = 3;
 const REQUEST_STATUS_PRIORITY = { diproses: 0, antre: 1, selesai: 2 };
 
 async function loadRequests() {
-  const [{ data: reqData, error: reqErr }, { data: notifData, error: notifErr }] = await Promise.all([
-    supabase.from('app_requests').select('*').eq('user_id', CURRENT_USER.id).order('created_at', { ascending: false }),
-    supabase.from('notifications').select('*').eq('user_id', CURRENT_USER.id).order('created_at', { ascending: false }),
-  ]);
-
+  const { data: reqData, error: reqErr } = await supabase.from('app_requests').select('*').eq('user_id', CURRENT_USER.id).order('created_at', { ascending: false });
   if (reqErr) { console.error(reqErr); return; }
-  // Notifications are a bonus on top of the core request list -- a failure there (e.g. schema
-  // not migrated yet on an older deploy) shouldn't block requests from showing.
-  if (notifErr) console.error(notifErr);
 
   lastRequestsData = reqData || [];
-  lastNotificationsData = notifData || [];
   updateStats(lastRequestsData);
   renderRequestsList();
 }
 
-// Notifications always sort above requests -- they're admin announcements (maintenance, etc.),
-// time-sensitive by nature, and would otherwise get buried under whatever request happens to be
-// "diproses" this week.
+// Notifications used to be mixed into this list; they now have their own 🔔 panel
+// (assets/notif-bell.js), so this is requests only.
 function renderRequestsList() {
   const listEl = document.getElementById('requests-list');
   const expandRow = document.getElementById('requests-expand-row');
@@ -328,11 +296,7 @@ function renderRequestsList() {
     (REQUEST_STATUS_PRIORITY[a.status] ?? 3) - (REQUEST_STATUS_PRIORITY[b.status] ?? 3)
     || new Date(b.created_at) - new Date(a.created_at)
   );
-  const sortedNotifs = [...lastNotificationsData].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-  const combined = [
-    ...sortedNotifs.map(n => ({ html: renderNotificationHTML(n) })),
-    ...sortedRequests.map(r => ({ html: renderTicket(r) })),
-  ];
+  const combined = sortedRequests.map(r => ({ html: renderTicket(r) }));
 
   if (countEl) countEl.textContent = combined.length ? `${combined.length} total` : '';
 
@@ -354,7 +318,7 @@ function renderRequestsList() {
   }
 }
 
-// ---- Right-click delete for a request or notification card ----
+// ---- Right-click delete for a request card ----
 // A single click never deletes anything by itself: right-click opens a menu, and the action
 // itself still goes through gembelConfirm before anything actually happens.
 function showDashContextMenu(x, y, items) {
@@ -390,26 +354,15 @@ document.getElementById('requests-list').addEventListener('contextmenu', (e) => 
   const card = e.target.closest('[data-type]');
   if (!card) return;
   e.preventDefault();
-  const type = card.dataset.type;
   const id = card.dataset.id;
   showDashContextMenu(e.clientX, e.clientY, [
-    { label: type === 'notification' ? 'Hapus notifikasi' : 'Hapus request', icon: '🗑', danger: true, action: () => deleteRequestOrNotification(type, id) }
+    { label: 'Hapus request', icon: '🗑', danger: true, action: () => deleteRequest(id) }
   ]);
 });
-// A notification with a link_url (e.g. an archery gift) navigates there on a plain click --
-// request tickets already have their own explicit "Buka"/"Unduh" buttons for that, so this only
-// applies to the notification card itself, not its whole row of siblings.
-document.getElementById('requests-list').addEventListener('click', (e) => {
-  const card = e.target.closest('.notif-ticket[data-link]');
-  if (!card || !card.dataset.link) return;
-  window.location.href = card.dataset.link;
-});
 
-async function deleteRequestOrNotification(type, id) {
-  const table = type === 'notification' ? 'notifications' : 'app_requests';
-  const label = type === 'notification' ? 'notifikasi ini' : 'request ini';
-  if (!(await gembelConfirm(`Hapus ${label}? Ini gak bisa dibatalin.`))) return;
-  const { error } = await supabase.from(table).delete().eq('id', id);
+async function deleteRequest(id) {
+  if (!(await gembelConfirm('Hapus request ini? Ini gak bisa dibatalin.'))) return;
+  const { error } = await supabase.from('app_requests').delete().eq('id', id);
   if (error) { await gembelAlert('Gagal hapus: ' + error.message); return; }
   await loadRequests();
 }
@@ -665,15 +618,6 @@ function renderBuiltinApps() {
     .channel('own-requests-' + CURRENT_USER.id)
     .on('postgres_changes',
       { event: '*', schema: 'public', table: 'app_requests', filter: `user_id=eq.${CURRENT_USER.id}` },
-      () => loadRequests()
-    )
-    .subscribe();
-
-  // a new admin broadcast (or one of ours getting deleted from another tab) shows up live too
-  supabase
-    .channel('own-notifications-' + CURRENT_USER.id)
-    .on('postgres_changes',
-      { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${CURRENT_USER.id}` },
       () => loadRequests()
     )
     .subscribe();
