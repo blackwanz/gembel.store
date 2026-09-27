@@ -170,6 +170,10 @@ h2{font-size:19px}
   border:1px solid var(--line-soft);background:var(--surface);font-size:12.5px;color:var(--muted);transition:.25s}
 .hud .combo.hot{border-color:var(--amber-line);color:var(--amber);background:var(--amber-soft)}
 .hud .combo b{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.hud .combo .max{font-size:11px;color:var(--dim);border-left:1px solid var(--line-soft);padding-left:9px}
+.hud .combo .max b{color:var(--muted)}
+.hud .combo.burst{animation:comboBurst .7s ease}
+@keyframes comboBurst{0%{transform:scale(1)}25%{transform:scale(1.22);box-shadow:0 0 0 8px var(--amber-soft)}100%{transform:scale(1);box-shadow:0 0 0 0 transparent}}
 
 .stage{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center;padding:0 26px 9vh}
 .paper{
@@ -1814,6 +1818,19 @@ const SFX = {
   bad() { this.tone({ f: 150, f2: 92, type: 'square', gain: .07, dur: .1 }); },
   done() { this.tone({ f: 620, type: 'sine', gain: .11, dur: .1 }); this.tone({ f: 930, type: 'sine', gain: .09, dur: .16, delay: .07 }); },
   save() { this.tone({ f: 1180, type: 'sine', gain: .09, dur: .09 }); this.tone({ f: 1760, type: 'sine', gain: .06, dur: .13, delay: .05 }); },
+  /* streak milestone #n (n = streak / STREAK_STEP): an arpeggio that climbs a semitone per
+     milestone (capped at an octave up), with a longer run + shimmer on every 2nd one (100, 200, 300…). */
+  streak(n) {
+    const base = 523.25 * 2 ** (Math.min(n - 1, 12) / 12), big = n % 2 === 0;
+    const notes = big ? [0, 4, 7, 12, 16, 19] : [0, 4, 7, 12];
+    notes.forEach((st, i) => this.tone({ f: base * 2 ** (st / 12), type: 'triangle', gain: .08, dur: i === notes.length - 1 ? .38 : .13, delay: i * .055 }));
+    this.tone({ f: base * 4, type: 'sine', gain: .03, dur: .35, delay: notes.length * .055 });
+    if (big) this.burst({ freq: 7000, ftype: 'highpass', q: .7, gain: .05, dur: .3, rate: 1 });
+  },
+  record() {
+    [0, 4, 7].forEach((st, i) => this.tone({ f: 392 * 2 ** (st / 12), type: 'square', gain: .045, dur: .1, delay: i * .08 }));
+    [0, 4, 7, 12].forEach(st => this.tone({ f: 784 * 2 ** (st / 12), type: 'triangle', gain: .05, dur: .5, delay: .26 }));
+  },
   level() { this.tone({ f: 520, type: 'triangle', gain: .08, dur: .09 }); this.tone({ f: 780, type: 'triangle', gain: .07, dur: .12, delay: .06 }); this.tone({ f: 1040, type: 'triangle', gain: .06, dur: .2, delay: .12 }); }
 };
 
@@ -2277,9 +2294,12 @@ function pasteDialog() {
 }
 
 /* ================= typing engine ================= */
+const STREAK_STEP = 50; // milestone sound every 50 correct keys in a row: 50, 100, 150 … 300 …
+const allTimeBestStreak = () => S.sessions.reduce((m, x) => Math.max(m, x.streak || 0), 0);
 const T = {
   book: null, chunks: [], offsets: [], ci: 0, typed: '',
   charEls: [], wordEls: [], sess: null, streak: 0, bestStreak: 0,
+  allBest: 0, recordHit: false, // all-time max streak (from saved sessions) + whether this run already beat it
   dollarTimer: null, paused: false, finished: false
 };
 const el = {};
@@ -2307,6 +2327,7 @@ function openBook(id, stay) {
   for (let i = 0; i < T.offsets.length; i++) if (T.offsets[i] <= off) T.ci = i;
   if (T.ci >= T.chunks.length) T.ci = 0;
   T.typed = ''; T.streak = 0; T.bestStreak = 0;
+  T.allBest = allTimeBestStreak(); T.recordHit = false;
   newSession();
   neonFlowAutoSwitch('orange');
   el.title.textContent = b.title;
@@ -2416,6 +2437,7 @@ function endSession(reason) {
   };
   if (rec.wpm > 0 && rec.wpm < 400) { S.sessions.push(rec); saveSessions(); }
   T.book.last = Date.now(); saveBooks();
+  T.allBest = Math.max(T.allBest, T.bestStreak); T.recordHit = false;
   newSession(); T.bestStreak = 0;
   return rec;
 }
@@ -2437,8 +2459,22 @@ function updateHud() {
   el.err.textContent = s ? s.errors : 0;
   el.err.classList.toggle('zero', !s || !s.errors);
   el.time.textContent = fmtTime(st.secs);
-  el.combo.innerHTML = 'streak <b>' + T.streak + '</b>';
+  el.combo.innerHTML = 'streak <b>' + T.streak + '</b><span class="max">max <b>' + Math.max(T.allBest, T.bestStreak) + '</b></span>';
   el.combo.classList.toggle('hot', T.streak >= 25);
+}
+
+/* ---------- streak milestones ---------- */
+function streakMilestone() {
+  const n = T.streak;
+  const milestone = n % STREAK_STEP === 0;
+  const record = !T.recordHit && T.allBest > 0 && n > T.allBest;
+  if (record) T.recordHit = true;
+  if (!milestone && !record) return;
+  if (milestone) SFX.streak(n / STREAK_STEP); else SFX.record();
+  el.combo.classList.remove('burst'); void el.combo.offsetWidth; el.combo.classList.add('burst');
+  if (milestone && record) toast('🔥 ' + n + ' streak — new max!', null, 1400);
+  else if (milestone) toast('🔥 ' + n + ' streak', null, 1100);
+  else toast('🏆 New max streak — keep going', null, 1400);
 }
 
 /* ---------- keystrokes ---------- */
@@ -2462,7 +2498,7 @@ function typeChar(ch) {
     const c = T.charEls[i];
     if (c) { c.classList.add('pop'); setTimeout(() => c.classList.remove('pop'), 170); }
     SFX.key(exp === ' ');
-    if (T.streak === 25 || T.streak === 60 || T.streak === 120) SFX.level();
+    streakMilestone();
   } else {
     s.errors++; T.streak = 0;
     SFX.bad();
@@ -2693,6 +2729,7 @@ function renderStats() {
     tile('speed now', avgW, 'wpm, last 10 sessions') +
     tile('personal best', best, 'wpm') +
     tile('accuracy', avgA + '%', 'last 10 sessions') +
+    tile('max streak', allTimeBestStreak(), 'keys in a row') +
     tile('typed', Math.round(totalChars / 5).toLocaleString(), 'words, all time') +
     tile('at the keyboard', fmtTime(totalSecs), ss.length + ' sessions');
   const body = $('#s-body');
