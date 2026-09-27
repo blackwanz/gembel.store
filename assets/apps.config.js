@@ -110,6 +110,15 @@ window.GEMBEL_APPS = [
     category: 'Keuangan',
     enabled: true,
   },
+  {
+    id: 'gebet',
+    name: 'Gebet',
+    desc: 'Dating ala Tinder — swipe kiri/kanan, langsung DM lewat komen di foto. 1 foto terbaru (wajib ganti tiap bulan) + bio. Profil bisa di-share tanpa login.',
+    icon: '💘',
+    url: 'gebet.html',
+    category: 'Sosial',
+    enabled: true,
+  },
   // These three are real projects still being built -- the tile is here so they're visible on the
   // roadmap, but clicking through lands on coming-soon.html (a shared "under construction" scene)
   // instead of a real app. See coming-soon.html's own comment for how the ?app=/?domain=/?icon=

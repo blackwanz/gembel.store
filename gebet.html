@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gebet — Gembel AI PIK</title>
+<meta name="description" content="Gebet — swipe, komen langsung di foto, kenalan.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27%3E%3Crect width=%2764%27 height=%2764%27 rx=%2716%27 fill=%27%23ff4f7b%27/%3E%3Ctext x=%2732%27 y=%2744%27 font-size=%2732%27 text-anchor=%27middle%27%3E%F0%9F%92%98%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/app-theme.css">
+<style>
+  :root{ --like:#ff4f7b; --like-soft:#ffe4ec; --pass:#8a93a8; }
+  [data-theme="dark"]{ --like-soft:#3a1d28; }
+  .top{ display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid var(--border); }
+  .wrap{ max-width:520px;margin:0 auto;padding:18px 16px 90px; }
+  .tabs{ display:flex;gap:4px;background:var(--surface-muted);border:1px solid var(--border);border-radius:100px;padding:4px;margin-bottom:18px;position:sticky;top:8px;z-index:20; }
+  .tab{ flex:1;border:none;background:none;padding:9px 4px;border-radius:100px;font-weight:700;font-size:12.5px;color:var(--text-muted);cursor:pointer;position:relative;font-family:inherit; }
+  .tab.active{ background:var(--like);color:#fff; }
+  .tab .dot{ position:absolute;top:4px;right:10px;min-width:16px;height:16px;border-radius:8px;background:var(--danger);color:#fff;font-size:10px;line-height:16px;padding:0 4px; }
+  .tab.active .dot{ background:#fff;color:var(--like); }
+
+  .panel{ background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);margin-bottom:16px;overflow:hidden; }
+  .panel-head{ padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px; }
+  .panel-head h2{ font-size:15px; }
+  .panel-body{ padding:16px 18px; }
+  .empty-hint{ color:var(--text-faint);font-size:13px;padding:22px 16px;text-align:center;line-height:1.6; }
+  .notice{ border-radius:var(--radius-md);padding:12px 14px;font-size:13px;line-height:1.55;margin-bottom:14px;border:1px solid; }
+  .notice.warn{ background:var(--warning-bg);color:var(--warning-text);border-color:var(--warning-border); }
+  .notice.bad{ background:var(--danger-bg);color:var(--danger);border-color:var(--danger-border); }
+  .notice ul{ margin:6px 0 0 18px; }
+
+  label.f{ display:block;font-size:12px;font-weight:600;color:var(--text-muted);margin:12px 0 5px; }
+  .in{ width:100%;padding:10px 12px;border-radius:var(--radius-md);border:1px solid var(--border);background:var(--surface);color:var(--text-main);font:inherit;font-size:14px; }
+  .in:focus{ outline:none;border-color:var(--like); }
+  textarea.in{ resize:vertical;min-height:140px;line-height:1.5; }
+  .row2{ display:flex;gap:10px; }
+  .row2 > div{ flex:1;min-width:0; }
+  .guide{ background:var(--like-soft);border-radius:var(--radius-md);padding:12px 14px;font-size:12.5px;line-height:1.6;color:var(--text-main);margin-bottom:8px; }
+  .guide b{ color:var(--like); }
+  .counter{ text-align:right;font-size:11px;color:var(--text-faint);margin-top:4px;font-family:var(--font-mono); }
+
+  /* ---- photo slot ---- */
+  .photo-slot{ display:flex;gap:14px;align-items:center; }
+  .photo-thumb{ width:110px;height:138px;border-radius:var(--radius-md);background:var(--surface-muted);border:1px dashed var(--border-strong);flex:0 0 auto;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:30px;color:var(--text-faint); }
+  .photo-thumb img{ width:100%;height:100%;object-fit:cover; }
+  .photo-meta{ font-size:12.5px;color:var(--text-muted);line-height:1.55; }
+  .photo-meta .btns{ display:flex;gap:6px;flex-wrap:wrap;margin-top:8px; }
+  .pill{ display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:100px; }
+  .pill.ok{ background:var(--success-bg);color:var(--success-text); }
+  .pill.warn{ background:var(--warning-bg);color:var(--warning-text); }
+  .pill.bad{ background:var(--danger-bg);color:var(--danger); }
+
+  /* ---- swipe deck ---- */
+  .deck{ position:relative;height:min(56vh,540px);margin-bottom:16px; }
+  .card{ position:absolute;inset:0;border-radius:var(--radius-xl);overflow:hidden;background:#222;box-shadow:var(--shadow-lift);touch-action:pan-y;user-select:none;will-change:transform;transition:transform .3s ease; }
+  .card.under{ transform:scale(.95) translateY(10px);filter:brightness(.85); }
+  .card img.ph{ width:100%;height:100%;object-fit:cover;pointer-events:none;display:block; }
+  .card .shade{ position:absolute;inset:auto 0 0 0;padding:70px 18px 18px;background:linear-gradient(transparent,rgba(0,0,0,.82));color:#fff; }
+  .card .nm{ font-family:var(--font-display);font-size:24px;font-weight:800; }
+  .card .nm a{ color:#fff;text-decoration:none; }
+  .card .nm span{ font-weight:600;opacity:.9; }
+  .card .ct{ font-size:13px;opacity:.85;margin-top:2px; }
+  .card .bio{ font-size:13px;line-height:1.5;margin-top:8px;opacity:.95;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap; }
+  .card.open .bio{ -webkit-line-clamp:unset;max-height:40vh;overflow:auto; }
+  .card .more{ background:rgba(255,255,255,.18);border:none;color:#fff;font-size:11px;font-weight:700;border-radius:100px;padding:4px 10px;margin-top:8px;cursor:pointer; }
+  .stamp{ position:absolute;top:28px;padding:6px 14px;border:4px solid;border-radius:10px;font-family:var(--font-display);font-weight:800;font-size:28px;opacity:0;pointer-events:none; }
+  .stamp.like{ left:22px;color:#3ddc84;border-color:#3ddc84;transform:rotate(-14deg); }
+  .stamp.nope{ right:22px;color:#ff5d6c;border-color:#ff5d6c;transform:rotate(14deg); }
+  .actions{ display:flex;justify-content:center;gap:18px; }
+  .act{ width:62px;height:62px;border-radius:50%;border:1px solid var(--border);background:var(--surface);font-size:26px;cursor:pointer;box-shadow:var(--shadow-soft);transition:transform .15s; }
+  .act:active{ transform:scale(.9); }
+  .act.pass{ color:var(--pass); }
+  .act.cmt{ width:52px;height:52px;font-size:21px;align-self:center; }
+  .act.like{ color:var(--like); }
+  .kbd-hint{ text-align:center;font-size:11px;color:var(--text-faint);margin-top:10px; }
+
+  /* ---- lists ---- */
+  .seg{ display:flex;gap:6px;margin-bottom:12px; }
+  .seg button{ border:1px solid var(--border);background:var(--surface);color:var(--text-muted);border-radius:100px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit; }
+  .seg button.active{ background:var(--text-main);color:var(--surface);border-color:var(--text-main); }
+  .msg{ display:flex;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border); }
+  .msg:last-child{ border-bottom:none; }
+  .av{ width:44px;height:44px;border-radius:50%;object-fit:cover;flex:0 0 auto;background:var(--surface-muted); }
+  .msg .who{ font-weight:700;font-size:13.5px;color:var(--like);text-decoration:none; }
+  .msg .who:hover{ text-decoration:underline; }
+  .msg .body{ font-size:13.5px;line-height:1.5;margin-top:2px;white-space:pre-wrap;word-break:break-word; }
+  .msg .when{ font-size:11px;color:var(--text-faint);margin-top:4px; }
+  .msg .x{ margin-left:auto;align-self:flex-start;border:none;background:none;color:var(--text-faint);cursor:pointer;font-size:14px; }
+  .grid{ display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px; }
+  .mcard{ position:relative;border-radius:var(--radius-md);overflow:hidden;aspect-ratio:4/5;background:var(--surface-muted);display:block;text-decoration:none; }
+  .mcard img{ width:100%;height:100%;object-fit:cover; }
+  .mcard div{ position:absolute;inset:auto 0 0 0;padding:24px 10px 8px;background:linear-gradient(transparent,rgba(0,0,0,.75));color:#fff;font-weight:700;font-size:13px; }
+
+  /* ---- public profile ---- */
+  .pp-photo{ width:100%;aspect-ratio:4/5;object-fit:cover;display:block;background:var(--surface-muted); }
+  .pp-name{ font-family:var(--font-display);font-size:24px;font-weight:800; }
+  .pp-sub{ color:var(--text-muted);font-size:13px;margin-top:2px; }
+  .pp-bio{ font-size:14px;line-height:1.65;white-space:pre-wrap;word-break:break-word;margin-top:14px; }
+  .share-box{ display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--surface-muted);border:1px solid var(--border);border-radius:var(--radius-md);padding:10px 12px;font-size:12px;word-break:break-all; }
+
+  /* ---- modal + toast ---- */
+  .gb-overlay{ position:fixed;inset:0;z-index:1500;background:rgba(10,14,25,.6);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:16px; }
+  .gb-card{ width:100%;max-width:400px;background:var(--surface);color:var(--text-main);border-radius:var(--radius-lg);padding:22px;box-shadow:var(--shadow-lift); }
+  .gb-card h3{ font-family:var(--font-display);font-size:18px;margin-bottom:6px; }
+  .gb-card p{ font-size:13px;color:var(--text-muted);line-height:1.55; }
+  .gb-actions{ display:flex;gap:8px;justify-content:flex-end;margin-top:16px; }
+  .btn-like{ background:var(--like);color:#fff; }
+  .btn-like:hover:not(:disabled){ filter:brightness(.95); }
+  .match-hero{ text-align:center; }
+  .match-hero .pair{ display:flex;justify-content:center;margin:14px 0; }
+  .match-hero .pair img{ width:86px;height:86px;border-radius:50%;object-fit:cover;border:3px solid var(--surface);margin:0 -8px;box-shadow:var(--shadow-soft); }
+  .match-hero h3{ font-size:26px;color:var(--like); }
+  .toast{ position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:var(--text-main);color:var(--surface);padding:10px 18px;border-radius:100px;font-size:13px;font-weight:600;z-index:1600;box-shadow:var(--shadow-lift); }
+
+  @media (max-width:480px){ .top{ padding:12px 16px; } .row2{ flex-direction:column;gap:0; } }
+</style>
+</head>
+<body>
+
+<div class="top">
+  <a href="index.html" style="text-decoration:none;color:inherit;">
+    <div class="logo display" style="font-size:15px;"><span class="g">GEMBEL</span> <span class="e">· Gebet 💘</span></div>
+  </a>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <button class="theme-toggle" onclick="toggleTheme()" title="Ganti tema">🌙</button>
+    <a href="dashboard.html" class="btn btn-ghost btn-sm" id="dash-link" style="text-decoration:none;">Dashboard</a>
+  </div>
+</div>
+
+<div class="wrap" id="app-root">
+  <div class="empty-hint">Memuat…</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/dist/umd/supabase.min.js"></script>
+<script src="assets/supabaseClient.js"></script>
+<script src="assets/notif-bell.js"></script>
+<script src="assets/auth.js"></script>
+<script src="assets/popup.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  const PHOTO_MAX_DAYS = 30;       // photo must be re-uploaded at least this often (mirrors gebet_is_ready in 0038)
+  const MIN_AGE = 18;
+  const DAY = 86400000;
+  const BUCKET = 'gebet-photos';
+  const BIO_GUIDE = 'Bio ini lo isi tentang diri lo. Ceritain lo itu gimana, suka cewe seperti apa, kerja dimana, apapun yang lo bisa ceritain buat ngegaet cewe itu.';
+
+  let ME = null;            // auth user
+  let MY_DOB = null;        // profiles.dob (yyyy-mm-dd)
+  let MY_FULLNAME = '';
+  let MYP = null;           // my gebet_profiles row, or null before setup
+  let TAB = 'swipe';
+  let DECK = [];
+  let inboxMode = 'in';
+  let pendingPhoto = null;  // { blob, previewUrl } chosen before the profile row exists
+  let commentsChannel = null;
+
+  // ------------------------------------------------------------------ utils
+  const $ = (id) => document.getElementById(id);
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function profileUrl(id){ return location.origin + location.pathname + '?u=' + encodeURIComponent(id); }
+  function ageFromDob(dob){
+    if(!dob) return null;
+    const d = new Date(dob + 'T00:00:00'), n = new Date();
+    let a = n.getFullYear() - d.getFullYear();
+    if(n.getMonth() < d.getMonth() || (n.getMonth() === d.getMonth() && n.getDate() < d.getDate())) a--;
+    return a;
+  }
+  function photoDaysLeft(p){
+    if(!p || !p.photo_uploaded_at) return 0;
+    return PHOTO_MAX_DAYS - Math.floor((Date.now() - new Date(p.photo_uploaded_at).getTime()) / DAY);
+  }
+  function ago(ts){
+    const s = Math.max(0, (Date.now() - new Date(ts).getTime()) / 1000);
+    if(s < 60) return 'barusan';
+    if(s < 3600) return Math.floor(s/60) + ' mnt lalu';
+    if(s < 86400) return Math.floor(s/3600) + ' jam lalu';
+    if(s < 86400*7) return Math.floor(s/86400) + ' hari lalu';
+    return new Date(ts).toLocaleDateString('id-ID', { day:'numeric', month:'short', year:'numeric' });
+  }
+  function fmtDate(d){ return d.toLocaleDateString('id-ID', { day:'numeric', month:'long', year:'numeric' }); }
+  function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+  function lsSet(k, v){ try{ localStorage.setItem(k, v); }catch(e){} }
+  function toast(text){
+    const t = document.createElement('div');
+    t.className = 'toast'; t.textContent = text;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 2200);
+  }
+  function modal(html, { dismissible = true } = {}){
+    const ov = document.createElement('div');
+    ov.className = 'gb-overlay';
+    ov.innerHTML = `<div class="gb-card">${html}</div>`;
+    if(dismissible) ov.addEventListener('click', e => { if(e.target === ov) ov.remove(); });
+    document.body.appendChild(ov);
+    return ov;
+  }
+  async function shareLink(url, title){
+    if(navigator.share){
+      try{ await navigator.share({ title, url }); return; }catch(e){ if(e.name === 'AbortError') return; }
+    }
+    try{ await navigator.clipboard.writeText(url); toast('Link kesalin'); }
+    catch(e){ await gembelAlert('Copy manual ya:\n' + url); }
+  }
+
+  // What's still missing before this profile can swipe/comment and show up in decks.
+  function missingSteps(p){
+    if(!p) return ['Bikin profil Gebet lo dulu'];
+    const r = [];
+    if(!p.photo_url) r.push('Upload 1 foto lo');
+    else if(photoDaysLeft(p) <= 0) r.push('Foto lo udah lewat ' + PHOTO_MAX_DAYS + ' hari — upload foto terbaru');
+    if(!String(p.bio || '').trim()) r.push('Isi bio');
+    if(!p.is_active) r.push('Profil lo lagi disembunyiin (nyalain lagi di tab Profil)');
+    return r;
+  }
+
+  // ------------------------------------------------------------------ photo: recency check + resize
+  // Reads DateTimeOriginal (or DateTime) from a JPEG's EXIF block. Returns a Date or null.
+  function readExifDate(buf){
+    try{
+      const v = new DataView(buf);
+      if(v.getUint16(0) !== 0xFFD8) return null;
+      let off = 2;
+      while(off + 4 < v.byteLength){
+        const marker = v.getUint16(off);
+        if((marker & 0xFF00) !== 0xFF00) return null;
+        if(marker === 0xFFDA) return null;
+        const len = v.getUint16(off + 2);
+        if(marker === 0xFFE1 && v.getUint32(off + 4) === 0x45786966) return parseTiffDate(v, off + 10);
+        off += 2 + len;
+      }
+    }catch(e){}
+    return null;
+  }
+  function parseTiffDate(v, t){
+    const le = v.getUint16(t) === 0x4949;
+    const u16 = o => v.getUint16(t + o, le), u32 = o => v.getUint32(t + o, le);
+    const ifd = (o) => { const n = u16(o), tags = {}; for(let i = 0; i < n; i++){ const e = o + 2 + i*12; tags[u16(e)] = e; } return tags; };
+    const str = (e) => { const cnt = u32(e + 4), o = cnt > 4 ? u32(e + 8) : e + 8; let s = ''; for(let k = 0; k < cnt - 1; k++) s += String.fromCharCode(v.getUint8(t + o + k)); return s; };
+    const ifd0 = ifd(u32(4));
+    let raw = null;
+    if(ifd0[0x8769] != null){ const ex = ifd(u32(ifd0[0x8769] + 8)); if(ex[0x9003] != null) raw = str(ex[0x9003]); }
+    if(!raw && ifd0[0x0132] != null) raw = str(ifd0[0x0132]);
+    const m = /^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})/.exec(raw || '');
+    return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) : null;
+  }
+
+  // Validates the photo is recent, then re-encodes it to a <=1080px JPEG. Re-encoding also strips
+  // EXIF, so GPS coordinates baked in by the phone camera never get published.
+  async function preparePhoto(file){
+    if(!/^image\/(jpeg|png|webp|heic|heif)$/i.test(file.type) && !/\.(jpe?g|png|webp|heic)$/i.test(file.name)){
+      throw new Error('Filenya harus foto (JPG/PNG/WEBP).');
+    }
+    const exifDate = readExifDate(await file.slice(0, 256 * 1024).arrayBuffer());
+    const taken = exifDate || (file.lastModified ? new Date(file.lastModified) : null);
+    if(taken && Date.now() - taken.getTime() > PHOTO_MAX_DAYS * DAY){
+      throw new Error(`Foto ini diambil ${fmtDate(taken)} — kelamaan.\nFotonya harus yang terbaru (maks ${PHOTO_MAX_DAYS} hari terakhir). Mending langsung jepret sekarang pake tombol 📸.`);
+    }
+    let bmp;
+    try{ bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }); }
+    catch(e){
+      bmp = await new Promise((res, rej) => {
+        const img = new Image();
+        img.onload = () => res(img);
+        img.onerror = () => rej(new Error('Foto gak kebaca. Coba format JPG/PNG.'));
+        img.src = URL.createObjectURL(file);
+      });
+    }
+    const w0 = bmp.width, h0 = bmp.height, scale = Math.min(1, 1080 / Math.max(w0, h0));
+    const c = document.createElement('canvas');
+    c.width = Math.round(w0 * scale); c.height = Math.round(h0 * scale);
+    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+    const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.86));
+    if(!blob) throw new Error('Gagal proses foto.');
+    return blob;
+  }
+
+  async function uploadPhotoBlob(blob){
+    const path = ME.id + '/' + Date.now() + '.jpg';
+    const { error } = await supabase.storage.from(BUCKET).upload(path, blob, { contentType: 'image/jpeg', upsert: false });
+    if(error) throw error;
+    const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
+    return { path, url: data.publicUrl };
+  }
+
+  // ------------------------------------------------------------------ DOB gate
+  function dobGate(){
+    return new Promise(resolve => {
+      const maxDate = new Date(); maxDate.setFullYear(maxDate.getFullYear() - MIN_AGE);
+      const ov = modal(`
+        <h3>🎂 Tanggal lahir dulu</h3>
+        <p>Sebelum mulai, isi tanggal lahir lo. Gebet cuma buat umur ${MIN_AGE}+. Yang ditampilin ke orang lain cuma umur lo, bukan tanggalnya.</p>
+        <label class="f" for="dob-in">Tanggal lahir</label>
+        <input type="date" class="in" id="dob-in" max="${maxDate.toISOString().slice(0,10)}" value="${esc(MY_DOB || '')}">
+        <div id="dob-err" style="color:var(--danger);font-size:12.5px;margin-top:8px;display:none;"></div>
+        <div class="gb-actions">
+          <a href="dashboard.html" class="btn btn-ghost btn-sm" style="text-decoration:none;">Nanti aja</a>
+          <button class="btn btn-like btn-sm" id="dob-save">Simpan</button>
+        </div>`, { dismissible: false });
+      const err = (t) => { const e = ov.querySelector('#dob-err'); e.textContent = t; e.style.display = t ? '' : 'none'; };
+      ov.querySelector('#dob-save').addEventListener('click', async () => {
+        const val = ov.querySelector('#dob-in').value;
+        if(!val){ err('Tanggal lahirnya wajib diisi.'); return; }
+        const age = ageFromDob(val);
+        if(age == null || age > 100 || new Date(val) > new Date()){ err('Tanggalnya gak valid.'); return; }
+        if(age < MIN_AGE){ err(`Maaf, Gebet cuma buat umur ${MIN_AGE}+.`); return; }
+        const btn = ov.querySelector('#dob-save');
+        btn.disabled = true; btn.textContent = 'Nyimpen…';
+        const { error } = await supabase.from('profiles').update({ dob: val }).eq('id', ME.id);
+        btn.disabled = false; btn.textContent = 'Simpan';
+        if(error){ err('Gagal simpan: ' + error.message); return; }
+        MY_DOB = val;
+        ov.remove();
+        resolve();
+      });
+    });
+  }
+
+  // ------------------------------------------------------------------ shell
+  function inboxUnseen(){ return Number(lsGet('gebet_unseen_' + (ME && ME.id)) || 0); }
+
+  function renderShell(){
+    const root = $('app-root');
+    const unseen = inboxUnseen();
+    root.innerHTML = `
+      <div class="tabs">
+        <button class="tab ${TAB==='swipe'?'active':''}" data-tab="swipe">🔥 Swipe</button>
+        <button class="tab ${TAB==='inbox'?'active':''}" data-tab="inbox">💬 DM${unseen && TAB!=='inbox' ? `<span class="dot">${unseen > 9 ? '9+' : unseen}</span>` : ''}</button>
+        <button class="tab ${TAB==='match'?'active':''}" data-tab="match">💘 Match</button>
+        <button class="tab ${TAB==='profil'?'active':''}" data-tab="profil">👤 Profil</button>
+      </div>
+      <div id="tab-body"></div>`;
+    root.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+  }
+
+  function switchTab(tab){
+    TAB = tab;
+    try{ history.replaceState(null, '', '#' + tab); }catch(e){}
+    if(tab === 'inbox') lsSet('gebet_unseen_' + ME.id, '0');
+    renderShell();
+    if(tab === 'swipe') renderSwipe();
+    else if(tab === 'inbox') renderInbox();
+    else if(tab === 'match') renderMatches();
+    else renderProfileForm();
+  }
+
+  // ------------------------------------------------------------------ swipe tab
+  function readinessNotice(){
+    const miss = missingSteps(MYP);
+    if(miss.length){
+      return `<div class="notice bad"><b>Profil lo belum siap buat swipe.</b><ul>${miss.map(m => `<li>${esc(m)}</li>`).join('')}</ul>
+        <button class="btn btn-sm btn-like" style="margin-top:10px;" data-goto="profil">Lengkapin profil</button></div>`;
+    }
+    const left = photoDaysLeft(MYP);
+    if(left <= 5){
+      return `<div class="notice warn">⏳ Foto lo tinggal ${left} hari lagi sebelum expired. Upload yang baru biar lo tetep muncul di deck orang. <a href="#profil" data-goto="profil" style="color:inherit;font-weight:700;">Ganti foto</a></div>`;
+    }
+    return '';
+  }
+
+  async function renderSwipe(){
+    const body = $('tab-body');
+    const notice = readinessNotice();
+    if(missingSteps(MYP).length){
+      body.innerHTML = notice;
+      wireGoto(body);
+      return;
+    }
+    body.innerHTML = `${notice}<div class="deck" id="deck"><div class="empty-hint">Nyariin orang…</div></div>
+      <div class="actions" id="deck-actions" style="display:none;">
+        <button class="act pass" id="btn-pass" title="Gak suka (←)">✕</button>
+        <button class="act cmt" id="btn-cmt" title="Komen di foto">💬</button>
+        <button class="act like" id="btn-like" title="Suka (→)">♥</button>
+      </div>
+      <div class="kbd-hint">Geser kiri = skip · geser kanan = suka · atau langsung komen di fotonya</div>`;
+    wireGoto(body);
+    $('btn-pass').addEventListener('click', () => flyTop(false));
+    $('btn-like').addEventListener('click', () => flyTop(true));
+    $('btn-cmt').addEventListener('click', () => { if(DECK[0]) openCommentSheet(DECK[0]); });
+    if(DECK.length < 3) await refillDeck();
+    drawDeck();
+  }
+
+  async function refillDeck(){
+    const { data, error } = await supabase.rpc('gebet_deck', { p_limit: 20 });
+    if(error){ console.error(error); return; }
+    const have = new Set(DECK.map(d => d.user_id));
+    (data || []).forEach(d => { if(!have.has(d.user_id)) DECK.push(d); });
+  }
+
+  function cardHTML(p, under){
+    return `<div class="card ${under ? 'under' : ''}" data-id="${esc(p.user_id)}">
+      <img class="ph" src="${esc(p.photo_url)}" alt="" draggable="false">
+      <div class="stamp like">SUKA</div><div class="stamp nope">SKIP</div>
+      <div class="shade">
+        <div class="nm"><a href="${esc(profileUrl(p.user_id))}">${esc(p.display_name)}</a>${p.age != null ? ` <span>${p.age}</span>` : ''}</div>
+        ${p.city ? `<div class="ct">📍 ${esc(p.city)}</div>` : ''}
+        <div class="bio">${esc(p.bio)}</div>
+        <button class="more" type="button">Baca bio</button>
+      </div>
+    </div>`;
+  }
+
+  function drawDeck(){
+    const deckEl = $('deck');
+    if(!deckEl) return;
+    const acts = $('deck-actions');
+    if(!DECK.length){
+      deckEl.innerHTML = `<div class="panel" style="height:100%;display:flex;align-items:center;justify-content:center;"><div class="empty-hint">Udah abis nih, belum ada orang baru buat di-swipe.<br>Balik lagi nanti ya 👋<br><br><button class="btn btn-ghost btn-sm" id="deck-reload">Cek lagi</button></div></div>`;
+      acts.style.display = 'none';
+      $('deck-reload').addEventListener('click', async () => { await refillDeck(); drawDeck(); });
+      return;
+    }
+    acts.style.display = '';
+    // Top card drawn last so it sits above.
+    deckEl.innerHTML = (DECK[1] ? cardHTML(DECK[1], true) : '') + cardHTML(DECK[0], false);
+    const top = deckEl.lastElementChild;
+    top.querySelector('.more').addEventListener('click', (e) => {
+      e.stopPropagation();
+      top.classList.toggle('open');
+      e.target.textContent = top.classList.contains('open') ? 'Tutup' : 'Baca bio';
+    });
+    wireDrag(top);
+  }
+
+  function wireDrag(card){
+    let sx = 0, sy = 0, dx = 0, dy = 0, down = false;
+    const like = card.querySelector('.stamp.like'), nope = card.querySelector('.stamp.nope');
+    const reset = () => {
+      down = false;
+      card.style.transition = 'transform .3s ease';
+      card.style.transform = '';
+      like.style.opacity = nope.style.opacity = 0;
+    };
+    card.addEventListener('pointerdown', e => {
+      if(e.target.closest('button, a')) return;
+      down = true; sx = e.clientX; sy = e.clientY; dx = dy = 0;
+      card.style.transition = 'none';
+      card.setPointerCapture(e.pointerId);
+    });
+    card.addEventListener('pointermove', e => {
+      if(!down) return;
+      dx = e.clientX - sx; dy = e.clientY - sy;
+      card.style.transform = `translate(${dx}px, ${dy * 0.3}px) rotate(${dx / 14}deg)`;
+      like.style.opacity = Math.max(0, Math.min(1, dx / 100));
+      nope.style.opacity = Math.max(0, Math.min(1, -dx / 100));
+    });
+    card.addEventListener('pointerup', () => {
+      if(!down) return;
+      down = false;
+      if(Math.abs(dx) > 110) fly(card, dx > 0);
+      else reset();
+    });
+    card.addEventListener('pointercancel', reset);
+  }
+
+  function flyTop(liked){
+    const deckEl = $('deck');
+    const top = deckEl && deckEl.querySelector('.card:last-child');
+    if(top) fly(top, liked);
+  }
+
+  let swiping = false;
+  async function fly(card, liked){
+    if(swiping) return;
+    swiping = true;
+    const target = DECK[0];
+    card.style.transition = 'transform .35s ease';
+    card.style.transform = `translate(${liked ? '' : '-'}120vw, 40px) rotate(${liked ? 30 : -30}deg)`;
+    card.querySelector(liked ? '.stamp.like' : '.stamp.nope').style.opacity = 1;
+    const req = supabase.rpc('gebet_swipe', { p_target: target.user_id, p_like: liked });
+    await new Promise(r => setTimeout(r, 300));
+    DECK.shift();
+    drawDeck();
+    swiping = false;
+    const { data: matched, error } = await req;
+    if(error){ await gembelAlert('Gagal nyimpen swipe: ' + error.message); return; }
+    if(matched) showMatch(target);
+    if(DECK.length < 3){ await refillDeck(); if(TAB === 'swipe' && DECK.length && !$('deck').querySelector('.card')) drawDeck(); }
+  }
+
+  function showMatch(p){
+    const ov = modal(`<div class="match-hero">
+        <h3>It's a match! 💘</h3>
+        <div class="pair"><img src="${esc(MYP.photo_url)}" alt=""><img src="${esc(p.photo_url)}" alt=""></div>
+        <p>Lo sama <b>${esc(p.display_name)}</b> saling suka. Jangan cuma diem, sapa duluan.</p>
+        <div class="gb-actions" style="justify-content:center;">
+          <button class="btn btn-ghost btn-sm" data-close>Lanjut swipe</button>
+          <button class="btn btn-like btn-sm" data-cmt>💬 Komen di fotonya</button>
+        </div></div>`);
+    ov.querySelector('[data-close]').addEventListener('click', () => ov.remove());
+    ov.querySelector('[data-cmt]').addEventListener('click', () => { ov.remove(); openCommentSheet(p); });
+  }
+
+  document.addEventListener('keydown', e => {
+    if(TAB !== 'swipe' || document.querySelector('.gb-overlay, .gembel-popup-overlay.show')) return;
+    if(/INPUT|TEXTAREA|SELECT/.test((document.activeElement || {}).tagName || '')) return;
+    if(e.key === 'ArrowLeft') flyTop(false);
+    if(e.key === 'ArrowRight') flyTop(true);
+  });
+
+  // ------------------------------------------------------------------ comment (DM on photo)
+  function openCommentSheet(p){
+    const ov = modal(`
+      <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;">
+        <img class="av" src="${esc(p.photo_url)}" alt="">
+        <div><h3 style="margin:0;">Komen ke ${esc(p.display_name)}</h3><p>Cuma dia yang bisa baca. Nama lo nyambung ke profil lo.</p></div>
+      </div>
+      <textarea class="in" id="cmt-in" maxlength="500" style="min-height:100px;" placeholder="Tulis sesuatu yang bikin dia pengen bales…"></textarea>
+      <div class="counter" id="cmt-count">0/500</div>
+      <div class="gb-actions">
+        <button class="btn btn-ghost btn-sm" data-close>Batal</button>
+        <button class="btn btn-like btn-sm" id="cmt-send">Kirim</button>
+      </div>`);
+    const ta = ov.querySelector('#cmt-in');
+    ta.focus();
+    ta.addEventListener('input', () => { ov.querySelector('#cmt-count').textContent = ta.value.length + '/500'; });
+    ov.querySelector('[data-close]').addEventListener('click', () => ov.remove());
+    ov.querySelector('#cmt-send').addEventListener('click', async () => {
+      const body = ta.value.trim();
+      if(!body) return;
+      const btn = ov.querySelector('#cmt-send');
+      btn.disabled = true; btn.textContent = 'Ngirim…';
+      const { error } = await supabase.from('gebet_comments').insert({ target_id: p.user_id, author_id: ME.id, body });
+      btn.disabled = false; btn.textContent = 'Kirim';
+      if(error){ await gembelAlert('Gagal kirim: ' + error.message); return; }
+      ov.remove();
+      toast('Terkirim ke ' + p.display_name);
+      if(TAB === 'inbox') renderInbox();
+    });
+  }
+
+  // ------------------------------------------------------------------ inbox tab
+  async function renderInbox(){
+    const body = $('tab-body');
+    body.innerHTML = `
+      <div class="seg">
+        <button class="${inboxMode==='in'?'active':''}" data-mode="in">Masuk</button>
+        <button class="${inboxMode==='out'?'active':''}" data-mode="out">Terkirim</button>
+      </div>
+      <div class="panel" id="inbox-list"><div class="empty-hint">Memuat…</div></div>`;
+    body.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => { inboxMode = b.dataset.mode; renderInbox(); }));
+
+    const col = inboxMode === 'in' ? 'target_id' : 'author_id';
+    const other = inboxMode === 'in' ? 'author_id' : 'target_id';
+    const { data: rows, error } = await supabase.from('gebet_comments').select('*').eq(col, ME.id).order('created_at', { ascending: false }).limit(200);
+    const list = $('inbox-list');
+    if(!list) return;
+    if(error){ list.innerHTML = `<div class="empty-hint">Gagal muat: ${esc(error.message)}</div>`; return; }
+    if(!rows.length){
+      list.innerHTML = `<div class="empty-hint">${inboxMode === 'in'
+        ? 'Belum ada yang komen di foto lo.<br>Tips: foto yang jelas + bio yang niat = lebih banyak DM.'
+        : 'Lo belum komen ke siapa-siapa. Gas swipe, terus komen di foto yang lo suka.'}</div>`;
+      return;
+    }
+    const ids = [...new Set(rows.map(r => r[other]))];
+    const { data: profs } = await supabase.from('gebet_profiles').select('user_id, display_name, photo_url').in('user_id', ids);
+    const byId = {}; (profs || []).forEach(p => { byId[p.user_id] = p; });
+    list.innerHTML = rows.map(r => {
+      const p = byId[r[other]] || { display_name: 'Akun dihapus', photo_url: '' };
+      return `<div class="msg">
+        <a href="${esc(profileUrl(r[other]))}"><img class="av" src="${esc(p.photo_url)}" alt=""></a>
+        <div style="min-width:0;flex:1;">
+          ${inboxMode === 'out' ? '<span style="font-size:12px;color:var(--text-faint);">ke </span>' : ''}<a class="who" href="${esc(profileUrl(r[other]))}">${esc(p.display_name)}</a>
+          <div class="body">${esc(r.body)}</div>
+          <div class="when">${esc(ago(r.created_at))}</div>
+        </div>
+        <button class="x" data-del="${esc(r.id)}" title="Hapus">✕</button>
+      </div>`;
+    }).join('');
+    list.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => {
+      if(!(await gembelConfirm('Hapus pesan ini?'))) return;
+      const { error } = await supabase.from('gebet_comments').delete().eq('id', b.dataset.del);
+      if(error){ await gembelAlert('Gagal hapus: ' + error.message); return; }
+      renderInbox();
+    }));
+  }
+
+  function subscribeInbox(){
+    if(commentsChannel) supabase.removeChannel(commentsChannel);
+    commentsChannel = supabase.channel('gebet_inbox_' + ME.id)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'gebet_comments', filter: `target_id=eq.${ME.id}` }, () => {
+        if(TAB === 'inbox'){ renderInbox(); return; }
+        lsSet('gebet_unseen_' + ME.id, String(inboxUnseen() + 1));
+        const tabBody = $('tab-body');
+        const saved = tabBody ? [...tabBody.childNodes] : null;
+        renderShell();
+        if(saved) $('tab-body').append(...saved);
+        toast('💬 Ada DM baru');
+      })
+      .subscribe();
+  }
+
+  // ------------------------------------------------------------------ match tab
+  async function renderMatches(){
+    const body = $('tab-body');
+    body.innerHTML = `<div class="empty-hint">Memuat…</div>`;
+    const { data, error } = await supabase.rpc('gebet_matches');
+    if(TAB !== 'match') return;
+    if(error){ body.innerHTML = `<div class="empty-hint">Gagal muat: ${esc(error.message)}</div>`; return; }
+    if(!data.length){ body.innerHTML = `<div class="panel"><div class="empty-hint">Belum ada match. Kalau lo swipe kanan dan dia juga swipe kanan ke lo, muncul di sini.</div></div>`; return; }
+    body.innerHTML = `<div class="grid">${data.map(m => `
+      <a class="mcard" href="${esc(profileUrl(m.user_id))}">
+        <img src="${esc(m.photo_url)}" alt="">
+        <div>${esc(m.display_name)}${m.age != null ? ', ' + m.age : ''}</div>
+      </a>`).join('')}</div>`;
+  }
+
+  // ------------------------------------------------------------------ profile tab
+  function photoStatusHTML(){
+    if(pendingPhoto) return `<span class="pill warn">Foto baru — belum disimpan</span>`;
+    if(!MYP || !MYP.photo_url) return `<span class="pill bad">Belum ada foto</span>`;
+    const left = photoDaysLeft(MYP);
+    if(left <= 0) return `<span class="pill bad">Expired — upload baru</span>`;
+    return `<span class="pill ${left <= 5 ? 'warn' : 'ok'}">Aktif · ${left} hari lagi</span>`;
+  }
+
+  function renderProfileForm(){
+    const body = $('tab-body');
+    const p = MYP || { display_name: MY_FULLNAME || '', gender: '', interested_in: '', city: '', bio: '', is_active: true };
+    const photoSrc = pendingPhoto ? pendingPhoto.previewUrl : (MYP && MYP.photo_url);
+    const age = ageFromDob(MY_DOB);
+    const miss = missingSteps(MYP);
+    body.innerHTML = `
+      ${MYP && miss.length ? `<div class="notice bad"><b>Belum muncul di deck orang:</b><ul>${miss.map(m => `<li>${esc(m)}</li>`).join('')}</ul></div>` : ''}
+      ${!MYP ? `<div class="notice warn">Setup profil Gebet lo. Semua orang bisa liat profil ini lewat link, jadi isi yang bener ya.</div>` : ''}
+
+      <div class="panel">
+        <div class="panel-head"><h2>📸 Foto</h2>${photoStatusHTML()}</div>
+        <div class="panel-body">
+          <div class="photo-slot">
+            <div class="photo-thumb">${photoSrc ? `<img src="${esc(photoSrc)}" alt="">` : '🙂'}</div>
+            <div class="photo-meta">
+              Cuma <b>1 foto</b>, dan harus <b>foto terbaru</b> (diambil maks ${PHOTO_MAX_DAYS} hari terakhir). Tiap ${PHOTO_MAX_DAYS} hari wajib ganti, kalau nggak profil lo ilang dari deck orang.
+              <div class="btns">
+                <label class="btn btn-like btn-sm" style="cursor:pointer;">📸 Jepret sekarang<input type="file" accept="image/*" capture="user" id="ph-cam" hidden></label>
+                <label class="btn btn-ghost btn-sm" style="cursor:pointer;">🖼 Dari galeri<input type="file" accept="image/*" id="ph-file" hidden></label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>👤 Tentang lo</h2>${age != null ? `<span class="pill ok">${age} th</span>` : ''}</div>
+        <div class="panel-body">
+          <label class="f" for="f-name">Nama panggilan</label>
+          <input class="in" id="f-name" maxlength="40" value="${esc(p.display_name)}" placeholder="Nama yang mau ditampilin">
+          <div class="row2">
+            <div>
+              <label class="f" for="f-gender">Lo itu</label>
+              <select class="in" id="f-gender">
+                <option value="" ${!p.gender?'selected':''} disabled>Pilih…</option>
+                <option value="pria" ${p.gender==='pria'?'selected':''}>Cowo</option>
+                <option value="wanita" ${p.gender==='wanita'?'selected':''}>Cewe</option>
+              </select>
+            </div>
+            <div>
+              <label class="f" for="f-into">Nyari</label>
+              <select class="in" id="f-into">
+                <option value="" ${!p.interested_in?'selected':''} disabled>Pilih…</option>
+                <option value="wanita" ${p.interested_in==='wanita'?'selected':''}>Cewe</option>
+                <option value="pria" ${p.interested_in==='pria'?'selected':''}>Cowo</option>
+                <option value="semua" ${p.interested_in==='semua'?'selected':''}>Dua-duanya</option>
+              </select>
+            </div>
+          </div>
+          <label class="f" for="f-city">Kota</label>
+          <input class="in" id="f-city" maxlength="60" value="${esc(p.city || '')}" placeholder="Jakarta Utara">
+          <label class="f" for="f-bio">Bio</label>
+          <div class="guide">📝 <b>Panduan:</b> ${esc(BIO_GUIDE)}</div>
+          <textarea class="in" id="f-bio" maxlength="1000" placeholder="Contoh: Gw anak PIK, kerja di startup logistik. Weekend biasanya lari pagi terus nyari kopi. Suka cewe yang nyambung diajak ngobrol random sampe pagi…">${esc(p.bio || '')}</textarea>
+          <div class="counter" id="bio-count">${(p.bio || '').length}/1000</div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-top:12px;">
+            <input type="checkbox" id="f-active" ${p.is_active ? 'checked' : ''}> Tampilin profil gw (matiin kalau mau ngilang sementara)
+          </label>
+          <div style="font-size:12px;color:var(--text-faint);margin-top:10px;">Tanggal lahir: ${MY_DOB ? esc(fmtDate(new Date(MY_DOB + 'T00:00:00'))) : '—'} · <a href="#" id="dob-edit" style="color:var(--primary);">ubah</a></div>
+          <button class="btn btn-like btn-block" id="f-save" style="margin-top:16px;">${MYP ? 'Simpan' : 'Bikin profil'}</button>
+        </div>
+      </div>
+
+      ${MYP ? `
+      <div class="panel">
+        <div class="panel-head"><h2>🔗 Share profil</h2></div>
+        <div class="panel-body">
+          <p style="font-size:13px;color:var(--text-muted);margin-bottom:10px;">Link ini bisa dibuka siapa aja, gak perlu login.</p>
+          <div class="share-box"><span style="flex:1;min-width:0;">${esc(profileUrl(ME.id))}</span>
+            <a class="btn btn-ghost btn-sm" href="${esc(profileUrl(ME.id))}" style="text-decoration:none;">Liat</a>
+            <button class="btn btn-soft btn-sm" id="share-btn">Share</button>
+          </div>
+        </div>
+      </div>
+      <div style="text-align:center;margin-top:10px;"><button class="btn btn-danger btn-sm" id="del-prof">Hapus profil Gebet</button></div>` : ''}`;
+
+    const bio = $('f-bio');
+    bio.addEventListener('input', () => { $('bio-count').textContent = bio.value.length + '/1000'; });
+    $('ph-cam').addEventListener('change', onPhotoPicked);
+    $('ph-file').addEventListener('change', onPhotoPicked);
+    $('f-save').addEventListener('click', saveProfile);
+    $('dob-edit').addEventListener('click', async (e) => { e.preventDefault(); await dobGate(); renderProfileForm(); });
+    if(MYP){
+      $('share-btn').addEventListener('click', () => shareLink(profileUrl(ME.id), MYP.display_name + ' di Gebet'));
+      $('del-prof').addEventListener('click', deleteProfile);
+    }
+  }
+
+  function formValues(){
+    return {
+      display_name: $('f-name').value.trim(),
+      gender: $('f-gender').value,
+      interested_in: $('f-into').value,
+      city: $('f-city').value.trim() || null,
+      bio: $('f-bio').value.trim(),
+      is_active: $('f-active').checked,
+    };
+  }
+
+  async function onPhotoPicked(e){
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if(!file) return;
+    let blob;
+    try{ blob = await preparePhoto(file); }
+    catch(err){ await gembelAlert(err.message); return; }
+
+    if(!MYP){
+      // No profile row yet -> keep it until "Bikin profil" (the upload needs somewhere to land).
+      const draft = formValues();
+      if(pendingPhoto) URL.revokeObjectURL(pendingPhoto.previewUrl);
+      pendingPhoto = { blob, previewUrl: URL.createObjectURL(blob) };
+      renderProfileForm();
+      restoreForm(draft);
+      return;
+    }
+    const draft = formValues();
+    toast('Upload foto…');
+    try{
+      const oldPath = MYP.photo_path;
+      const up = await uploadPhotoBlob(blob);
+      const { data, error } = await supabase.from('gebet_profiles').update({ photo_path: up.path, photo_url: up.url }).eq('user_id', ME.id).select().single();
+      if(error){ await supabase.storage.from(BUCKET).remove([up.path]); throw error; }
+      MYP = data;
+      if(oldPath && oldPath !== up.path) supabase.storage.from(BUCKET).remove([oldPath]);
+      toast('Foto diganti ✔');
+    }catch(err){ await gembelAlert('Gagal upload: ' + err.message); }
+    renderProfileForm();
+    restoreForm(draft);
+  }
+
+  function restoreForm(v){
+    $('f-name').value = v.display_name; $('f-gender').value = v.gender; $('f-into').value = v.interested_in;
+    $('f-city').value = v.city || ''; $('f-bio').value = v.bio; $('f-active').checked = v.is_active;
+    $('bio-count').textContent = v.bio.length + '/1000';
+  }
+
+  async function saveProfile(){
+    const v = formValues();
+    if(!v.display_name){ await gembelAlert('Isi nama panggilan dulu.'); return; }
+    if(!v.gender || !v.interested_in){ await gembelAlert('Pilih lo itu cowo/cewe, dan nyari siapa.'); return; }
+    if(!v.bio){ await gembelAlert('Bio wajib diisi.\n\n' + BIO_GUIDE); return; }
+    if(!MY_DOB){ await dobGate(); }
+    const btn = $('f-save');
+    btn.disabled = true; btn.textContent = 'Nyimpen…';
+    try{
+      if(!MYP){
+        const row = { user_id: ME.id, ...v };
+        if(pendingPhoto){
+          const up = await uploadPhotoBlob(pendingPhoto.blob);
+          row.photo_path = up.path; row.photo_url = up.url;
+        }
+        const { data, error } = await supabase.from('gebet_profiles').insert(row).select().single();
+        if(error){ if(row.photo_path) supabase.storage.from(BUCKET).remove([row.photo_path]); throw error; }
+        MYP = data;
+        if(pendingPhoto){ URL.revokeObjectURL(pendingPhoto.previewUrl); pendingPhoto = null; }
+        subscribeInbox();
+        toast('Profil jadi 🎉');
+        if(!missingSteps(MYP).length){ switchTab('swipe'); return; }
+      }else{
+        const { data, error } = await supabase.from('gebet_profiles').update(v).eq('user_id', ME.id).select().single();
+        if(error) throw error;
+        MYP = data;
+        toast('Kesimpen ✔');
+      }
+    }catch(err){
+      await gembelAlert('Gagal simpan: ' + err.message);
+    }
+    renderProfileForm();
+  }
+
+  async function deleteProfile(){
+    if(!(await gembelConfirm('Hapus profil Gebet lo? Foto, swipe, dan semua DM lo ikut kehapus. Gak bisa dibalikin.'))) return;
+    const path = MYP.photo_path;
+    const { error } = await supabase.from('gebet_profiles').delete().eq('user_id', ME.id);
+    if(error){ await gembelAlert('Gagal hapus: ' + error.message); return; }
+    if(path) await supabase.storage.from(BUCKET).remove([path]);
+    await supabase.from('gebet_swipes').delete().eq('swiper_id', ME.id);
+    await supabase.from('gebet_comments').delete().or(`author_id.eq.${ME.id},target_id.eq.${ME.id}`);
+    MYP = null; DECK = [];
+    toast('Profil dihapus');
+    switchTab('profil');
+  }
+
+  function wireGoto(el){
+    el.querySelectorAll('[data-goto]').forEach(b => b.addEventListener('click', e => { e.preventDefault(); switchTab(b.dataset.goto); }));
+  }
+
+  // ------------------------------------------------------------------ public profile (?u=)
+  async function bootPublic(userId){
+    const root = $('app-root');
+    const { data: sess } = await supabase.auth.getSession();
+    const viewer = sess && sess.session ? sess.session.user : null;
+    if(!viewer) $('dash-link').textContent = 'Login';
+
+    const { data, error } = await supabase.rpc('gebet_public_profile', { p_user_id: userId });
+    const p = !error && data && data[0];
+    if(!p){
+      root.innerHTML = `<div class="empty-hint" style="padding-top:60px;">Profil gak ketemu, atau pemiliknya lagi nyembunyiin profilnya.<br><br><a href="gebet.html" class="btn btn-like btn-sm" style="text-decoration:none;">Buka Gebet</a></div>`;
+      return;
+    }
+    document.title = p.display_name + ' — Gebet';
+
+    let viewerProf = null;
+    if(viewer && viewer.id !== p.user_id){
+      const { data: vp } = await supabase.from('gebet_profiles').select('*').eq('user_id', viewer.id).maybeSingle();
+      viewerProf = vp;
+    }
+    const isSelf = viewer && viewer.id === p.user_id;
+    const viewerReady = viewerProf && !missingSteps(viewerProf).length;
+    const photoLeft = photoDaysLeft(p);
+
+    root.innerHTML = `
+      <div class="panel">
+        ${p.photo_url ? `<img class="pp-photo" src="${esc(p.photo_url)}" alt="${esc(p.display_name)}">` : `<div class="pp-photo" style="display:flex;align-items:center;justify-content:center;font-size:60px;">🙂</div>`}
+        <div class="panel-body">
+          <div class="pp-name">${esc(p.display_name)}${p.age != null ? `<span style="font-weight:600;color:var(--text-muted);">, ${p.age}</span>` : ''}</div>
+          <div class="pp-sub">${p.city ? '📍 ' + esc(p.city) + ' · ' : ''}${p.photo_uploaded_at ? (photoLeft > 0 ? `📸 foto diupload ${esc(ago(p.photo_uploaded_at))}` : '📸 foto udah lama') : ''}</div>
+          ${p.bio ? `<div class="pp-bio">${esc(p.bio)}</div>` : ''}
+        </div>
+      </div>
+      <div id="pp-actions"></div>
+      <div style="text-align:center;margin-top:14px;"><button class="btn btn-ghost btn-sm" id="pp-share">🔗 Share profil ini</button></div>`;
+
+    $('pp-share').addEventListener('click', () => shareLink(profileUrl(p.user_id), p.display_name + ' di Gebet'));
+    const acts = $('pp-actions');
+    if(isSelf){
+      acts.innerHTML = `<div class="notice warn">Ini profil lo sendiri — gini tampilannya buat orang lain. <a href="gebet.html#profil" style="color:inherit;font-weight:700;">Edit</a></div>`;
+    }else if(!viewer){
+      acts.innerHTML = `<div class="panel"><div class="panel-body" style="text-align:center;">
+        <p style="font-size:13.5px;color:var(--text-muted);margin-bottom:12px;">Tertarik? Login buat swipe & komen langsung di fotonya.</p>
+        <a href="index.html" class="btn btn-like" style="text-decoration:none;">Login / Daftar</a></div></div>`;
+    }else if(!viewerReady){
+      acts.innerHTML = `<div class="notice bad">Lengkapin profil Gebet lo dulu (foto terbaru + bio) biar bisa like & komen. <a href="gebet.html#profil" style="color:inherit;font-weight:700;">Lengkapin</a></div>`;
+    }else{
+      ME = viewer; MYP = viewerProf;
+      acts.innerHTML = `<div class="actions">
+        <button class="act pass" id="pp-pass" title="Skip">✕</button>
+        <button class="act cmt" id="pp-cmt" title="Komen di foto">💬</button>
+        <button class="act like" id="pp-like" title="Suka">♥</button></div>`;
+      const doSwipe = async (liked) => {
+        const { data: matched, error } = await supabase.rpc('gebet_swipe', { p_target: p.user_id, p_like: liked });
+        if(error){ await gembelAlert('Gagal: ' + error.message); return; }
+        if(matched) showMatch(p); else toast(liked ? '♥ Disukain' : 'Di-skip');
+      };
+      $('pp-pass').addEventListener('click', () => doSwipe(false));
+      $('pp-like').addEventListener('click', () => doSwipe(true));
+      $('pp-cmt').addEventListener('click', () => openCommentSheet(p));
+    }
+  }
+
+  // ------------------------------------------------------------------ boot
+  async function bootApp(){
+    const { data: prof } = await supabase.from('profiles').select('dob, full_name').eq('id', ME.id).maybeSingle();
+    MY_DOB = prof && prof.dob;
+    MY_FULLNAME = (prof && prof.full_name) || '';
+    const age = ageFromDob(MY_DOB);
+    if(!MY_DOB || age < MIN_AGE){
+      $('app-root').innerHTML = `<div class="empty-hint" style="padding-top:60px;">Isi tanggal lahir dulu ya…</div>`;
+      if(MY_DOB && age < MIN_AGE){
+        $('app-root').innerHTML = `<div class="empty-hint" style="padding-top:60px;">Maaf, Gebet cuma buat umur ${MIN_AGE}+.<br><br><a href="dashboard.html">Balik ke Dashboard</a></div>`;
+        return;
+      }
+      await dobGate();
+    }
+
+    const { data: mine } = await supabase.from('gebet_profiles').select('*').eq('user_id', ME.id).maybeSingle();
+    MYP = mine || null;
+    if(MYP) subscribeInbox();
+
+    const hashTab = (location.hash || '').slice(1);
+    const start = !MYP ? 'profil' : (['swipe','inbox','match','profil'].includes(hashTab) ? hashTab : 'swipe');
+    switchTab(start);
+  }
+
+  document.addEventListener('DOMContentLoaded', async () => {
+    const u = new URLSearchParams(location.search).get('u');
+    if(u){ await bootPublic(u); return; }
+    const authCtx = await requireAuth('index.html');
+    if(!authCtx) return;
+    ME = authCtx.user;
+    await bootApp();
+  });
+})();
+</script>
+</body>
+</html>
