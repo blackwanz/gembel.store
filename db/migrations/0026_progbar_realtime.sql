@@ -8,9 +8,11 @@
 
 begin;
 
+-- Skips when the table doesn't exist yet -- it was missing from the live project entirely;
+-- 0042_progbar_table.sql creates it and does this publication step itself.
 do $$
 begin
-  if not exists (
+  if to_regclass('public.user_progbar_data') is not null and not exists (
     select 1 from pg_publication_tables
     where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'user_progbar_data'
   ) then
