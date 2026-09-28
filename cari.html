@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gembel.com</title>
+<meta name="description" content="Gembel.com — cari di bookmark yang lo & member lain simpan sendiri.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27%3E%3Crect width=%2764%27 height=%2764%27 rx=%2716%27 fill=%27%234f7cff%27/%3E%3Ctext x=%2732%27 y=%2745%27 font-size=%2736%27 font-family=%27Arial%27 font-weight=%27bold%27 fill=%27white%27 text-anchor=%27middle%27%3EG%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/app-theme.css">
+<style>
+  body{ background:var(--surface);min-height:100vh;display:flex;flex-direction:column; }
+  a{ color:inherit; }
+  .topbar{ display:flex;justify-content:flex-end;align-items:center;gap:10px;padding:14px 20px; }
+  .topbar a.plain{ font-size:13px;text-decoration:none;color:var(--text-main); }
+  .topbar a.plain:hover{ text-decoration:underline; }
+  .icon-btn{ width:40px;height:40px;border-radius:50%;border:none;background:none;cursor:pointer;font-size:18px;display:inline-flex;align-items:center;justify-content:center;color:var(--text-muted); }
+  .icon-btn:hover{ background:var(--surface-hover); }
+  .me{ width:34px;height:34px;border-radius:50%;background:var(--primary);color:#fff;font-weight:700;font-size:13px;display:inline-flex;align-items:center;justify-content:center;text-decoration:none; }
+
+  /* ---- logo ---- */
+  .brand{ font-family:var(--font-display);font-weight:800;letter-spacing:-.02em;user-select:none;text-decoration:none;white-space:nowrap; }
+  .brand .g{ color:var(--primary); }
+  .brand .e{ color:var(--text-muted);font-weight:600; }
+
+  /* ---- home ---- */
+  main{ flex:1; }
+  .home{ display:flex;flex-direction:column;align-items:center;padding:12vh 16px 40px; }
+  .home .brand{ font-size:clamp(46px,11vw,88px);line-height:1;margin-bottom:6px; }
+  .home .tag{ font-size:11px;letter-spacing:.2em;color:var(--text-faint);margin-bottom:28px; }
+  .sbox-wrap{ position:relative;width:100%;max-width:584px; }
+  .sbox{ display:flex;align-items:center;gap:10px;width:100%;height:48px;padding:0 8px 0 16px;border:1px solid var(--border);border-radius:24px;background:var(--surface);transition:box-shadow .15s; }
+  .sbox:hover,.sbox:focus-within{ box-shadow:0 1px 6px rgba(32,33,36,.28);border-color:transparent; }
+  .sbox.open{ border-radius:24px 24px 0 0;box-shadow:0 1px 6px rgba(32,33,36,.28);border-color:transparent; }
+  .sbox input{ flex:1;border:none;outline:none;background:none;font:inherit;font-size:16px;color:var(--text-main);min-width:0; }
+  .sbox .mag{ color:var(--text-faint);font-size:15px; }
+  .sbox .clr{ border:none;background:none;color:var(--text-muted);font-size:20px;cursor:pointer;padding:0 6px;display:none; }
+  .sbox .clr.show{ display:block; }
+  .sugg{ position:absolute;left:0;right:0;top:48px;background:var(--surface);border-radius:0 0 24px 24px;box-shadow:0 4px 6px rgba(32,33,36,.28);padding:4px 0 14px;z-index:30;display:none; }
+  .sugg.show{ display:block; }
+  .sugg .sep{ border-top:1px solid var(--border);margin:0 16px 6px; }
+  .sg{ display:flex;align-items:center;gap:12px;padding:7px 18px;cursor:pointer;font-size:14px; }
+  .sg:hover,.sg.sel{ background:var(--surface-hover); }
+  .sg .t{ flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+  .sg .h{ color:var(--text-faint);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:40%; }
+  .btns{ display:flex;gap:12px;justify-content:center;margin-top:26px;flex-wrap:wrap; }
+  .gbtn{ background:var(--surface-hover);border:1px solid transparent;border-radius:6px;padding:0 16px;height:36px;font:inherit;font-size:14px;color:var(--text-main);cursor:pointer; }
+  .gbtn:hover{ border-color:var(--border);box-shadow:0 1px 1px rgba(0,0,0,.1); }
+  .home-meta{ margin-top:26px;font-size:13px;color:var(--text-muted);text-align:center;line-height:1.8; }
+  .home-meta a{ color:var(--primary-text);text-decoration:none;font-weight:600; }
+  .chips{ display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:14px;max-width:620px; }
+  .chip{ border:1px solid var(--border);border-radius:100px;padding:5px 12px;font-size:12.5px;cursor:pointer;background:var(--surface);color:var(--text-main); }
+  .chip:hover{ background:var(--surface-hover); }
+  .chip small{ color:var(--text-faint);margin-left:4px; }
+
+  /* ---- results ---- */
+  .rhead{ display:flex;align-items:center;gap:28px;padding:18px 20px 0;flex-wrap:wrap; }
+  .rhead .brand{ font-size:28px; }
+  .rhead .sbox-wrap{ max-width:692px;flex:1;min-width:260px; }
+  .rhead .sbox{ height:44px; }
+  .rhead .sugg{ top:44px; }
+  .rtabs{ display:flex;gap:4px;padding:0 20px 0 max(20px, calc(20px + 140px + 28px));border-bottom:1px solid var(--border);margin-top:12px;overflow-x:auto; }
+  .rtab{ border:none;background:none;padding:12px 12px;font:inherit;font-size:13.5px;color:var(--text-muted);cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap; }
+  .rtab.active{ color:var(--primary-text);border-bottom-color:var(--primary);font-weight:600; }
+  .results{ padding:14px 20px 60px max(20px, calc(20px + 140px + 28px));max-width:calc(652px + 188px); }
+  .rcount{ font-size:13px;color:var(--text-faint);margin-bottom:18px; }
+  .res{ margin-bottom:28px; }
+  .res .src{ display:flex;align-items:center;gap:10px;margin-bottom:4px;min-width:0; }
+  .fav{ width:28px;height:28px;border-radius:50%;background:var(--surface-hover);border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;overflow:hidden;font-size:12px;font-weight:700;color:#fff; }
+  .fav img{ width:18px;height:18px; }
+  .sg .fav{ width:22px;height:22px;font-size:10px; } .sg .fav img{ width:14px;height:14px; }
+  .src .site{ font-size:14px;color:var(--text-main);line-height:1.25;min-width:0; }
+  .src .crumb{ font-size:12px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:520px;display:block; }
+  .res h3{ font-family:var(--font-body);font-size:20px;font-weight:400;line-height:1.3;margin:0; }
+  .res h3 a{ color:#1a0dab;text-decoration:none; }
+  [data-theme="dark"] .res h3 a{ color:#99c3ff; }
+  .res h3 a:hover{ text-decoration:underline; }
+  .res .desc{ font-size:14px;color:var(--text-muted);line-height:1.58;margin-top:3px;word-break:break-word; }
+  .res .meta{ display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px;font-size:12px;color:var(--text-faint); }
+  .res mark{ background:none;color:inherit;font-weight:700; }
+  .badge{ font-size:11px;font-weight:700;padding:2px 8px;border-radius:100px; }
+  .badge.pub{ background:var(--success-bg);color:var(--success-text); }
+  .badge.priv{ background:var(--warning-bg);color:var(--warning-text); }
+  .tagl{ color:var(--primary-text);cursor:pointer; }
+  .tagl:hover{ text-decoration:underline; }
+  .noresult{ font-size:15px;line-height:1.7;color:var(--text-main); }
+  .noresult ul{ margin:8px 0 0 22px;color:var(--text-muted);font-size:14px; }
+  .fuzzy-head{ font-size:14px;color:var(--text-muted);margin:6px 0 18px; }
+
+  footer{ background:var(--surface-hover);border-top:1px solid var(--border);padding:12px 24px;font-size:13px;color:var(--text-muted);display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap; }
+  footer a{ color:var(--text-muted);text-decoration:none;margin-right:18px; }
+  footer a:hover{ text-decoration:underline; }
+
+  /* ---- manage drawer ---- */
+  .dr-ov{ position:fixed;inset:0;background:rgba(10,14,25,.45);z-index:1400;display:flex;justify-content:flex-end; }
+  .drawer{ width:min(520px,100%);height:100%;background:var(--surface);box-shadow:var(--shadow-lift);display:flex;flex-direction:column; }
+  .dr-head{ display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--border); }
+  .dr-head h2{ font-size:17px; }
+  .dr-tabs{ display:flex;gap:4px;padding:10px 18px 0;border-bottom:1px solid var(--border); }
+  .dr-tab{ border:none;background:none;padding:9px 12px;font:inherit;font-size:13px;font-weight:600;color:var(--text-muted);cursor:pointer;border-bottom:3px solid transparent; }
+  .dr-tab.active{ color:var(--primary-text);border-bottom-color:var(--primary); }
+  .dr-body{ flex:1;overflow:auto;padding:16px 18px 30px; }
+  label.f{ display:block;font-size:12px;font-weight:600;color:var(--text-muted);margin:12px 0 5px; }
+  .in{ width:100%;padding:10px 12px;border-radius:var(--radius-md);border:1px solid var(--border);background:var(--surface);color:var(--text-main);font:inherit;font-size:14px; }
+  .in:focus{ outline:none;border-color:var(--primary); }
+  textarea.in{ resize:vertical;min-height:80px;line-height:1.5; }
+  .vis{ display:flex;gap:8px;margin-top:4px; }
+  .vis label{ flex:1;border:1px solid var(--border);border-radius:var(--radius-md);padding:10px 12px;cursor:pointer;font-size:12.5px;line-height:1.45; }
+  .vis label.on{ border-color:var(--primary);background:var(--primary-soft); }
+  .vis input{ margin-right:6px; }
+  .hint{ font-size:11.5px;color:var(--text-faint);margin-top:5px;line-height:1.5; }
+  .row-act{ display:flex;justify-content:flex-end;gap:8px;margin-top:16px; }
+  .ml{ display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border); }
+  .ml .info{ flex:1;min-width:0; }
+  .ml .info b{ display:block;font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+  .ml .info span{ display:block;font-size:11.5px;color:var(--text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+  .ml button{ border:none;background:none;cursor:pointer;font-size:15px;padding:6px;border-radius:8px; }
+  .ml button:hover{ background:var(--surface-hover); }
+  .toast{ position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:var(--text-main);color:var(--surface);padding:10px 18px;border-radius:100px;font-size:13px;font-weight:600;z-index:1600;box-shadow:var(--shadow-lift); }
+
+  @media (max-width:760px){
+    .rhead{ gap:10px;padding:12px 16px 0; }
+    .rhead .brand{ font-size:22px; }
+    .rtabs,.results{ padding-left:16px;padding-right:16px; }
+    .res h3{ font-size:18px; }
+    .home{ padding-top:9vh; }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar" id="topbar"></div>
+<main id="main"><div class="home"><div class="brand" style="font-size:60px;"><span class="g">GEMBEL</span></div></div></main>
+<footer>
+  <div>Indonesia · Semua link di sini dimasukin sama member Gembel sendiri</div>
+  <div><a href="#" data-act="manage">Kelola link</a><a href="#" data-act="engine">Jadiin mesin cari browser</a><a href="dashboard.html">Dashboard</a></div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/dist/umd/supabase.min.js"></script>
+<script src="assets/supabaseClient.js"></script>
+<script src="assets/auth.js"></script>
+<script src="assets/popup.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  // All links the viewer may see come back from one select: RLS (0043_search_links.sql) returns
+  // their own rows (private + public) plus everybody's public rows, never someone else's private.
+  // Search itself is client-side, so typing is instant.
+  let ME = null, NAME = '', LINKS = [], OWNERS = {};
+  let Q = '', SCOPE = 'all';     // all | mine | public
+  let SEL = -1;                  // highlighted suggestion
+
+  const $ = (id) => document.getElementById(id);
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  function toast(t){ const d = document.createElement('div'); d.className = 'toast'; d.textContent = t; document.body.appendChild(d); setTimeout(() => d.remove(), 2200); }
+  function hostOf(u){ try{ return new URL(u).hostname.replace(/^www\./, ''); }catch(e){ return u; } }
+  function crumbOf(u){ try{ const x = new URL(u); return x.origin + (x.pathname !== '/' ? x.pathname.split('/').filter(Boolean).map(decodeURIComponent).join(' › ').replace(/^/, ' › ') : ''); }catch(e){ return u; } }
+  function hueOf(s){ let h = 0; for(const c of s) h = (h * 31 + c.charCodeAt(0)) % 360; return h; }
+
+  // Favicon straight from the site itself (not a third-party favicon service, so private
+  // bookmarks' domains aren't sent anywhere extra); falls back to a coloured letter.
+  function favHtml(u){
+    const h = hostOf(u), letter = esc((h[0] || '?').toUpperCase());
+    let origin = ''; try{ origin = new URL(u).origin; }catch(e){}
+    return `<span class="fav" style="background:hsl(${hueOf(h)} 55% 48%)">${origin ? `<img src="${esc(origin)}/favicon.ico" alt="" loading="lazy" onerror="this.remove();this.parentNode&&(this.parentNode.textContent='${letter}')" onload="this.parentNode.style.background='var(--surface-hover)'">` : letter}</span>`;
+  }
+  function normUrl(u){
+    u = String(u || '').trim();
+    if(!u) return '';
+    if(!/^https?:\/\//i.test(u)) u = 'https://' + u;
+    try{ const x = new URL(u); return x.href; }catch(e){ return ''; }
+  }
+  function titleFromUrl(u){
+    // "www.tokopedia.co.id" -> Tokopedia, "app.figma.com" -> Figma
+    const h = hostOf(u).split('.'), n = h.length;
+    const sld = n >= 3 && /^(co|ac|or|go|web|my|sch|com|net|org|gov|edu)$/.test(h[n - 2]);
+    const base = n < 2 ? h[0] : sld ? h[n - 3] : h[n - 2];
+    return (base || hostOf(u)).replace(/^./, c => c.toUpperCase());
+  }
+  const parseTags = (s) => [...new Set(String(s || '').split(/[,#\n]/).map(t => t.trim().toLowerCase()).filter(Boolean))].slice(0, 20);
+
+  // ------------------------------------------------------------------ data
+  async function fetchAll(build){
+    const out = [];
+    for(let from = 0; ; from += 1000){
+      const { data, error } = await build().range(from, from + 999);
+      if(error) throw error;
+      out.push(...(data || []));
+      if(!data || data.length < 1000) break;
+    }
+    return out;
+  }
+  async function loadLinks(){
+    LINKS = await fetchAll(() => supabase.from('search_links')
+      .select('id, user_id, url, title, description, tags, is_public, click_count, created_at').order('created_at', { ascending: false }));
+    const others = [...new Set(LINKS.filter(l => !ME || l.user_id !== ME.id).map(l => l.user_id))];
+    if(others.length){
+      const { data } = await supabase.rpc('search_link_owners', { p_ids: others });
+      (data || []).forEach(o => { OWNERS[o.id] = o.name; });
+    }
+  }
+  const mine = (l) => ME && l.user_id === ME.id;
+
+  // ------------------------------------------------------------------ search
+  // Every word must hit somewhere (title > tag > description > url). "#tag" = exact tag.
+  // If nothing matches all words, fall back to "any word" results, labelled as such.
+  function search(q, scope = SCOPE){
+    const pool = LINKS.filter(l => scope === 'mine' ? mine(l) : scope === 'public' ? l.is_public : true);
+    const words = norm(q).split(/\s+/).filter(Boolean);
+    if(!words.length) return { hits: [], fuzzy: false };
+    const scoreOf = (l, need) => {
+      const title = norm(l.title), desc = norm(l.description), url = norm(l.url), tags = (l.tags || []).map(norm);
+      let s = 0, hit = 0;
+      for(const w of words){
+        let ws = 0;
+        if(w[0] === '#'){ if(tags.includes(w.slice(1))) ws = 6; }
+        else {
+          if(title.includes(w)) ws += title.split(/\W+/).some(x => x.startsWith(w)) ? 6 : 4;
+          if(tags.some(t => t === w)) ws += 5; else if(tags.some(t => t.includes(w))) ws += 3;
+          if(desc.includes(w)) ws += 2;
+          if(url.includes(w)) ws += 1.5;
+        }
+        if(ws) hit++; else if(need === 'all') return 0;
+        s += ws;
+      }
+      if(!hit) return 0;
+      return s + Math.log2(1 + (l.click_count || 0)) * 0.6 + (mine(l) ? 0.8 : 0);
+    };
+    let hits = pool.map(l => ({ l, s: scoreOf(l, 'all') })).filter(x => x.s > 0);
+    let fuzzy = false;
+    if(!hits.length && words.length > 1){ hits = pool.map(l => ({ l, s: scoreOf(l, 'any') })).filter(x => x.s > 0); fuzzy = hits.length > 0; }
+    hits.sort((a, b) => b.s - a.s);
+    return { hits: hits.map(x => x.l), fuzzy };
+  }
+  function highlight(text, q){
+    let out = esc(text);
+    norm(q).split(/\s+/).filter(w => w && w[0] !== '#' && w.length > 1).forEach(w => {
+      out = out.replace(new RegExp('(' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi'), '<mark>$1</mark>');
+    });
+    return out;
+  }
+
+  async function openLink(l, newTab){
+    supabase.rpc('search_links_click', { p_id: l.id }).then(() => {}, () => {});
+    l.click_count = (l.click_count || 0) + 1;
+    if(newTab) window.open(l.url, '_blank', 'noopener');
+    else location.href = l.url;
+  }
+
+  // ------------------------------------------------------------------ views
+  function renderTop(){
+    $('topbar').innerHTML = `
+      ${ME ? `<a class="plain" href="#" data-act="manage">+ Tambah link</a>` : ''}
+      <button class="icon-btn" onclick="toggleTheme()" title="Ganti tema">🌙</button>
+      ${ME ? `<button class="icon-btn" data-act="manage" title="Kelola link">⚙️</button><a class="me" href="dashboard.html" title="${esc(NAME)}">${esc(initials(NAME || 'G'))}</a>`
+           : `<a class="btn btn-primary btn-sm" href="index.html" style="text-decoration:none;">Masuk</a>`}`;
+  }
+
+  function sboxHtml(){
+    return `<div class="sbox-wrap"><div class="sbox" id="sbox">
+      <span class="mag">🔍</span>
+      <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="Cari link — mis. movie, #kerja, figma" value="${esc(Q)}" aria-label="Cari">
+      <button class="clr ${Q ? 'show' : ''}" id="clr" title="Hapus">×</button>
+    </div><div class="sugg" id="sugg"></div></div>`;
+  }
+
+  function topTags(n){
+    const c = {};
+    LINKS.forEach(l => (l.tags || []).forEach(t => { c[t] = (c[t] || 0) + 1; }));
+    return Object.entries(c).sort((a, b) => b[1] - a[1]).slice(0, n);
+  }
+
+  function renderHome(){
+    const own = LINKS.filter(mine), pub = LINKS.filter(l => l.is_public && !mine(l));
+    $('main').innerHTML = `<div class="home">
+      <div class="brand" style="margin-bottom:6px;"><span class="g">GEMBEL</span><span class="e">.com</span></div>
+      <div class="tag">MESIN CARI BOOKMARK KITA SENDIRI</div>
+      ${sboxHtml()}
+      <div class="btns"><button class="gbtn" id="go">Cari di Gembel</button><button class="gbtn" id="lucky">Lagi Beruntung</button></div>
+      <div class="home-meta">
+        ${ME ? `${own.length} link lo (${own.filter(l => !l.is_public).length} 🔒 private) · ${pub.length} link public dari member lain`
+             : `${LINKS.length} link public · <a href="index.html">Masuk</a> buat nyimpen link lo sendiri`}
+        ${ME && !own.length ? `<br><a href="#" data-act="manage">+ Tambah link pertama lo</a> atau <a href="#" data-act="import">import bookmark browser</a>` : ''}
+      </div>
+      <div class="chips">${topTags(14).map(([t, n]) => `<span class="chip" data-q="#${esc(t)}">#${esc(t)}<small>${n}</small></span>`).join('')}</div>
+    </div>`;
+    wireSearch();
+    $('go').addEventListener('click', () => submit($('q').value));
+    $('lucky').addEventListener('click', () => {
+      const r = search($('q').value).hits[0];
+      if(r) openLink(r, false);
+      else if($('q').value.trim()) submit($('q').value);
+      else $('q').focus();
+    });
+    setTimeout(() => $('q').focus(), 0);
+  }
+
+  function resultHtml(l){
+    const owner = mine(l) ? 'Punya lo' : (OWNERS[l.user_id] || 'Member');
+    return `<div class="res">
+      <div class="src">${favHtml(l.url)}<div style="min-width:0"><div class="site">${esc(hostOf(l.url))}</div><span class="crumb">${esc(crumbOf(l.url))}</span></div></div>
+      <h3><a href="${esc(l.url)}" data-open="${esc(l.id)}" rel="noopener">${highlight(l.title, Q)}</a></h3>
+      ${l.description ? `<div class="desc">${highlight(l.description, Q)}</div>` : ''}
+      <div class="meta">
+        <span class="badge ${l.is_public ? 'pub' : 'priv'}">${l.is_public ? '🌐 Public' : '🔒 Private'}</span>
+        <span>${esc(owner)}</span>
+        ${(l.tags || []).map(t => `<span class="tagl" data-q="#${esc(t)}">#${esc(t)}</span>`).join(' ')}
+        ${mine(l) ? `<span class="tagl" data-edit="${esc(l.id)}">✏️ edit</span>` : ''}
+      </div></div>`;
+  }
+
+  function renderResults(){
+    const t0 = performance.now();
+    const { hits, fuzzy } = search(Q);
+    const ms = Math.max(0.01, (performance.now() - t0) / 1000);
+    const counts = { all: search(Q, 'all').hits.length, mine: ME ? search(Q, 'mine').hits.length : 0, public: search(Q, 'public').hits.length };
+    $('main').innerHTML = `
+      <div class="rhead"><a class="brand" href="cari.html"><span class="g">GEMBEL</span></a>${sboxHtml()}</div>
+      <div class="rtabs">
+        <button class="rtab ${SCOPE === 'all' ? 'active' : ''}" data-scope="all">Semua (${counts.all})</button>
+        ${ME ? `<button class="rtab ${SCOPE === 'mine' ? 'active' : ''}" data-scope="mine">Punya gw (${counts.mine})</button>` : ''}
+        <button class="rtab ${SCOPE === 'public' ? 'active' : ''}" data-scope="public">Public (${counts.public})</button>
+      </div>
+      <div class="results">
+        ${hits.length ? `<div class="rcount">Sekitar ${hits.length.toLocaleString('id-ID')} hasil (${ms.toFixed(2).replace('.', ',')} detik)</div>
+          ${fuzzy ? `<div class="fuzzy-head">Gak ada yang cocok semua kata — ini yang cocok sebagian:</div>` : ''}
+          ${hits.slice(0, 100).map(resultHtml).join('')}`
+        : `<div class="noresult">Pencarian lo - <b>${esc(Q)}</b> - tidak cocok dengan link mana pun.
+            <ul><li>Coba kata lain atau lebih umum.</li><li>Cari pake tag, mis. <b>#movie</b>.</li>
+            ${ME ? `<li><a href="#" data-act="manage">Tambahin link</a> buat "${esc(Q)}" biar next time nongol.</li>` : '<li><a href="index.html">Masuk</a> buat nambahin link lo sendiri.</li>'}</ul></div>`}
+      </div>`;
+    wireSearch();
+    $('main').querySelectorAll('[data-scope]').forEach(b => b.addEventListener('click', () => { SCOPE = b.dataset.scope; syncUrl(); renderResults(); }));
+  }
+
+  function route(){
+    const p = new URLSearchParams(location.search);
+    Q = p.get('q') || '';
+    SCOPE = ['all', 'mine', 'public'].includes(p.get('s')) ? p.get('s') : 'all';
+    if(SCOPE === 'mine' && !ME) SCOPE = 'all';
+    document.title = Q ? Q + ' - Gembel.com' : 'Gembel.com';
+    Q.trim() ? renderResults() : renderHome();
+  }
+  function syncUrl(push){
+    const p = new URLSearchParams();
+    if(Q) p.set('q', Q);
+    if(SCOPE !== 'all') p.set('s', SCOPE);
+    const u = 'cari.html' + (p.toString() ? '?' + p : '');
+    push ? history.pushState(null, '', u) : history.replaceState(null, '', u);
+  }
+  function submit(q){
+    Q = String(q || '').trim();
+    syncUrl(true);
+    route();
+  }
+
+  // ------------------------------------------------------------------ search box + suggestions
+  function wireSearch(){
+    const inp = $('q'), sugg = $('sugg'), box = $('sbox'), clr = $('clr');
+    let items = [];
+    const close = () => { sugg.classList.remove('show'); box.classList.remove('open'); SEL = -1; };
+    const paint = () => {
+      const v = inp.value.trim();
+      clr.classList.toggle('show', !!inp.value);
+      if(!v){ close(); return; }
+      items = search(v).hits.slice(0, 8);
+      if(!items.length){ close(); return; }
+      sugg.innerHTML = `<div class="sep"></div>` + items.map((l, i) => `<div class="sg ${i === SEL ? 'sel' : ''}" data-i="${i}">${favHtml(l.url)}<span class="t">${highlight(l.title, v)}</span><span class="h">${l.is_public ? '' : '🔒 '}${esc(hostOf(l.url))}</span></div>`).join('');
+      sugg.classList.add('show'); box.classList.add('open');
+    };
+    inp.addEventListener('input', () => { SEL = -1; paint(); });
+    inp.addEventListener('focus', () => { if(inp.value.trim() && !Q) paint(); });
+    inp.addEventListener('keydown', e => {
+      if(e.key === 'ArrowDown' || e.key === 'ArrowUp'){
+        if(!sugg.classList.contains('show')) return;
+        e.preventDefault();
+        // -1 = back in the text box; wraps around both ends
+        if(e.key === 'ArrowDown') SEL = SEL + 1 >= items.length ? -1 : SEL + 1;
+        else SEL = SEL - 1 < -1 ? items.length - 1 : SEL - 1;
+        paint();
+      } else if(e.key === 'Enter'){
+        e.preventDefault();
+        if(SEL >= 0 && items[SEL]) openLink(items[SEL], e.ctrlKey || e.metaKey);
+        else { close(); submit(inp.value); }
+      } else if(e.key === 'Escape') close();
+    });
+    sugg.addEventListener('mousedown', e => {
+      const r = e.target.closest('.sg'); if(!r) return;
+      e.preventDefault();
+      openLink(items[Number(r.dataset.i)], e.ctrlKey || e.metaKey || e.button === 1);
+    });
+    inp.addEventListener('blur', () => setTimeout(close, 120));
+    clr.addEventListener('click', () => { inp.value = ''; clr.classList.remove('show'); close(); inp.focus(); });
+  }
+
+  // ------------------------------------------------------------------ manage drawer
+  let DR = null, DR_TAB = 'add', EDIT = null;
+
+  function openManage(tab = 'add', editId = null){
+    if(!ME){ location.href = 'index.html'; return; }
+    DR_TAB = tab; EDIT = editId ? LINKS.find(l => l.id === editId) : null;
+    if(!DR){
+      DR = document.createElement('div');
+      DR.className = 'dr-ov';
+      DR.addEventListener('click', e => { if(e.target === DR) closeManage(); });
+      document.body.appendChild(DR);
+    }
+    renderDrawer();
+  }
+  function closeManage(){ if(DR){ DR.remove(); DR = null; EDIT = null; } route(); }
+
+  function renderDrawer(){
+    const own = LINKS.filter(mine);
+    DR.innerHTML = `<div class="drawer">
+      <div class="dr-head"><h2>⚙️ Kelola link</h2><button class="icon-btn" id="dr-x" title="Tutup">✕</button></div>
+      <div class="dr-tabs">
+        <button class="dr-tab ${DR_TAB === 'add' ? 'active' : ''}" data-t="add">${EDIT ? '✏️ Edit' : '+ Tambah'}</button>
+        <button class="dr-tab ${DR_TAB === 'list' ? 'active' : ''}" data-t="list">Link gw (${own.length})</button>
+        <button class="dr-tab ${DR_TAB === 'import' ? 'active' : ''}" data-t="import">Import</button>
+      </div>
+      <div class="dr-body" id="dr-body"></div></div>`;
+    DR.querySelector('#dr-x').addEventListener('click', closeManage);
+    DR.querySelectorAll('.dr-tab').forEach(b => b.addEventListener('click', () => { DR_TAB = b.dataset.t; if(DR_TAB !== 'add') EDIT = null; renderDrawer(); }));
+    ({ add: drawAdd, list: drawList, import: drawImport })[DR_TAB]();
+  }
+
+  function visHtml(pub){
+    return `<div class="vis" id="vis">
+      <label class="${pub ? '' : 'on'}"><input type="radio" name="vis" value="0" ${pub ? '' : 'checked'}><b>🔒 Private</b><br><span class="hint">Cuma lo yang bisa nemu. Gak bakal kesebar.</span></label>
+      <label class="${pub ? 'on' : ''}"><input type="radio" name="vis" value="1" ${pub ? 'checked' : ''}><b>🌐 Public</b><br><span class="hint">Semua orang bisa nemu, termasuk yang gak login.</span></label></div>`;
+  }
+  function wireVis(){ $('vis').addEventListener('change', () => $('vis').querySelectorAll('label').forEach(l => l.classList.toggle('on', l.querySelector('input').checked))); }
+
+  function drawAdd(){
+    const e = EDIT || {};
+    $('dr-body').innerHTML = `
+      <label class="f" for="f-url">URL *</label><input class="in" id="f-url" placeholder="netflix.com / https://…" value="${esc(e.url || '')}">
+      <label class="f" for="f-title">Judul</label><input class="in" id="f-title" maxlength="200" placeholder="Kosongin = otomatis dari nama domain" value="${esc(e.title || '')}">
+      <label class="f" for="f-desc">Deskripsi</label><textarea class="in" id="f-desc" maxlength="500" placeholder="Kata-kata yang bakal lo ketik buat nyari ini. Mis: nonton film, streaming, series">${esc(e.description || '')}</textarea>
+      <label class="f" for="f-tags">Tag</label><input class="in" id="f-tags" placeholder="movie, streaming, hiburan" value="${esc((e.tags || []).join(', '))}">
+      <div class="hint">Pisahin pake koma. Cari "#movie" buat nampilin semua link ber-tag movie.</div>
+      <label class="f">Siapa yang bisa lihat</label>${visHtml(!!e.is_public)}
+      <div class="row-act">${EDIT ? `<button class="btn btn-danger btn-sm" id="f-del">Hapus</button><button class="btn btn-ghost btn-sm" id="f-cancel">Batal</button>` : ''}<button class="btn btn-primary btn-sm" id="f-save">${EDIT ? 'Simpan' : 'Tambah link'}</button></div>`;
+    wireVis();
+    $('f-url').addEventListener('blur', () => { const u = normUrl($('f-url').value); if(u && !$('f-title').value.trim()) $('f-title').placeholder = titleFromUrl(u) + ' (otomatis)'; });
+    if(EDIT){
+      $('f-cancel').addEventListener('click', () => { EDIT = null; DR_TAB = 'list'; renderDrawer(); });
+      $('f-del').addEventListener('click', () => delLink(EDIT.id, () => { EDIT = null; DR_TAB = 'list'; renderDrawer(); }));
+    }
+    $('f-save').addEventListener('click', async () => {
+      const url = normUrl($('f-url').value);
+      if(!url){ await gembelAlert('URL-nya gak valid.'); return; }
+      const row = {
+        url, title: $('f-title').value.trim() || titleFromUrl(url),
+        description: $('f-desc').value.trim(), tags: parseTags($('f-tags').value),
+        is_public: DR.querySelector('input[name="vis"]:checked').value === '1',
+        updated_at: new Date().toISOString(),
+      };
+      const btn = $('f-save'); btn.disabled = true;
+      const res = EDIT
+        ? await supabase.from('search_links').update(row).eq('id', EDIT.id).select().single()
+        : await supabase.from('search_links').insert(Object.assign({ user_id: ME.id }, row)).select().single();
+      btn.disabled = false;
+      if(res.error){ await gembelAlert(res.error.code === '23505' ? 'Link ini udah ada di daftar lo.' : 'Gagal simpan: ' + res.error.message); return; }
+      if(EDIT) LINKS = LINKS.map(l => l.id === EDIT.id ? res.data : l); else LINKS.unshift(res.data);
+      toast(EDIT ? 'Tersimpan' : (row.is_public ? '🌐 Link public ditambah' : '🔒 Link private ditambah'));
+      EDIT = null; renderDrawer();
+      setTimeout(() => $('f-url') && $('f-url').focus(), 0);
+    });
+    setTimeout(() => $('f-url').focus(), 0);
+  }
+
+  async function delLink(id, after){
+    if(!(await gembelConfirm('Hapus link ini?'))) return;
+    const { error } = await supabase.from('search_links').delete().eq('id', id);
+    if(error){ await gembelAlert('Gagal hapus: ' + error.message); return; }
+    LINKS = LINKS.filter(l => l.id !== id);
+    toast('Dihapus'); after();
+  }
+
+  function drawList(){
+    const body = $('dr-body');
+    const paint = (f) => {
+      const own = LINKS.filter(mine).filter(l => !f || norm(l.title + ' ' + l.url + ' ' + (l.tags || []).join(' ')).includes(norm(f)));
+      $('ml').innerHTML = own.length ? own.map(l => `<div class="ml">${favHtml(l.url)}<div class="info"><b>${esc(l.title)}</b><span>${esc(hostOf(l.url))}${(l.tags || []).length ? ' · #' + l.tags.map(esc).join(' #') : ''}</span></div>
+        <button data-tog="${esc(l.id)}" title="${l.is_public ? 'Public — klik buat jadiin private' : 'Private — klik buat jadiin public'}">${l.is_public ? '🌐' : '🔒'}</button>
+        <button data-ed="${esc(l.id)}" title="Edit">✏️</button><button data-del="${esc(l.id)}" title="Hapus">🗑️</button></div>`).join('')
+        : `<div class="hint" style="padding:20px 0;text-align:center;">${f ? 'Gak ketemu.' : 'Belum ada link.'}</div>`;
+    };
+    body.innerHTML = `<input class="in" id="ml-f" placeholder="Filter link lo…"><div id="ml"></div>`;
+    paint('');
+    $('ml-f').addEventListener('input', e => paint(e.target.value));
+    $('ml').addEventListener('click', async e => {
+      const b = e.target.closest('button'); if(!b) return;
+      if(b.dataset.ed){ EDIT = LINKS.find(l => l.id === b.dataset.ed); DR_TAB = 'add'; renderDrawer(); }
+      else if(b.dataset.del) delLink(b.dataset.del, () => renderDrawer());
+      else if(b.dataset.tog){
+        const l = LINKS.find(x => x.id === b.dataset.tog);
+        const { error } = await supabase.from('search_links').update({ is_public: !l.is_public, updated_at: new Date().toISOString() }).eq('id', l.id);
+        if(error){ await gembelAlert('Gagal: ' + error.message); return; }
+        l.is_public = !l.is_public; toast(l.is_public ? '🌐 Sekarang public' : '🔒 Sekarang private');
+        paint($('ml-f').value);
+      }
+    });
+  }
+
+  // Chrome/Firefox/Edge "Export bookmarks" HTML, or plain lines of "url" / "judul | url".
+  function parseBookmarksHtml(html){
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const skip = /^(bookmarks bar|bookmarks toolbar|other bookmarks|mobile bookmarks|bilah bookmark|bookmark lainnya|favorites bar|bookmarks menu)$/i;
+    return [...doc.querySelectorAll('a[href]')].map(a => {
+      const tags = [];
+      for(let n = a.parentElement; n; n = n.parentElement){
+        if(n.tagName === 'DL'){ const h = n.previousElementSibling; if(h && h.tagName === 'H3' && !skip.test(h.textContent.trim())) tags.unshift(h.textContent.trim().toLowerCase()); }
+      }
+      return { url: a.getAttribute('href'), title: a.textContent.trim(), tags };
+    });
+  }
+  function parseLines(txt){
+    return txt.split(/\r?\n/).map(s => s.trim()).filter(Boolean).map(s => {
+      const m = s.match(/^(.*?)\s*[|\t]\s*(\S+)$/);
+      return m ? { title: m[1], url: m[2], tags: [] } : { title: '', url: s, tags: [] };
+    });
+  }
+
+  function drawImport(){
+    $('dr-body').innerHTML = `
+      <div class="hint" style="font-size:12.5px;">Pindahin bookmark browser lo ke sini sekaligus. Di Chrome: ⋮ → Bookmark → <b>Pengelola bookmark</b> → ⋮ → <b>Ekspor bookmark</b>, terus upload file .html-nya. Nama folder jadi tag.</div>
+      <label class="f" for="imp-file">File bookmark (.html)</label><input type="file" class="in" id="imp-file" accept=".html,.htm,text/html">
+      <label class="f" for="imp-txt">…atau tempel daftar URL (1 per baris, boleh "Judul | URL")</label>
+      <textarea class="in" id="imp-txt" style="min-height:120px;" placeholder="https://netflix.com&#10;Film gratis | https://…"></textarea>
+      <label class="f" for="imp-tags">Tag tambahan buat semua (opsional)</label><input class="in" id="imp-tags" placeholder="mis. import">
+      <label class="f">Semua yang di-import jadi</label>${visHtml(false)}
+      <div class="row-act"><button class="btn btn-primary btn-sm" id="imp-go">Import</button></div>
+      <div class="hint" id="imp-st"></div>`;
+    wireVis();
+    $('imp-go').addEventListener('click', async () => {
+      let items = [];
+      const f = $('imp-file').files[0];
+      if(f) items = items.concat(parseBookmarksHtml(await f.text()));
+      if($('imp-txt').value.trim()) items = items.concat(parseLines($('imp-txt').value));
+      const extra = parseTags($('imp-tags').value), pub = DR.querySelector('input[name="vis"]:checked').value === '1';
+      const have = new Set(LINKS.filter(mine).map(l => l.url)), seen = new Set();
+      const rows = [];
+      items.forEach(it => {
+        const url = normUrl(it.url);
+        if(!url || !/^https?:/i.test(url) || url.length > 2000 || have.has(url) || seen.has(url)) return;
+        seen.add(url);
+        rows.push({ user_id: ME.id, url, title: (it.title || titleFromUrl(url)).slice(0, 200), description: '',
+          tags: [...new Set([...(it.tags || []), ...extra])].slice(0, 20), is_public: pub });
+      });
+      if(!rows.length){ await gembelAlert(items.length ? 'Semua link itu udah ada / gak valid.' : 'Pilih file atau tempel URL dulu.'); return; }
+      if(pub && !(await gembelConfirm(`${rows.length} link bakal jadi PUBLIC — semua orang bisa lihat. Yakin?`))) return;
+      const btn = $('imp-go'); btn.disabled = true;
+      let done = 0;
+      for(let i = 0; i < rows.length; i += 500){
+        const { data, error } = await supabase.from('search_links').upsert(rows.slice(i, i + 500), { onConflict: 'user_id,url', ignoreDuplicates: true }).select();
+        if(error){ btn.disabled = false; await gembelAlert(`Gagal di tengah jalan (${done} masuk): ` + error.message); return; }
+        done += (data || []).length; LINKS = (data || []).concat(LINKS);
+        $('imp-st').textContent = `${done}/${rows.length} masuk…`;
+      }
+      btn.disabled = false;
+      toast(`${done} link di-import`); DR_TAB = 'list'; renderDrawer();
+    });
+  }
+
+  // ------------------------------------------------------------------ misc
+  async function showEngineHelp(){
+    const url = location.origin + location.pathname.replace(/[^/]*$/, '') + 'cari.html?q=%s';
+    await gembelAlert(`Biar bisa ngetik di address bar langsung ke Gembel:\n\nChrome → Setelan → Mesin telusur → Kelola → Situs → Tambah\n• Nama: Gembel\n• Pintasan: g\n• URL: ${url}\n\nAbis itu ketik "g" + spasi di address bar, terus kata kuncinya.`);
+  }
+
+  document.addEventListener('click', e => {
+    const a = e.target.closest('[data-act],[data-q],[data-open],[data-edit]');
+    if(!a) return;
+    if(a.dataset.act){ e.preventDefault(); if(a.dataset.act === 'engine') showEngineHelp(); else openManage(a.dataset.act === 'import' ? 'import' : 'add'); }
+    else if(a.dataset.q){ e.preventDefault(); submit(a.dataset.q); }
+    else if(a.dataset.edit){ e.preventDefault(); openManage('add', a.dataset.edit); }
+    else if(a.dataset.open){
+      const l = LINKS.find(x => x.id === a.dataset.open);
+      if(l){ e.preventDefault(); openLink(l, e.ctrlKey || e.metaKey || e.shiftKey); }
+    }
+  });
+  document.addEventListener('keydown', e => {
+    if(e.key === '/' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) && !DR){ e.preventDefault(); $('q') && $('q').focus(); }
+    if(e.key === 'Escape' && DR) closeManage();
+  });
+  window.addEventListener('popstate', route);
+
+  document.addEventListener('DOMContentLoaded', async () => {
+    // Signed-out visitors can still search public links, so no requireAuth() redirect here.
+    const { data: { session } } = await supabase.auth.getSession();
+    ME = session ? session.user : null;
+    if(ME){
+      const { data: p } = await supabase.from('profiles').select('full_name').eq('id', ME.id).maybeSingle();
+      NAME = (p && p.full_name) || ME.email || '';
+    }
+    renderTop();
+    try{ await loadLinks(); }
+    catch(err){ $('main').innerHTML = `<div class="home"><div class="noresult">Gagal ngambil link: ${esc(err.message || err)}</div></div>`; return; }
+    route();
+  });
+})();
+</script>
+</body>
+</html>

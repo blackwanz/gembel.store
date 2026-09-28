@@ -137,6 +137,15 @@ window.GEMBEL_APPS = [
     category: 'Hobi & Olahraga',
     enabled: true,
   },
+  {
+    id: 'cari',
+    name: 'Gembel.com',
+    desc: 'Mesin cari ala Google buat bookmark yang lo simpen sendiri — ketik "movie", langsung keluar link-nya. Private cuma buat lo, public bisa dicari semua orang.',
+    icon: '🔎',
+    url: 'cari.html',
+    category: 'Utilitas',
+    enabled: true,
+  },
   // These three are real projects still being built -- the tile is here so they're visible on the
   // roadmap, but clicking through lands on coming-soon.html (a shared "under construction" scene)
   // instead of a real app. See coming-soon.html's own comment for how the ?app=/?domain=/?icon=
