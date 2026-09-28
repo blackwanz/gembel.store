@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sehat — Gembel AI PIK</title>
+<meta name="description" content="Sehat — statistik kesehatan dari data makan, olahraga, tidur & BMI lo.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27%3E%3Crect width=%2764%27 height=%2764%27 rx=%2716%27 fill=%27%2316a34a%27/%3E%3Ctext x=%2732%27 y=%2744%27 font-size=%2732%27 text-anchor=%27middle%27%3E%E2%9D%A4%EF%B8%8F%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/app-theme.css">
+<style>
+  :root{ --hl:#16a34a; --hl-soft:#e7f7ec; --sleep:#6366f1; --sport:#f97316; --food:#e11d48; --body:#0ea5e9; --good:#16a34a; --mid:#d97706; --bad:#dc2626; }
+  [data-theme="dark"]{ --hl:#22c55e; --hl-soft:#15291d; --sleep:#818cf8; --sport:#fb923c; --food:#fb7185; --body:#38bdf8; --good:#22c55e; --mid:#fbbf24; --bad:#f87171; }
+  body{ background:var(--page-bg); }
+  .top{ display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid var(--border);background:var(--surface); }
+  .wrap{ max-width:880px;margin:0 auto;padding:18px 16px 90px; }
+  .tabs{ display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:100px;padding:4px;margin-bottom:16px;position:sticky;top:8px;z-index:20;box-shadow:var(--shadow-card); }
+  .tab{ flex:1;border:none;background:none;padding:9px 4px;border-radius:100px;font-weight:700;font-size:12.5px;color:var(--text-muted);cursor:pointer;font-family:inherit; }
+  .tab.active{ background:var(--hl);color:#fff; }
+
+  .panel{ background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);margin-bottom:16px;overflow:hidden; }
+  .panel-head{ padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap; }
+  .panel-head h2{ font-size:15px;display:flex;align-items:center;gap:8px; }
+  .panel-body{ padding:16px 18px; }
+  .muted{ color:var(--text-muted);font-size:12.5px;line-height:1.55; }
+  .faint{ color:var(--text-faint);font-size:11.5px; }
+  .empty-hint{ color:var(--text-faint);font-size:13px;padding:22px 16px;text-align:center;line-height:1.6; }
+  .mono{ font-family:var(--font-mono); }
+
+  .seg{ display:inline-flex;gap:4px;background:var(--surface-muted);border:1px solid var(--border);border-radius:100px;padding:3px; }
+  .seg button{ border:none;background:none;color:var(--text-muted);border-radius:100px;padding:6px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit; }
+  .seg button.active{ background:var(--text-main);color:var(--surface); }
+
+  /* hero score */
+  .hero{ display:flex;gap:20px;align-items:center;flex-wrap:wrap; }
+  .ring{ position:relative;width:132px;height:132px;flex:0 0 auto; }
+  .ring svg{ width:100%;height:100%;transform:rotate(-90deg); }
+  .ring .v{ position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center; }
+  .ring .v b{ font-family:var(--font-display);font-size:36px;line-height:1; }
+  .ring .v span{ font-size:11px;color:var(--text-muted);margin-top:4px;font-weight:600; }
+  .hero-side{ flex:1;min-width:220px; }
+  .comp{ display:grid;grid-template-columns:78px 1fr 34px;gap:8px;align-items:center;font-size:12px;margin:6px 0; }
+  .bar{ height:8px;border-radius:8px;background:var(--border);overflow:hidden; }
+  .bar i{ display:block;height:100%;border-radius:8px; }
+
+  .cards{ display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:16px; }
+  .card{ background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px;position:relative;overflow:hidden; }
+  .card::before{ content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--c,var(--hl)); }
+  .card .k{ font-size:11.5px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;display:flex;justify-content:space-between;gap:6px; }
+  .card .big{ font-family:var(--font-display);font-size:26px;font-weight:800;margin:6px 0 2px; }
+  .card .big small{ font-size:13px;font-weight:600;color:var(--text-muted); }
+  .card .sub{ font-size:12px;color:var(--text-muted);line-height:1.5; }
+  .delta{ font-size:11px;font-weight:700; }
+  .delta.up{ color:var(--good); } .delta.down{ color:var(--bad); } .delta.flat{ color:var(--text-faint); }
+  .pill{ display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:100px;text-transform:none;letter-spacing:0; }
+  .pill.good{ background:var(--success-bg);color:var(--success-text); }
+  .pill.mid{ background:var(--warning-bg);color:var(--warning-text); }
+  .pill.bad{ background:var(--danger-bg);color:var(--danger); }
+  .pill.none{ background:var(--border);color:var(--text-muted); }
+
+  .tips{ list-style:none;margin:0;padding:0; }
+  .tips li{ display:flex;gap:10px;padding:10px 0;border-bottom:1px dashed var(--border);font-size:13px;line-height:1.55; }
+  .tips li:last-child{ border-bottom:none; }
+  .tips li .ic{ flex:0 0 auto;font-size:16px; }
+
+  .week{ display:grid;grid-template-columns:repeat(7,1fr);gap:6px; }
+  .day{ border:1px solid var(--border);border-radius:var(--radius-md);padding:8px 4px;text-align:center;font-size:11px;background:var(--surface); }
+  .day.today{ border-color:var(--hl);box-shadow:0 0 0 1px var(--hl) inset; }
+  .day .d{ font-weight:700;color:var(--text-muted);margin-bottom:6px; }
+  .day .m{ margin:3px 0;font-family:var(--font-mono);font-size:10.5px;white-space:nowrap; }
+  .day .m.off{ color:var(--text-faint); }
+
+  .stats{ display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:12px 0; }
+  .stat{ background:var(--surface-muted);border:1px solid var(--border);border-radius:var(--radius-md);padding:10px 12px; }
+  .stat .k{ font-size:11px;color:var(--text-muted);font-weight:600; }
+  .stat .v{ font-family:var(--font-display);font-size:17px;font-weight:700;margin-top:3px; }
+  .stat .h{ font-size:10.5px;color:var(--text-faint);margin-top:2px; }
+
+  .chart{ width:100%;display:block;overflow:visible; }
+  .chart text{ font-family:var(--font-body);font-size:10px;fill:var(--text-faint); }
+  .chart .grid{ stroke:var(--border);stroke-width:1; }
+  .chart .tgt{ stroke:var(--text-muted);stroke-width:1.2;stroke-dasharray:4 4; }
+  .chart-title{ font-size:12.5px;font-weight:700;margin:14px 0 6px;display:flex;gap:12px;align-items:center;flex-wrap:wrap; }
+  .legend{ display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text-muted);font-weight:600; }
+  .legend i{ width:9px;height:9px;border-radius:3px;display:inline-block; }
+
+  table.t{ width:100%;border-collapse:collapse;font-size:12.5px; }
+  table.t th{ text-align:left;font-size:11px;color:var(--text-muted);font-weight:700;padding:7px 8px;border-bottom:1px solid var(--border); }
+  table.t td{ padding:7px 8px;border-bottom:1px solid var(--border); }
+  table.t td.n, table.t th.n{ text-align:right;font-family:var(--font-mono); }
+  table.t tr:last-child td{ border-bottom:none; }
+
+  /* BMI gauge */
+  .gauge{ position:relative;height:14px;border-radius:14px;overflow:hidden;display:flex;margin:18px 0 6px; }
+  .gauge span{ height:100%; }
+  .gauge-wrap{ position:relative; }
+  .gauge-pin{ position:absolute;top:-4px;width:3px;height:22px;background:var(--text-main);border-radius:3px;transform:translateX(-1px); }
+  .gauge-lbl{ display:flex;justify-content:space-between;font-size:10.5px;color:var(--text-faint); }
+
+  /* setup form */
+  .step{ padding:16px 18px;border-bottom:1px solid var(--border); }
+  .step:last-child{ border-bottom:none; }
+  .step h3{ font-size:14px;margin-bottom:4px;display:flex;align-items:center;gap:8px; }
+  .step h3 .no{ width:22px;height:22px;border-radius:50%;background:var(--hl);color:#fff;font-size:11.5px;display:inline-flex;align-items:center;justify-content:center; }
+  .chips{ display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;max-height:240px;overflow:auto; }
+  .chip{ display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:100px;padding:6px 11px;font-size:12.5px;cursor:pointer;background:var(--surface);user-select:none; }
+  .chip input{ display:none; }
+  .chip small{ color:var(--text-faint);font-family:var(--font-mono);font-size:10.5px; }
+  .chip.on{ background:var(--hl-soft);border-color:var(--hl);color:var(--text-main);font-weight:600; }
+  .chip.on::before{ content:'✓';color:var(--hl);font-weight:800; }
+  label.f{ display:block;font-size:12px;font-weight:600;color:var(--text-muted);margin:12px 0 5px; }
+  .in{ width:100%;padding:10px 12px;border-radius:var(--radius-md);border:1px solid var(--border);background:var(--surface);color:var(--text-main);font:inherit;font-size:14px; }
+  .in:focus{ outline:none;border-color:var(--hl); }
+  .row2{ display:flex;gap:10px; }
+  .row2 > div{ flex:1;min-width:0; }
+  .radio{ display:flex;gap:8px;flex-wrap:wrap;margin-top:10px; }
+  .radio label{ flex:1;min-width:180px;border:1px solid var(--border);border-radius:var(--radius-md);padding:10px 12px;cursor:pointer;font-size:12.5px;line-height:1.45; }
+  .radio label.on{ border-color:var(--hl);background:var(--hl-soft); }
+  .radio input{ margin-right:6px; }
+  .btn-hl{ background:var(--hl);color:#fff; }
+  .btn-hl:hover:not(:disabled){ filter:brightness(.95); }
+  .add-row{ display:flex;gap:6px;margin-top:8px; }
+  .add-row .in{ padding:7px 10px;font-size:12.5px; }
+
+  .gb-overlay{ position:fixed;inset:0;z-index:1500;background:rgba(10,14,25,.6);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:16px; }
+  .gb-card{ width:100%;max-width:400px;background:var(--surface);color:var(--text-main);border-radius:var(--radius-lg);padding:22px;box-shadow:var(--shadow-lift); }
+  .gb-card h3{ font-family:var(--font-display);font-size:18px;margin-bottom:6px; }
+  .gb-card p{ font-size:13px;color:var(--text-muted);line-height:1.55; }
+  .gb-actions{ display:flex;gap:8px;justify-content:flex-end;margin-top:16px; }
+  .toast{ position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:var(--text-main);color:var(--surface);padding:10px 18px;border-radius:100px;font-size:13px;font-weight:600;z-index:1600;box-shadow:var(--shadow-lift); }
+
+  @media (max-width:560px){
+    .top{ padding:12px 16px; }
+    .row2{ flex-direction:column;gap:0; }
+    .week{ gap:3px; } .day{ padding:6px 1px; } .day .m{ font-size:9.5px; }
+    .ring{ width:112px;height:112px; } .ring .v b{ font-size:30px; }
+    .panel-body,.step{ padding:14px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="top">
+  <a href="index.html" style="text-decoration:none;color:inherit;">
+    <div class="logo display" style="font-size:15px;"><span class="g">GEMBEL</span> <span class="e">· Sehat ❤️</span></div>
+  </a>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <button class="theme-toggle" onclick="toggleTheme()" title="Ganti tema">🌙</button>
+    <a href="dashboard.html" class="btn btn-ghost btn-sm" style="text-decoration:none;">Dashboard</a>
+  </div>
+</div>
+
+<div class="wrap" id="app-root">
+  <div class="empty-hint">Memuat…</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/dist/umd/supabase.min.js"></script>
+<script src="assets/supabaseClient.js"></script>
+<script src="assets/notif-bell.js"></script>
+<script src="assets/auth.js"></script>
+<script src="assets/popup.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  // Sehat reads other apps' data (see db/migrations/0041_sehat.sql for the full mapping):
+  //   makan    = habbit_entries expenses tagged with one of SET.food_tags
+  //   olahraga = timed habbit_entries whose activity is one of SET.sport_activities
+  //   tidur    = Kalender time goals Tidur/Bangun (or a timed habbit activity)
+  //   BMI      = profiles.height_cm / weight_kg (gate before the app opens)
+  const HISTORY_DAYS = 400;           // how far back data is pulled
+  const MEAL_GAP_MIN = 45;            // expense rows closer than this on the same day = 1 meal
+  const FOOD_DEFAULT_RE = /makan|food|jajan|sarapan|snack|kuliner|minum|kopi|lunch|dinner|breakfast|cemil/i;
+  const SPORT_DEFAULT_RE = /badminton|batminton|bulu ?tangkis|olahraga|lari|jogging|run|gym|fitness|renang|swim|futsal|sepak ?bola|basket|sepeda|cycling|yoga|panah|archery|tenis|padel|workout|push ?up|hiking|voli|tinju|boxing|silat/i;
+  const JUNK_RE = /goreng|gorengan|kfc|mcd|mekdi|burger|pizza|martabak|boba|bubble|es teh|kopi susu|indomie|mie instan|donat|seblak|chitato|snack|cilok|cireng|fried|soda|coca|fanta|sprite|es krim|cake|kue|roti bakar|nasi goreng|mie goreng|ayam geprek|ayam goreng/i;
+  const HEALTHY_RE = /sayur|buah|salad|ikan|telur|tempe|tahu|pecel|gado|jus|oat|pisang|apel|brokoli|sup|soto|dada ayam|kukus|rebus|bening|capcay|susu|yogurt|kacang/i;
+
+  let ME = null, PROF = null, SET = null;
+  let RAW = { entries: [], timeGoals: [], timeEntries: [], weights: [] };
+  let TAB = 'ringkasan', RANGE = 30;
+
+  const $ = (id) => document.getElementById(id);
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+  function lsSet(k, v){ try{ localStorage.setItem(k, v); }catch(e){} }
+  function toast(text){
+    const t = document.createElement('div');
+    t.className = 'toast'; t.textContent = text;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 2200);
+  }
+  function modal(html, { dismissible = true } = {}){
+    const ov = document.createElement('div');
+    ov.className = 'gb-overlay';
+    ov.innerHTML = `<div class="gb-card">${html}</div>`;
+    if(dismissible) ov.addEventListener('click', e => { if(e.target === ov) ov.remove(); });
+    document.body.appendChild(ov);
+    return ov;
+  }
+  const norm = (s) => String(s || '').trim().toLowerCase();
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const sum = (a) => a.reduce((x, y) => x + y, 0);
+  const avg = (a) => a.length ? sum(a) / a.length : null;
+  function median(a){ if(!a.length) return null; const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m-1] + s[m]) / 2; }
+  function sd(a){ if(a.length < 2) return null; const m = avg(a); return Math.sqrt(avg(a.map(x => (x - m) ** 2))); }
+  const rp = (n) => 'Rp' + Math.round(n || 0).toLocaleString('id-ID');
+  const rpShort = (n) => n >= 1e6 ? 'Rp' + (n/1e6).toFixed(1).replace('.', ',') + 'jt' : n >= 1e3 ? 'Rp' + Math.round(n/1e3) + 'rb' : rp(n);
+
+  // ---- dates: everything is a plain local calendar day, handled as an integer day index
+  function ymd(d){ return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+  function dayIdx(s){ const [y, m, d] = String(s).slice(0,10).split('-').map(Number); return Math.round(Date.UTC(y, m-1, d) / 864e5); }
+  function idxYmd(i){ const d = new Date(i * 864e5); return d.getUTCFullYear() + '-' + String(d.getUTCMonth()+1).padStart(2,'0') + '-' + String(d.getUTCDate()).padStart(2,'0'); }
+  function idxDow(i){ return new Date(i * 864e5).getUTCDay(); }
+  const TODAY = dayIdx(ymd(new Date()));
+  const DOW = ['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
+  function shortDate(i){ const d = new Date(i * 864e5); return d.getUTCDate() + '/' + (d.getUTCMonth()+1); }
+  function timeMin(t){ if(!t) return null; const [h, m] = String(t).split(':').map(Number); return Number.isFinite(h) ? h * 60 + (m || 0) : null; }
+  function hhmm(min){ if(min == null) return '—'; min = ((Math.round(min) % 1440) + 1440) % 1440; return String(Math.floor(min/60)).padStart(2,'0') + ':' + String(min % 60).padStart(2,'0'); }
+  function dur(min){ if(min == null) return '—'; min = Math.round(min); const h = Math.floor(min/60), m = min % 60; return h ? (m ? `${h}j ${m}m` : `${h}j`) : `${m}m`; }
+  // clock times that wrap past midnight (bedtimes) are averaged on an axis centred on midnight
+  function clockMean(mins, pivot){ if(!mins.length) return null; return avg(mins.map(m => (m - pivot + 1440) % 1440)) + pivot; }
+  function clockSd(mins, pivot){ return sd(mins.map(m => (m - pivot + 1440) % 1440)); }
+
+  function ageFromDob(dob){
+    if(!dob) return null;
+    const d = new Date(dob + 'T00:00:00'), n = new Date();
+    let a = n.getFullYear() - d.getFullYear();
+    if(n.getMonth() < d.getMonth() || (n.getMonth() === d.getMonth() && n.getDate() < d.getDate())) a--;
+    return a;
+  }
+
+  // ------------------------------------------------------------------ data
+  async function fetchAll(build){
+    const out = [];
+    for(let from = 0; ; from += 1000){
+      const { data, error } = await build().range(from, from + 999);
+      if(error) throw error;
+      out.push(...(data || []));
+      if(!data || data.length < 1000) break;
+    }
+    return out;
+  }
+
+  async function loadData(){
+    const since = idxYmd(TODAY - HISTORY_DAYS);
+    const [entries, goals, weights] = await Promise.all([
+      fetchAll(() => supabase.from('habbit_entries')
+        .select('id, activity, finance_flag, finance_type, finance_tag, nominal, start_date, time_start, end_date, time_end, total_second, status')
+        .eq('user_id', ME.id).gte('start_date', since).order('start_date')),
+      fetchAll(() => supabase.from('calendar_goals').select('id, text, format, hidden').eq('user_id', ME.id).eq('format', 'time')),
+      fetchAll(() => supabase.from('health_weight_logs').select('id, log_date, weight_kg').eq('user_id', ME.id).order('log_date')),
+    ]);
+    let timeEntries = [];
+    if(goals.length){
+      timeEntries = await fetchAll(() => supabase.from('calendar_goal_entries')
+        .select('goal_id, entry_date, value').in('goal_id', goals.map(g => g.id)).gte('entry_date', since));
+    }
+    RAW = { entries, timeGoals: goals, timeEntries, weights };
+  }
+
+  // Distinct expense tags / timed activities in the user's own data, for the source picker.
+  function dataCatalog(){
+    const tags = new Map(), acts = new Map();
+    RAW.entries.forEach(e => {
+      if(e.finance_flag){
+        if(e.finance_type === 'income' || !e.finance_tag) return;
+        const k = norm(e.finance_tag);
+        const t = tags.get(k) || { name: e.finance_tag.trim(), n: 0 };
+        t.n++; tags.set(k, t);
+      } else if(e.activity){
+        const k = norm(e.activity);
+        const a = acts.get(k) || { name: e.activity.trim(), n: 0, min: 0 };
+        a.n++; a.min += entryMinutes(e) || 0; acts.set(k, a);
+      }
+    });
+    const bySize = (a, b) => b.n - a.n;
+    return { tags: [...tags.values()].sort(bySize), acts: [...acts.values()].sort(bySize) };
+  }
+
+  function entryMinutes(e){
+    if(e.status === 'running') return null;
+    if(e.total_second > 0) return e.total_second / 60;
+    const s = timeMin(e.time_start), t = timeMin(e.time_end);
+    if(s == null || t == null) return null;
+    const days = e.end_date ? dayIdx(e.end_date) - dayIdx(e.start_date) : 0;
+    const m = days * 1440 + t - s;
+    return m > 0 ? m : null;
+  }
+
+  // ------------------------------------------------------------------ derive facts
+  // Produces flat, per-day facts every screen draws from.
+  function derive(){
+    const foodSet = new Set((SET.food_tags || []).map(norm));
+    const sportSet = new Set((SET.sport_activities || []).map(norm));
+
+    // meals
+    const food = RAW.entries.filter(e => e.finance_flag && e.finance_type !== 'income' && foodSet.has(norm(e.finance_tag)))
+      .map(e => ({ day: dayIdx(e.start_date), t: timeMin(e.time_start) ?? 720, name: (e.activity || '').trim() || '(tanpa nama)', amt: Number(e.nominal) || 0 }))
+      .sort((a, b) => a.day - b.day || a.t - b.t);
+    const meals = [];
+    food.forEach(f => {
+      const last = meals[meals.length - 1];
+      if(last && last.day === f.day && f.t - last.t <= MEAL_GAP_MIN){ last.items.push(f); last.amt += f.amt; }
+      else meals.push({ day: f.day, t: f.t, amt: f.amt, items: [f] });
+    });
+
+    // sport sessions
+    const sport = RAW.entries.filter(e => !e.finance_flag && sportSet.has(norm(e.activity)))
+      .map(e => ({ day: dayIdx(e.start_date), act: e.activity.trim(), min: entryMinutes(e) }))
+      .filter(s => s.min != null && s.min > 0 && s.min < 24 * 60);
+
+    // sleep nights, keyed by the day you woke up
+    let nights = [];
+    if(SET.sleep_source === 'habbit'){
+      const key = norm(SET.sleep_activity);
+      RAW.entries.filter(e => !e.finance_flag && key && norm(e.activity) === key).forEach(e => {
+        const m = entryMinutes(e), s = timeMin(e.time_start);
+        if(!m || s == null || m < 60 || m > 18 * 60) return;
+        const start = dayIdx(e.start_date) * 1440 + s, end = start + m;
+        nights.push({ day: Math.floor(end / 1440), dur: m, bed: s, wake: end % 1440 });
+      });
+    } else {
+      const val = (g) => RAW.timeEntries.filter(x => x.goal_id === g && x.value != null).map(x => ({ day: dayIdx(x.entry_date), v: Number(x.value) }));
+      const wakes = val(SET.wake_goal_id).map(w => w.day * 1440 + w.v).sort((a, b) => a - b);
+      const beds = val(SET.sleep_goal_id).sort((a, b) => a.day - b.day || a.v - b.v);
+      const used = new Set();
+      beds.forEach(b => {
+        // "Tidur 01:00" logged on day D could mean the small hours after D or of D itself; try both
+        const cands = b.v < 720 ? [(b.day + 1) * 1440 + b.v, b.day * 1440 + b.v] : [b.day * 1440 + b.v];
+        for(const c of cands){
+          const w = wakes.find(x => !used.has(x) && x - c >= 120 && x - c <= 16 * 60);
+          if(w != null){ used.add(w); nights.push({ day: Math.floor(w / 1440), dur: w - c, bed: c % 1440, wake: w % 1440 }); break; }
+        }
+      });
+    }
+    const byDay = new Map();
+    nights.forEach(n => { const p = byDay.get(n.day); if(!p || n.dur > p.dur) byDay.set(n.day, n); });
+    nights = [...byDay.values()].sort((a, b) => a.day - b.day);
+
+    return { meals, food, sport, nights };
+  }
+
+  function bmiInfo(){
+    const h = Number(PROF.height_cm), w = Number(PROF.weight_kg);
+    if(!h || !w) return null;
+    const m = h / 100, bmi = w / (m * m);
+    // Asia-Pacific cut-offs (WHO/IASO 2000) -- the standard ones Kemenkes uses for Indonesians.
+    let cat, cls, score;
+    if(bmi < 18.5){ cat = 'Kurus'; cls = 'mid'; score = 60; }
+    else if(bmi < 23){ cat = 'Normal'; cls = 'good'; score = 100; }
+    else if(bmi < 25){ cat = 'Berlebih'; cls = 'mid'; score = 65; }
+    else if(bmi < 30){ cat = 'Obesitas I'; cls = 'bad'; score = 35; }
+    else { cat = 'Obesitas II'; cls = 'bad'; score = 15; }
+    const lo = 18.5 * m * m, hi = 22.9 * m * m;
+    const toGo = w > hi ? w - hi : w < lo ? w - lo : 0;
+    return { bmi, cat, cls, score, lo, hi, toGo, h, w };
+  }
+
+  // All stats for the window [end-n+1 .. end].
+  function stats(F, n, end = TODAY){
+    const start = end - n + 1, inR = (d) => d >= start && d <= end;
+    const target = SET.sleep_target_min, sportTarget = SET.sport_target_min;
+    const out = { n, start, end };
+
+    const nights = F.nights.filter(x => inR(x.day));
+    const durs = nights.map(x => x.dur);
+    const wkEnd = nights.filter(x => [0, 6].includes(idxDow(x.day))).map(x => x.dur);
+    const wkDay = nights.filter(x => ![0, 6].includes(idxDow(x.day))).map(x => x.dur);
+    out.sleep = {
+      nights, count: nights.length, avg: avg(durs), med: median(durs),
+      min: durs.length ? Math.min(...durs) : null, max: durs.length ? Math.max(...durs) : null,
+      onTarget: nights.length ? nights.filter(x => x.dur >= target - 15).length / nights.length : null,
+      debt: sum(nights.map(x => Math.max(0, target - x.dur))),
+      bed: clockMean(nights.map(x => x.bed), 720), bedSd: clockSd(nights.map(x => x.bed), 720),
+      wake: clockMean(nights.map(x => x.wake), 0), wakeSd: clockSd(nights.map(x => x.wake), 720),
+      weekend: avg(wkEnd), weekday: avg(wkDay),
+    };
+
+    const ss = F.sport.filter(x => inR(x.day));
+    const byAct = {};
+    ss.forEach(s => { const a = byAct[s.act] || (byAct[s.act] = { n: 0, min: 0 }); a.n++; a.min += s.min; });
+    const activeDays = new Set(ss.map(s => s.day));
+    let streak = 0;
+    const allDays = new Set(F.sport.map(s => s.day));
+    for(let d = allDays.has(end) ? end : end - 1; allDays.has(d); d--) streak++;
+    const lastDay = F.sport.length ? Math.max(...F.sport.map(s => s.day).filter(d => d <= end)) : null;
+    const total = sum(ss.map(s => s.min));
+    out.sport = {
+      sessions: ss, total, perWeek: total / (n / 7), activeDays: activeDays.size, byAct,
+      streak, since: lastDay != null && Number.isFinite(lastDay) ? end - lastDay : null,
+      pct: sportTarget ? total / (n / 7) / sportTarget : null,
+    };
+
+    const meals = F.meals.filter(m => inR(m.day));
+    const items = F.food.filter(f => inR(f.day));
+    const mealDays = new Map();
+    meals.forEach(m => { const a = mealDays.get(m.day) || []; a.push(m); mealDays.set(m.day, a); });
+    const late = meals.filter(m => m.t >= 22 * 60 || m.t < 4 * 60).length;
+    const noBreakfast = [...mealDays.values()].filter(a => !a.some(m => m.t >= 4 * 60 && m.t < 10 * 60)).length;
+    const hours = new Array(24).fill(0); meals.forEach(m => hours[Math.floor(m.t / 60) % 24]++);
+    const top = {};
+    items.forEach(f => { const k = norm(f.name); const t = top[k] || (top[k] = { name: f.name, n: 0, amt: 0 }); t.n++; t.amt += f.amt; });
+    const spend = sum(items.map(f => f.amt));
+    out.food = {
+      meals, items, days: mealDays.size, count: meals.length,
+      perDay: mealDays.size ? meals.length / mealDays.size : null,
+      spend, spendPerDay: mealDays.size ? spend / mealDays.size : null, perMeal: meals.length ? spend / meals.length : null,
+      late, latePct: meals.length ? late / meals.length : null,
+      noBreakfast, noBreakfastPct: mealDays.size ? noBreakfast / mealDays.size : null,
+      hours, top: Object.values(top).sort((a, b) => b.n - a.n || b.amt - a.amt),
+      variety: Object.keys(top).length,
+      junk: items.length ? items.filter(f => JUNK_RE.test(f.name)).length / items.length : null,
+      healthy: items.length ? items.filter(f => HEALTHY_RE.test(f.name)).length / items.length : null,
+      firstMeal: avg([...mealDays.values()].map(a => Math.min(...a.map(m => m.t)))),
+      lastMeal: avg([...mealDays.values()].map(a => Math.max(...a.map(m => m.t)))),
+    };
+
+    out.bmi = bmiInfo();
+    out.score = score(out);
+    return out;
+  }
+
+  function score(s){
+    const parts = [];
+    if(s.sleep.count){
+      const t = SET.sleep_target_min, a = s.sleep.avg;
+      let v = a >= t - 30 && a <= t + 90 ? 100 : 100 - (a < t - 30 ? (t - 30 - a) : (a - t - 90)) * 0.6;
+      if(s.sleep.bedSd != null && s.sleep.bedSd > 60) v -= Math.min(25, (s.sleep.bedSd - 60) / 2);
+      parts.push({ k: 'Tidur', v: clamp(v, 0, 100), w: 30, c: 'var(--sleep)' });
+    }
+    if((SET.sport_activities || []).length && SET.sport_target_min > 0)
+      parts.push({ k: 'Olahraga', v: clamp(s.sport.pct * 100, 0, 100), w: 30, c: 'var(--sport)' });
+    if(s.food.count){
+      let v = 100 - (s.food.latePct || 0) * 60 - (s.food.noBreakfastPct || 0) * 30 - (s.food.perDay < 2 ? 15 : 0) - (s.food.junk || 0) * 25;
+      parts.push({ k: 'Makan', v: clamp(v, 0, 100), w: 20, c: 'var(--food)' });
+    }
+    if(s.bmi) parts.push({ k: 'BMI', v: s.bmi.score, w: 20, c: 'var(--body)' });
+    const tw = sum(parts.map(p => p.w));
+    return { total: tw ? Math.round(sum(parts.map(p => p.v * p.w)) / tw) : null, parts };
+  }
+
+  const cls3 = (v, good, mid) => v == null ? 'none' : v >= good ? 'good' : v >= mid ? 'mid' : 'bad';
+  function scoreWord(v){ return v == null ? 'Belum ada data' : v >= 80 ? 'Mantap' : v >= 60 ? 'Lumayan' : v >= 40 ? 'Perlu dibenerin' : 'Waspada'; }
+  function deltaHtml(cur, prev, { better = 'up', fmt = (x) => x, unit = '' } = {}){
+    if(cur == null || prev == null) return '';
+    const d = cur - prev;
+    if(Math.abs(d) < 1e-9) return `<span class="delta flat">= minggu lalu</span>`;
+    const good = better === 'up' ? d > 0 : d < 0;
+    return `<span class="delta ${good ? 'up' : 'down'}">${d > 0 ? '▲' : '▼'} ${fmt(Math.abs(d))}${unit}</span>`;
+  }
+
+  // ------------------------------------------------------------------ charts (plain SVG)
+  function barChart(vals, labels, { color = 'var(--hl)', target = null, fmt = (v) => v, h = 150, colorFn = null, labelEvery = null } = {}){
+    const W = 640, pad = { l: 34, r: 6, t: 10, b: 20 }, n = vals.length;
+    const max = Math.max(1, target || 0, ...vals.map(v => v || 0)) * 1.1;
+    const iw = W - pad.l - pad.r, ih = h - pad.t - pad.b, bw = iw / n;
+    const y = (v) => pad.t + ih - (v / max) * ih;
+    const every = labelEvery || Math.ceil(n / 12);
+    let g = '';
+    [0, .5, 1].forEach(f => { const v = max / 1.1 * f; g += `<line class="grid" x1="${pad.l}" x2="${W - pad.r}" y1="${y(v)}" y2="${y(v)}"/><text x="${pad.l - 4}" y="${y(v) + 3}" text-anchor="end">${esc(fmt(v))}</text>`; });
+    vals.forEach((v, i) => {
+      const x = pad.l + i * bw + bw * 0.15, w = Math.max(1, bw * 0.7);
+      if(v) g += `<rect x="${x}" y="${y(v)}" width="${w}" height="${Math.max(0, pad.t + ih - y(v))}" rx="${Math.min(3, w/2)}" fill="${colorFn ? colorFn(v, i) : color}"><title>${esc(labels[i])}: ${esc(fmt(v))}</title></rect>`;
+      if(i % every === 0 || n <= 14) g += `<text x="${x + w/2}" y="${h - 5}" text-anchor="middle">${esc(labels[i])}</text>`;
+    });
+    if(target) g += `<line class="tgt" x1="${pad.l}" x2="${W - pad.r}" y1="${y(target)}" y2="${y(target)}"/>`;
+    return `<svg class="chart" viewBox="0 0 ${W} ${h}" preserveAspectRatio="none" style="height:${h}px">${g}</svg>`;
+  }
+
+  // Bed & wake clock times per day on an axis running 18:00 -> 12:00.
+  function clockChart(days, nightsByDay, h = 170){
+    const W = 640, pad = { l: 40, r: 6, t: 8, b: 20 }, n = days.length;
+    const iw = W - pad.l - pad.r, ih = h - pad.t - pad.b, bw = iw / n;
+    const off = (m) => (m - 18 * 60 + 1440) % 1440;          // 0 = 18:00, 1080 = 12:00
+    const y = (m) => pad.t + (Math.min(off(m), 1080) / 1080) * ih;
+    let g = '';
+    [18, 21, 0, 3, 6, 9, 12].forEach(hr => { const yy = y(hr * 60); g += `<line class="grid" x1="${pad.l}" x2="${W - pad.r}" y1="${yy}" y2="${yy}"/><text x="${pad.l - 4}" y="${yy + 3}" text-anchor="end">${String(hr).padStart(2,'0')}:00</text>`; });
+    const every = Math.ceil(n / 12);
+    days.forEach((d, i) => {
+      const cx = pad.l + i * bw + bw / 2, nt = nightsByDay.get(d);
+      if(nt){
+        g += `<line x1="${cx}" x2="${cx}" y1="${y(nt.bed)}" y2="${y(nt.wake)}" stroke="var(--sleep)" stroke-opacity=".35" stroke-width="${Math.max(2, bw * 0.45)}" stroke-linecap="round"><title>${shortDate(d)}: ${hhmm(nt.bed)} → ${hhmm(nt.wake)} (${dur(nt.dur)})</title></line>`;
+        g += `<circle cx="${cx}" cy="${y(nt.bed)}" r="3" fill="var(--sleep)"/><circle cx="${cx}" cy="${y(nt.wake)}" r="3" fill="var(--mid)"/>`;
+      }
+      if(i % every === 0) g += `<text x="${cx}" y="${h - 5}" text-anchor="middle">${shortDate(d)}</text>`;
+    });
+    return `<svg class="chart" viewBox="0 0 ${W} ${h}" preserveAspectRatio="none" style="height:${h}px">${g}</svg>`;
+  }
+
+  function lineChart(points, { h = 150, color = 'var(--body)', band = null, fmt = (v) => v } = {}){
+    if(points.length === 0) return '';
+    const W = 640, pad = { l: 38, r: 10, t: 10, b: 20 };
+    const xs = points.map(p => p.x), ys = points.map(p => p.y).concat(band ? [band[0], band[1]] : []);
+    let lo = Math.min(...ys), hi = Math.max(...ys); if(hi - lo < 2){ lo -= 1; hi += 1; }
+    lo -= (hi - lo) * 0.1; hi += (hi - lo) * 0.1;
+    const x0 = Math.min(...xs), x1 = Math.max(...xs, x0 + 1);
+    const iw = W - pad.l - pad.r, ih = h - pad.t - pad.b;
+    const X = (x) => pad.l + ((x - x0) / (x1 - x0)) * iw, Y = (v) => pad.t + ih - ((v - lo) / (hi - lo)) * ih;
+    let g = '';
+    if(band) g += `<rect x="${pad.l}" width="${iw}" y="${Y(band[1])}" height="${Math.max(0, Y(band[0]) - Y(band[1]))}" fill="var(--good)" opacity=".1"/>`;
+    [lo, (lo + hi) / 2, hi].forEach(v => { g += `<line class="grid" x1="${pad.l}" x2="${W - pad.r}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${pad.l - 4}" y="${Y(v) + 3}" text-anchor="end">${esc(fmt(v))}</text>`; });
+    g += `<polyline fill="none" stroke="${color}" stroke-width="2" points="${points.map(p => X(p.x) + ',' + Y(p.y)).join(' ')}"/>`;
+    points.forEach(p => { g += `<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="3" fill="${color}"><title>${shortDate(p.x)}: ${fmt(p.y)}</title></circle>`; });
+    g += `<text x="${pad.l}" y="${h - 5}">${shortDate(x0)}</text><text x="${W - pad.r}" y="${h - 5}" text-anchor="end">${shortDate(x1)}</text>`;
+    return `<svg class="chart" viewBox="0 0 ${W} ${h}" preserveAspectRatio="none" style="height:${h}px">${g}</svg>`;
+  }
+
+  function ringSvg(v){
+    const r = 54, c = 2 * Math.PI * r, p = v == null ? 0 : v / 100;
+    const col = v == null ? 'var(--border)' : v >= 80 ? 'var(--good)' : v >= 60 ? 'var(--mid)' : 'var(--bad)';
+    return `<svg viewBox="0 0 132 132"><circle cx="66" cy="66" r="${r}" fill="none" stroke="var(--border)" stroke-width="12"/>
+      <circle cx="66" cy="66" r="${r}" fill="none" stroke="${col}" stroke-width="12" stroke-linecap="round" stroke-dasharray="${c * p} ${c}"/></svg>`;
+  }
+
+  // ------------------------------------------------------------------ tips
+  function tips(s){
+    const out = [], T = SET.sleep_target_min;
+    if(!s.sleep.count){
+      out.push(['😴', SET.sleep_source === 'habbit'
+        ? `Belum ada data tidur di periode ini. Catat aktivitas "<b>${esc(SET.sleep_activity || 'Tidur')}</b>" di Aktivitas & Pengeluaran.`
+        : `Belum ada pasangan Tidur → Bangun di periode ini. Isi jam <b>Tidur</b> & <b>Bangun</b> di <a href="calendar.html">Kalender</a> tiap hari.`]);
+    } else {
+      if(s.sleep.avg < T - 30){
+        const bedGoal = s.sleep.bed != null ? hhmm(s.sleep.bed - (T - s.sleep.avg)) : null;
+        out.push(['😴', `Rata-rata tidur lo <b>${dur(s.sleep.avg)}</b>, kurang <b>${dur(T - s.sleep.avg)}</b> dari target ${dur(T)}.${bedGoal ? ` Coba tidur sekitar jam <b>${bedGoal}</b>.` : ''}`]);
+      }
+      if(s.sleep.bedSd != null && s.sleep.bedSd > 60)
+        out.push(['🕰️', `Jam tidur lo loncat-loncat (±${dur(s.sleep.bedSd)}). Jam tidur yang konsisten sama pentingnya kayak durasinya.`]);
+      if(s.sleep.weekend != null && s.sleep.weekday != null && s.sleep.weekend - s.sleep.weekday > 90)
+        out.push(['📆', `Weekend lo tidur ${dur(s.sleep.weekend - s.sleep.weekday)} lebih lama dari weekday — tanda utang tidur numpuk di hari kerja.`]);
+    }
+    if((SET.sport_activities || []).length){
+      const need = SET.sport_target_min * (s.n / 7) - s.sport.total;
+      if(need > 0) out.push(['🏸', `Olahraga lo ${dur(s.sport.total)} dari target ${dur(SET.sport_target_min * s.n / 7)} (${s.n} hari). Kurang <b>${dur(need)}</b>${s.n === 7 ? ' — satu sesi lagi minggu ini udah nutup.' : '.'}`]);
+      if(s.sport.since != null && s.sport.since >= 5) out.push(['⏳', `Udah <b>${s.sport.since} hari</b> gak olahraga.`]);
+    } else out.push(['🏸', `Belum ada aktivitas olahraga yang dipilih — atur di tab <b>Sumber Data</b>.`]);
+    if(s.food.count){
+      if(s.food.late >= 2) out.push(['🌙', `<b>${s.food.late}×</b> makan di atas jam 22:00. Makan larut bikin tidur lebih jelek — usahain makan terakhir 2–3 jam sebelum tidur.`]);
+      if(s.food.noBreakfastPct > 0.5) out.push(['🍳', `${Math.round(s.food.noBreakfastPct * 100)}% hari lo gak ada catatan makan sebelum jam 10. Sarapan (walau kecil) bantu energi & nahan lapar kalap siang.`]);
+      if(s.food.junk != null && s.food.junk > 0.4) out.push(['🍟', `Sekitar ${Math.round(s.food.junk * 100)}% yang lo makan masuk gorengan/manis/fast food (tebakan dari nama). Selingin sayur, telur, tempe/tahu, buah.`]);
+    } else if((SET.food_tags || []).length) out.push(['🍽️', `Belum ada pengeluaran makan di periode ini. Catat di Aktivitas & Pengeluaran dengan tag <b>${esc(SET.food_tags[0])}</b>.`]);
+    if(s.bmi && s.bmi.toGo) out.push(['⚖️', `BMI ${s.bmi.bmi.toFixed(1)} (${s.bmi.cat}). Berat ideal lo ${s.bmi.lo.toFixed(0)}–${s.bmi.hi.toFixed(0)} kg — ${s.bmi.toGo > 0 ? 'turun' : 'naik'} <b>${Math.abs(s.bmi.toGo).toFixed(1)} kg</b> buat masuk Normal.`]);
+    if(!out.length) out.push(['✅', 'Semua indikator lagi aman. Pertahanin!']);
+    return out;
+  }
+
+  // ------------------------------------------------------------------ gates
+  function bodyGate(){
+    return new Promise(resolve => {
+      const ov = modal(`
+        <h3>📏 Tinggi & berat badan dulu</h3>
+        <p>Sehat butuh tinggi & berat lo buat ngitung BMI. Disimpen di profil lo (bisa diubah kapan aja di Dashboard → Profil atau tab Badan).</p>
+        <div class="row2">
+          <div><label class="f" for="bg-h">Tinggi (cm)</label><input type="number" class="in" id="bg-h" min="50" max="260" step="0.1" inputmode="decimal" value="${esc(PROF.height_cm ?? '')}" placeholder="170"></div>
+          <div><label class="f" for="bg-w">Berat (kg)</label><input type="number" class="in" id="bg-w" min="20" max="400" step="0.1" inputmode="decimal" value="${esc(PROF.weight_kg ?? '')}" placeholder="65"></div>
+        </div>
+        <div id="bg-err" style="color:var(--danger);font-size:12.5px;margin-top:8px;display:none;"></div>
+        <div class="gb-actions">
+          <a href="dashboard.html" class="btn btn-ghost btn-sm" style="text-decoration:none;">Nanti aja</a>
+          <button class="btn btn-hl btn-sm" id="bg-save">Simpan</button>
+        </div>`, { dismissible: false });
+      ov.querySelector('#bg-save').addEventListener('click', async () => {
+        const err = ov.querySelector('#bg-err');
+        const h = parseFloat(ov.querySelector('#bg-h').value), w = parseFloat(ov.querySelector('#bg-w').value);
+        if(!(h >= 50 && h <= 260) || !(w >= 20 && w <= 400)){ err.textContent = 'Isi tinggi (50–260 cm) dan berat (20–400 kg) yang bener.'; err.style.display = ''; return; }
+        const btn = ov.querySelector('#bg-save'); btn.disabled = true; btn.textContent = 'Nyimpen…';
+        const { error } = await supabase.from('profiles').update({ height_cm: h, weight_kg: w }).eq('id', ME.id);
+        btn.disabled = false; btn.textContent = 'Simpan';
+        if(error){ err.textContent = 'Gagal simpan: ' + error.message; err.style.display = ''; return; }
+        PROF.height_cm = h; PROF.weight_kg = w;
+        ov.remove(); resolve();
+      });
+    });
+  }
+
+  // ------------------------------------------------------------------ source picker (first-run + tab)
+  function defaultSettings(){
+    const cat = dataCatalog();
+    const goals = RAW.timeGoals;
+    const pick = (slug, re) => (goals.find(g => g.id.startsWith('tm_' + slug + '_')) || goals.find(g => re.test(g.text)) || {}).id || null;
+    const sleepAct = cat.acts.find(a => /^(tidur|sleep|bobo)/i.test(a.name));
+    return {
+      mode: 'simple',
+      food_tags: cat.tags.filter(t => FOOD_DEFAULT_RE.test(t.name)).map(t => t.name),
+      sport_activities: cat.acts.filter(a => SPORT_DEFAULT_RE.test(a.name)).map(a => a.name),
+      sleep_source: goals.length || !sleepAct ? 'calendar' : 'habbit',
+      sleep_goal_id: pick('tidur', /tidur|sleep/i),
+      wake_goal_id: pick('bangun', /bangun|wake/i),
+      sleep_activity: sleepAct ? sleepAct.name : null,
+      sleep_target_min: 480, sport_target_min: 150,
+    };
+  }
+
+  function sourceForm(first){
+    const cur = SET && SET.setup_done_at ? SET : Object.assign({}, defaultSettings(), SET && { mode: SET.mode });
+    const cat = dataCatalog();
+    // keep saved picks visible even when they no longer appear in the pulled data
+    const merge = (list, saved, extra = {}) => {
+      const have = new Set(list.map(x => norm(x.name)));
+      return list.concat((saved || []).filter(s => !have.has(norm(s))).map(s => Object.assign({ name: s, n: 0 }, extra)));
+    };
+    const tags = merge(cat.tags, cur.food_tags), acts = merge(cat.acts, cur.sport_activities, { min: 0 });
+    const onTag = new Set((cur.food_tags || []).map(norm)), onAct = new Set((cur.sport_activities || []).map(norm));
+    const chip = (group, x, on, meta) => `<label class="chip ${on ? 'on' : ''}"><input type="checkbox" data-g="${group}" value="${esc(x.name)}" ${on ? 'checked' : ''}>${esc(x.name)} <small>${meta}</small></label>`;
+    const goalOpts = (sel) => `<option value="">— pilih —</option>` + RAW.timeGoals.map(g => `<option value="${esc(g.id)}" ${g.id === sel ? 'selected' : ''}>${esc(g.text)}${g.hidden ? ' (disembunyiin)' : ''}</option>`).join('');
+    const actOpts = `<option value="">— pilih —</option>` + cat.acts.map(a => `<option value="${esc(a.name)}" ${norm(a.name) === norm(cur.sleep_activity) ? 'selected' : ''}>${esc(a.name)} (${a.n}×)</option>`).join('');
+
+    return `
+      <div class="panel">
+        <div class="panel-head"><h2>${first ? '👋 Ambil data dari mana?' : '🔌 Sumber Data'}</h2></div>
+        ${first ? `<div class="panel-body muted" style="border-bottom:1px solid var(--border);">Sehat gak minta lo nyatet ulang apa-apa — dia narik dari catatan lo yang udah ada. Pertanyaan ini cuma muncul <b>sekali</b>; kalau mau ganti nanti, buka tab <b>Sumber Data</b>. Yang udah kecentang itu tebakan gw dari nama tag/aktivitas lo.</div>` : ''}
+        <div class="step">
+          <h3><span class="no">1</span>🍽️ Makan</h3>
+          <div class="muted">Tag pengeluaran di <a href="habbit.html">Aktivitas & Pengeluaran</a> yang artinya lo makan/minum. Nama transaksinya dianggap apa yang lo makan, jamnya = jam makan.</div>
+          <div class="chips" id="chips-food">${tags.length ? tags.map(t => chip('food', t, onTag.has(norm(t.name)), t.n + '×')).join('') : '<span class="faint">Belum ada tag pengeluaran.</span>'}</div>
+          <div class="add-row"><input class="in" id="add-food" placeholder="Tag lain (ketik persis), mis. Makan" maxlength="60"><button class="btn btn-ghost btn-sm" data-add="food">+ Tambah</button></div>
+        </div>
+        <div class="step">
+          <h3><span class="no">2</span>🏸 Olahraga</h3>
+          <div class="muted">Aktivitas (yang pake timer/jam) yang dihitung olahraga. Durasinya diambil dari jam mulai–selesai.</div>
+          <div class="chips" id="chips-sport">${acts.length ? acts.map(a => chip('sport', a, onAct.has(norm(a.name)), a.n + '× · ' + dur(a.min))).join('') : '<span class="faint">Belum ada aktivitas.</span>'}</div>
+          <div class="add-row"><input class="in" id="add-sport" placeholder="Aktivitas lain, mis. Badminton" maxlength="60"><button class="btn btn-ghost btn-sm" data-add="sport">+ Tambah</button></div>
+        </div>
+        <div class="step">
+          <h3><span class="no">3</span>😴 Tidur & bangun</h3>
+          <div class="radio" id="sleep-src">
+            <label class="${cur.sleep_source !== 'habbit' ? 'on' : ''}"><input type="radio" name="ss" value="calendar" ${cur.sleep_source !== 'habbit' ? 'checked' : ''}><b>Kalender</b> (default) — jam <i>Tidur</i> & <i>Bangun</i> yang lo isi tiap hari. Durasi = Bangun − Tidur malam sebelumnya.</label>
+            <label class="${cur.sleep_source === 'habbit' ? 'on' : ''}"><input type="radio" name="ss" value="habbit" ${cur.sleep_source === 'habbit' ? 'checked' : ''}><b>Aktivitas</b> — lo nyalain timer aktivitas "Tidur" di Aktivitas & Pengeluaran.</label>
+          </div>
+          <div id="ss-cal" style="${cur.sleep_source === 'habbit' ? 'display:none' : ''}">
+            ${RAW.timeGoals.length ? `<div class="row2">
+              <div><label class="f">Aktivitas jam Tidur</label><select class="in" id="sel-sleep">${goalOpts(cur.sleep_goal_id)}</select></div>
+              <div><label class="f">Aktivitas jam Bangun</label><select class="in" id="sel-wake">${goalOpts(cur.wake_goal_id)}</select></div>
+            </div>` : `<div class="faint" style="margin-top:10px;">Belum ada aktivitas jam di Kalender lo. Buka <a href="calendar.html">Kalender</a> sekali biar Bangun/Tidur ke-bikin otomatis.</div>`}
+          </div>
+          <div id="ss-hab" style="${cur.sleep_source === 'habbit' ? '' : 'display:none'}">
+            <label class="f">Aktivitas tidur</label><select class="in" id="sel-sleep-act">${actOpts}</select>
+          </div>
+        </div>
+        <div class="step">
+          <h3><span class="no">4</span>🎯 Target & tampilan</h3>
+          <div class="row2">
+            <div><label class="f">Target tidur per malam (jam)</label><input type="number" class="in" id="tg-sleep" min="3" max="12" step="0.5" value="${cur.sleep_target_min / 60}"></div>
+            <div><label class="f">Target olahraga per minggu (menit)</label><input type="number" class="in" id="tg-sport" min="0" max="3000" step="10" value="${cur.sport_target_min}"></div>
+          </div>
+          <div class="faint" style="margin-top:6px;">Default: tidur 8 jam (rekomendasi dewasa 7–9 jam), olahraga 150 menit/minggu (WHO).</div>
+          <label class="f">Mode</label>
+          <div class="radio" id="mode-pick">
+            <label class="${cur.mode !== 'complex' ? 'on' : ''}"><input type="radio" name="md" value="simple" ${cur.mode !== 'complex' ? 'checked' : ''}><b>Simple</b> — skor kesehatan, 4 kartu, saran minggu ini.</label>
+            <label class="${cur.mode === 'complex' ? 'on' : ''}"><input type="radio" name="md" value="complex" ${cur.mode === 'complex' ? 'checked' : ''}><b>Komplex</b> — grafik & statistik lengkap 7/30/90 hari.</label>
+          </div>
+          <div style="display:flex;justify-content:flex-end;margin-top:16px;"><button class="btn btn-hl" id="src-save">${first ? 'Mulai →' : 'Simpan'}</button></div>
+        </div>
+      </div>`;
+  }
+
+  function wireSourceForm(first){
+    const root = $('app-root');
+    root.querySelectorAll('.chips').forEach(box => box.addEventListener('change', e => {
+      if(e.target.type === 'checkbox') e.target.closest('.chip').classList.toggle('on', e.target.checked);
+    }));
+    root.querySelectorAll('[data-add]').forEach(b => b.addEventListener('click', () => {
+      const g = b.dataset.add, inp = $('add-' + g), v = inp.value.trim();
+      if(!v) return;
+      const box = $('chips-' + g);
+      const exist = [...box.querySelectorAll('input')].find(i => norm(i.value) === norm(v));
+      if(exist){ exist.checked = true; exist.closest('.chip').classList.add('on'); }
+      else box.insertAdjacentHTML('beforeend', `<label class="chip on"><input type="checkbox" data-g="${g}" value="${esc(v)}" checked>${esc(v)} <small>baru</small></label>`);
+      inp.value = '';
+    }));
+    const radios = (id, fn) => $(id).addEventListener('change', e => {
+      $(id).querySelectorAll('label').forEach(l => l.classList.toggle('on', l.querySelector('input').checked));
+      fn && fn(e.target.value);
+    });
+    radios('sleep-src', v => { $('ss-cal').style.display = v === 'habbit' ? 'none' : ''; $('ss-hab').style.display = v === 'habbit' ? '' : 'none'; });
+    radios('mode-pick');
+    $('src-save').addEventListener('click', async () => {
+      const picked = (g) => [...root.querySelectorAll(`input[data-g="${g}"]:checked`)].map(i => i.value);
+      const src = root.querySelector('input[name="ss"]:checked').value;
+      const row = {
+        user_id: ME.id,
+        mode: root.querySelector('input[name="md"]:checked').value,
+        food_tags: picked('food'), sport_activities: picked('sport'),
+        sleep_source: src,
+        sleep_goal_id: $('sel-sleep') ? $('sel-sleep').value || null : null,
+        wake_goal_id: $('sel-wake') ? $('sel-wake').value || null : null,
+        sleep_activity: $('sel-sleep-act').value || null,
+        sleep_target_min: Math.round(clamp(parseFloat($('tg-sleep').value) || 8, 3, 12) * 60),
+        sport_target_min: Math.round(clamp(parseFloat($('tg-sport').value) || 0, 0, 3000)),
+        setup_done_at: (SET && SET.setup_done_at) || new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      if(!row.food_tags.length && !(await gembelConfirm('Belum ada tag makan yang dipilih — statistik makan bakal kosong. Lanjut?'))) return;
+      const btn = $('src-save'); btn.disabled = true; btn.textContent = 'Nyimpen…';
+      const { data, error } = await supabase.from('health_settings').upsert(row).select().single();
+      btn.disabled = false; btn.textContent = first ? 'Mulai →' : 'Simpan';
+      if(error){ await gembelAlert('Gagal simpan: ' + error.message); return; }
+      SET = data;
+      toast(first ? 'Siap! Datanya udah ketarik.' : 'Sumber data disimpan');
+      switchTab('ringkasan');
+    });
+  }
+
+  // ------------------------------------------------------------------ views
+  function renderShell(){
+    $('app-root').innerHTML = `
+      <div class="tabs">
+        <button class="tab ${TAB==='ringkasan'?'active':''}" data-tab="ringkasan">❤️ Ringkasan</button>
+        <button class="tab ${TAB==='badan'?'active':''}" data-tab="badan">⚖️ Badan</button>
+        <button class="tab ${TAB==='sumber'?'active':''}" data-tab="sumber">🔌 Sumber Data</button>
+      </div>
+      <div id="view"></div>`;
+    $('app-root').querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+  }
+
+  function switchTab(t){
+    TAB = t;
+    history.replaceState(null, '', '#' + t);
+    renderShell();
+    if(t === 'sumber'){ $('view').innerHTML = sourceForm(false); wireSourceForm(false); }
+    else if(t === 'badan') renderBody();
+    else renderSummary();
+    window.scrollTo({ top: 0 });
+  }
+
+  function modeBar(){
+    const cx = SET.mode === 'complex';
+    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+      <div class="seg" id="mode-seg"><button data-m="simple" class="${cx ? '' : 'active'}">Simple</button><button data-m="complex" class="${cx ? 'active' : ''}">Komplex</button></div>
+      ${cx ? `<div class="seg" id="range-seg">${[7, 30, 90].map(n => `<button data-r="${n}" class="${RANGE === n ? 'active' : ''}">${n} hari</button>`).join('')}</div>` : `<span class="faint">7 hari terakhir vs minggu sebelumnya</span>`}
+    </div>`;
+  }
+  function wireModeBar(){
+    $('mode-seg').addEventListener('click', async e => {
+      const m = e.target.dataset.m; if(!m || m === SET.mode) return;
+      SET.mode = m; renderSummary();
+      const { error } = await supabase.from('health_settings').update({ mode: m, updated_at: new Date().toISOString() }).eq('user_id', ME.id);
+      if(error) toast('Gagal simpan mode');
+    });
+    const rs = $('range-seg');
+    if(rs) rs.addEventListener('click', e => { const r = Number(e.target.dataset.r); if(r){ RANGE = r; lsSet('sehat_range', r); renderSummary(); } });
+  }
+
+  function heroHtml(s){
+    const sc = s.score;
+    return `<div class="panel"><div class="panel-body hero">
+      <div class="ring">${ringSvg(sc.total)}<div class="v"><b>${sc.total ?? '—'}</b><span>SKOR SEHAT</span></div></div>
+      <div class="hero-side">
+        <div style="font-family:var(--font-display);font-weight:800;font-size:18px;">${scoreWord(sc.total)}</div>
+        <div class="faint" style="margin-bottom:8px;">${s.n} hari terakhir · ${shortDate(s.start)} – ${shortDate(s.end)}</div>
+        ${sc.parts.map(p => `<div class="comp"><span>${p.k}</span><div class="bar"><i style="width:${p.v}%;background:${p.c}"></i></div><span class="mono" style="text-align:right">${Math.round(p.v)}</span></div>`).join('')
+          || '<div class="muted">Belum ada data buat dinilai.</div>'}
+      </div>
+    </div></div>`;
+  }
+
+  function cardsHtml(s, prev){
+    const T = SET.sleep_target_min, b = s.bmi;
+    const sleepCls = s.sleep.count ? cls3(s.sleep.avg - T, -30, -90) : 'none';
+    const sportCls = s.sport.pct == null ? 'none' : cls3(s.sport.pct, 1, 0.5);
+    const foodCls = s.food.count ? cls3(s.score.parts.find(p => p.k === 'Makan')?.v ?? 0, 80, 55) : 'none';
+    const lbl = { good: 'Bagus', mid: 'Lumayan', bad: 'Kurang', none: 'No data' };
+    return `<div class="cards">
+      <div class="card" style="--c:var(--sleep)">
+        <div class="k">😴 Tidur <span class="pill ${sleepCls}">${lbl[sleepCls]}</span></div>
+        <div class="big">${dur(s.sleep.avg)} <small>/malam</small></div>
+        <div class="sub">Tidur ~${hhmm(s.sleep.bed)} · bangun ~${hhmm(s.sleep.wake)}<br>${s.sleep.count}/${s.n} malam tercatat ${prev ? deltaHtml(s.sleep.avg, prev.sleep.avg, { fmt: dur }) : ''}</div>
+      </div>
+      <div class="card" style="--c:var(--sport)">
+        <div class="k">🏸 Olahraga <span class="pill ${sportCls}">${lbl[sportCls]}</span></div>
+        <div class="big">${dur(s.sport.perWeek)} <small>/minggu</small></div>
+        <div class="sub">Target ${dur(SET.sport_target_min)} · ${s.sport.sessions.length} sesi, ${s.sport.activeDays} hari aktif<br>${s.sport.since != null ? (s.sport.since === 0 ? 'Terakhir: hari ini' : `Terakhir: ${s.sport.since} hari lalu`) : 'Belum pernah tercatat'} ${prev ? deltaHtml(s.sport.total, prev.sport.total, { fmt: dur }) : ''}</div>
+      </div>
+      <div class="card" style="--c:var(--food)">
+        <div class="k">🍽️ Makan <span class="pill ${foodCls}">${lbl[foodCls]}</span></div>
+        <div class="big">${s.food.perDay != null ? s.food.perDay.toFixed(1) : '—'} <small>kali/hari</small></div>
+        <div class="sub">${rpShort(s.food.spendPerDay || 0)}/hari · ${s.food.late} makan larut<br>Sering: ${s.food.top.slice(0, 2).map(t => esc(t.name)).join(', ') || '—'}</div>
+      </div>
+      <div class="card" style="--c:var(--body)">
+        <div class="k">⚖️ BMI <span class="pill ${b ? b.cls : 'none'}">${b ? b.cat : 'No data'}</span></div>
+        <div class="big">${b ? b.bmi.toFixed(1) : '—'}</div>
+        <div class="sub">${b ? `${b.h} cm · ${b.w} kg<br>Ideal ${b.lo.toFixed(0)}–${b.hi.toFixed(0)} kg` : 'Isi tinggi & berat di tab Badan'}</div>
+      </div>
+    </div>`;
+  }
+
+  function weekStrip(F){
+    const days = []; for(let d = TODAY - 6; d <= TODAY; d++) days.push(d);
+    const nb = new Map(F.nights.map(n => [n.day, n]));
+    return `<div class="panel"><div class="panel-head"><h2>📅 7 hari terakhir</h2><span class="faint">😴 tidur · 🏸 olahraga · 🍽️ makan</span></div><div class="panel-body"><div class="week">
+      ${days.map(d => {
+        const n = nb.get(d), sp = sum(F.sport.filter(s => s.day === d).map(s => s.min)), ml = F.meals.filter(m => m.day === d).length;
+        return `<div class="day ${d === TODAY ? 'today' : ''}"><div class="d">${DOW[idxDow(d)]} ${shortDate(d).split('/')[0]}</div>
+          <div class="m ${n ? '' : 'off'}">😴${n ? dur(n.dur) : '–'}</div>
+          <div class="m ${sp ? '' : 'off'}">🏸${sp ? dur(sp) : '–'}</div>
+          <div class="m ${ml ? '' : 'off'}">🍽️${ml || '–'}</div></div>`;
+      }).join('')}
+    </div></div></div>`;
+  }
+
+  function tipsHtml(s){
+    return `<div class="panel"><div class="panel-head"><h2>💡 Yang perlu diperhatiin</h2></div><div class="panel-body" style="padding-top:6px;padding-bottom:6px;">
+      <ul class="tips">${tips(s).map(([i, t]) => `<li><span class="ic">${i}</span><span>${t}</span></li>`).join('')}</ul></div></div>`;
+  }
+
+  function stat(k, v, h){ return `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div>${h ? `<div class="h">${h}</div>` : ''}</div>`; }
+
+  function complexHtml(F, s){
+    const days = []; for(let d = s.start; d <= s.end; d++) days.push(d);
+    const T = SET.sleep_target_min;
+    const nb = new Map(s.sleep.nights.map(n => [n.day, n]));
+    const weekly = s.n >= 60;   // 90-day view groups bars by week
+    const bucket = (valFn) => {
+      if(!weekly) return { vals: days.map(valFn), labels: days.map(shortDate) };
+      const vals = [], labels = [];
+      for(let i = 0; i < days.length; i += 7){ const chunk = days.slice(i, i + 7); vals.push(sum(chunk.map(valFn))); labels.push(shortDate(chunk[0])); }
+      return { vals, labels };
+    };
+
+    // --- sleep
+    const sl = s.sleep;
+    const sleepBars = barChart(days.map(d => nb.get(d)?.dur || 0), days.map(shortDate), {
+      target: T, fmt: v => (v / 60).toFixed(v % 60 ? 1 : 0) + 'j',
+      colorFn: v => v >= T - 15 ? 'var(--sleep)' : v >= T - 90 ? 'var(--mid)' : 'var(--bad)' });
+    // does exercise help sleep? compare the night after a sport day vs other nights
+    const sportDays = new Set(F.sport.map(x => x.day));
+    const afterSport = sl.nights.filter(n => sportDays.has(n.day - 1)).map(n => n.dur);
+    const noSport = sl.nights.filter(n => !sportDays.has(n.day - 1)).map(n => n.dur);
+    const lateDays = new Set(F.meals.filter(m => m.t >= 21 * 60).map(m => m.day));
+    const afterLate = sl.nights.filter(n => lateDays.has(n.day - 1)).map(n => n.dur);
+    const noLate = sl.nights.filter(n => !lateDays.has(n.day - 1)).map(n => n.dur);
+
+    // --- sport
+    const sp = s.sport;
+    const sb = bucket(d => sum(F.sport.filter(x => x.day === d).map(x => x.min)));
+    const weeksHit = (() => { let hit = 0, tot = 0; for(let e = s.end; e - 6 >= s.start; e -= 7){ tot++; if(sum(F.sport.filter(x => x.day <= e && x.day > e - 7).map(x => x.min)) >= SET.sport_target_min) hit++; } return tot ? `${hit}/${tot}` : '—'; })();
+
+    // --- food
+    const fd = s.food;
+    const mb = bucket(d => F.meals.filter(m => m.day === d).length);
+    const spb = bucket(d => sum(F.food.filter(f => f.day === d).map(f => f.amt)));
+
+    return `
+      <div class="panel"><div class="panel-head"><h2>😴 Tidur</h2><span class="faint">${sl.count}/${s.n} malam tercatat</span></div><div class="panel-body">
+        <div class="stats">
+          ${stat('Rata-rata', dur(sl.avg), 'median ' + dur(sl.med))}
+          ${stat('Terpendek / terpanjang', dur(sl.min) + ' / ' + dur(sl.max))}
+          ${stat('Malam sesuai target', sl.onTarget == null ? '—' : Math.round(sl.onTarget * 100) + '%', 'target ' + dur(T))}
+          ${stat('Utang tidur', dur(sl.debt), 'total kekurangan di periode ini')}
+          ${stat('Jam tidur', hhmm(sl.bed), sl.bedSd != null ? '±' + dur(sl.bedSd) + ' (konsistensi)' : '')}
+          ${stat('Jam bangun', hhmm(sl.wake), sl.wakeSd != null ? '±' + dur(sl.wakeSd) : '')}
+          ${stat('Weekday / weekend', dur(sl.weekday) + ' / ' + dur(sl.weekend))}
+        </div>
+        <div class="chart-title">Durasi per malam <span class="legend"><i style="background:var(--sleep)"></i>sesuai target</span><span class="legend"><i style="background:var(--mid)"></i>kurang ≤1,5j</span><span class="legend"><i style="background:var(--bad)"></i>kurang banget</span></div>
+        ${sleepBars}
+        <div class="chart-title">Jam tidur → bangun <span class="legend"><i style="background:var(--sleep)"></i>tidur</span><span class="legend"><i style="background:var(--mid)"></i>bangun</span></div>
+        ${clockChart(days, nb)}
+      </div></div>
+
+      <div class="panel"><div class="panel-head"><h2>🏸 Olahraga</h2><span class="faint">${sp.sessions.length} sesi</span></div><div class="panel-body">
+        <div class="stats">
+          ${stat('Total', dur(sp.total), dur(sp.perWeek) + ' / minggu')}
+          ${stat('Hari aktif', sp.activeDays + ' / ' + s.n)}
+          ${stat('Minggu capai target', weeksHit, 'target ' + dur(SET.sport_target_min) + '/minggu')}
+          ${stat('Streak', sp.streak + ' hari', sp.since != null ? 'terakhir ' + (sp.since ? sp.since + ' hari lalu' : 'hari ini') : '')}
+          ${stat('Rata-rata per sesi', dur(sp.sessions.length ? sp.total / sp.sessions.length : null))}
+        </div>
+        <div class="chart-title">Menit olahraga ${weekly ? 'per minggu' : 'per hari'}</div>
+        ${barChart(sb.vals, sb.labels, { color: 'var(--sport)', fmt: v => Math.round(v) + 'm', target: weekly ? SET.sport_target_min : null })}
+        ${Object.keys(sp.byAct).length ? `<table class="t" style="margin-top:12px;"><tr><th>Aktivitas</th><th class="n">Sesi</th><th class="n">Total</th><th class="n">Rata²</th></tr>
+          ${Object.entries(sp.byAct).sort((a, b) => b[1].min - a[1].min).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="n">${v.n}</td><td class="n">${dur(v.min)}</td><td class="n">${dur(v.min / v.n)}</td></tr>`).join('')}</table>` : ''}
+      </div></div>
+
+      <div class="panel"><div class="panel-head"><h2>🍽️ Makan</h2><span class="faint">${fd.count} kali makan · ${fd.items.length} transaksi</span></div><div class="panel-body">
+        <div class="stats">
+          ${stat('Makan per hari', fd.perDay != null ? fd.perDay.toFixed(1) + '×' : '—', fd.days + ' hari tercatat')}
+          ${stat('Makan pertama / terakhir', hhmm(fd.firstMeal) + ' / ' + hhmm(fd.lastMeal), 'rata-rata jam')}
+          ${stat('Makan larut (≥22:00)', fd.late + '×', fd.latePct != null ? Math.round(fd.latePct * 100) + '% dari semua makan' : '')}
+          ${stat('Hari tanpa sarapan', fd.noBreakfast, 'gak ada makan 04–10')}
+          ${stat('Jajan makan', rp(fd.spend), rpShort(fd.spendPerDay || 0) + '/hari · ' + rpShort(fd.perMeal || 0) + '/makan')}
+          ${stat('Variasi menu', fd.variety + ' jenis')}
+          ${stat('Gorengan/manis/fast food', fd.junk == null ? '—' : Math.round(fd.junk * 100) + '%', 'tebakan dari nama')}
+          ${stat('Sayur/protein/buah', fd.healthy == null ? '—' : Math.round(fd.healthy * 100) + '%', 'tebakan dari nama')}
+        </div>
+        <div class="chart-title">Jam makan (semua hari)</div>
+        ${barChart(fd.hours, fd.hours.map((_, i) => String(i).padStart(2, '0')), { labelEvery: 3, fmt: v => Math.round(v), h: 120,
+            colorFn: (v, i) => i >= 22 || i < 4 ? 'var(--bad)' : 'var(--food)' })}
+        <div class="chart-title">Kali makan ${weekly ? 'per minggu' : 'per hari'}</div>
+        ${barChart(mb.vals, mb.labels, { color: 'var(--food)', fmt: v => Math.round(v), h: 110 })}
+        <div class="chart-title">Pengeluaran makan ${weekly ? 'per minggu' : 'per hari'}</div>
+        ${barChart(spb.vals, spb.labels, { color: 'var(--mid)', fmt: v => rpShort(v), h: 110 })}
+        ${fd.top.length ? `<div class="chart-title">Paling sering dimakan</div><table class="t"><tr><th>Menu</th><th class="n">Kali</th><th class="n">Total</th></tr>
+          ${fd.top.slice(0, 10).map(t => `<tr><td>${esc(t.name)}${JUNK_RE.test(t.name) ? ' 🍟' : HEALTHY_RE.test(t.name) ? ' 🥦' : ''}</td><td class="n">${t.n}</td><td class="n">${rpShort(t.amt)}</td></tr>`).join('')}</table>` : ''}
+      </div></div>
+
+      <div class="panel"><div class="panel-head"><h2>🔗 Hubungan antar kebiasaan</h2></div><div class="panel-body">
+        <div class="stats">
+          ${stat('Tidur habis hari olahraga', dur(avg(afterSport)), afterSport.length + ' malam')}
+          ${stat('Tidur hari tanpa olahraga', dur(avg(noSport)), noSport.length + ' malam')}
+          ${stat('Tidur habis makan ≥21:00', dur(avg(afterLate)), afterLate.length + ' malam')}
+          ${stat('Tidur tanpa makan malam larut', dur(avg(noLate)), noLate.length + ' malam')}
+        </div>
+        <div class="faint">Makin banyak data, makin bisa dipercaya. Di bawah ~5 malam per sisi, anggap ini cuma indikasi.</div>
+      </div></div>`;
+  }
+
+  function renderSummary(){
+    const F = derive();
+    const cx = SET.mode === 'complex';
+    const n = cx ? RANGE : 7;
+    const s = stats(F, n), prev = stats(F, n, TODAY - n);
+    $('view').innerHTML = modeBar() + heroHtml(s) + cardsHtml(s, prev) +
+      (cx ? complexHtml(F, s) + tipsHtml(s) : tipsHtml(s) + weekStrip(F)) +
+      `<div class="faint" style="text-align:center;margin-top:8px;">Data ditarik dari Aktivitas & Pengeluaran, Kalender, dan profil lo · <a href="#" id="reload">muat ulang</a></div>`;
+    wireModeBar();
+    $('reload').addEventListener('click', async e => { e.preventDefault(); $('view').innerHTML = '<div class="empty-hint">Narik data…</div>'; await loadData(); renderSummary(); });
+  }
+
+  function renderBody(){
+    const b = bmiInfo();
+    const age = ageFromDob(PROF.dob);
+    const W = RAW.weights.map(w => ({ x: dayIdx(w.log_date), y: Number(w.weight_kg) }));
+    const zones = [[15, 18.5, 'var(--mid)'], [18.5, 23, 'var(--good)'], [23, 25, 'var(--mid)'], [25, 30, 'var(--bad)'], [30, 35, '#991b1b']];
+    const pin = b ? clamp((b.bmi - 15) / 20 * 100, 0, 100) : null;
+    const first = W[0], last = W[W.length - 1];
+    $('view').innerHTML = `
+      <div class="panel"><div class="panel-head"><h2>⚖️ BMI</h2>${b ? `<span class="pill ${b.cls}">${b.cat}</span>` : ''}</div><div class="panel-body">
+        ${b ? `<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;">
+            <div style="font-family:var(--font-display);font-size:40px;font-weight:800;">${b.bmi.toFixed(1)}</div>
+            <div class="muted">${b.h} cm · ${b.w} kg${age != null ? ' · ' + age + ' th' : ''}</div></div>
+          <div class="gauge-wrap"><div class="gauge">${zones.map(([a, z, c]) => `<span style="width:${(z - a) / 20 * 100}%;background:${c}"></span>`).join('')}</div><div class="gauge-pin" style="left:${pin}%"></div></div>
+          <div class="gauge-lbl"><span>15</span><span>18,5</span><span>23</span><span>25</span><span>30</span><span>35</span></div>
+          <div class="stats">
+            ${stat('Berat ideal', b.lo.toFixed(1) + '–' + b.hi.toFixed(1) + ' kg', 'BMI 18,5–22,9')}
+            ${stat(b.toGo > 0 ? 'Perlu turun' : b.toGo < 0 ? 'Perlu naik' : 'Status', b.toGo ? Math.abs(b.toGo).toFixed(1) + ' kg' : 'Udah ideal ✅')}
+            ${W.length > 1 ? stat('Perubahan sejak ' + shortDate(first.x), (last.y - first.y > 0 ? '+' : '') + (last.y - first.y).toFixed(1) + ' kg') : ''}
+          </div>
+          <div class="faint">Pakai batas Asia-Pasifik (WHO): Normal 18,5–22,9 · Berlebih 23–24,9 · Obesitas ≥25. BMI gak bedain otot & lemak — anggap patokan kasar.</div>` : '<div class="muted">Belum ada tinggi/berat.</div>'}
+      </div></div>
+
+      <div class="panel"><div class="panel-head"><h2>✏️ Update badan</h2></div><div class="panel-body">
+        <div class="row2">
+          <div><label class="f" for="b-h">Tinggi (cm)</label><input type="number" class="in" id="b-h" min="50" max="260" step="0.1" value="${esc(PROF.height_cm ?? '')}"></div>
+          <div><label class="f" for="b-w">Berat hari ini (kg)</label><input type="number" class="in" id="b-w" min="20" max="400" step="0.1" value="${esc(PROF.weight_kg ?? '')}"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap;">
+          <span class="faint">Tiap ganti berat otomatis kecatat ke riwayat (1 catatan per hari).</span>
+          <button class="btn btn-hl btn-sm" id="b-save">Simpan</button>
+        </div>
+      </div></div>
+
+      <div class="panel"><div class="panel-head"><h2>📉 Riwayat berat</h2><span class="faint">${W.length} catatan</span></div><div class="panel-body">
+        ${W.length > 1 ? lineChart(W, { band: b ? [b.lo, b.hi] : null, fmt: v => v.toFixed(1) }) : '<div class="muted">Timbang & update berat rutin (mis. seminggu sekali) buat lihat trennya di sini.</div>'}
+        ${W.length ? `<table class="t" style="margin-top:10px;"><tr><th>Tanggal</th><th class="n">Berat</th><th class="n">BMI</th><th></th></tr>
+          ${[...RAW.weights].reverse().slice(0, 12).map(w => `<tr><td>${esc(w.log_date)}</td><td class="n">${Number(w.weight_kg)} kg</td><td class="n">${b ? (w.weight_kg / (b.h / 100) ** 2).toFixed(1) : '—'}</td><td class="n"><button class="btn btn-ghost btn-sm" data-del="${esc(w.id)}" title="Hapus">✕</button></td></tr>`).join('')}</table>` : ''}
+      </div></div>`;
+
+    $('b-save').addEventListener('click', async () => {
+      const h = parseFloat($('b-h').value), w = parseFloat($('b-w').value);
+      if(!(h >= 50 && h <= 260) || !(w >= 20 && w <= 400)){ await gembelAlert('Isi tinggi (50–260 cm) dan berat (20–400 kg) yang bener.'); return; }
+      const btn = $('b-save'); btn.disabled = true; btn.textContent = 'Nyimpen…';
+      const { error } = await supabase.from('profiles').update({ height_cm: h, weight_kg: w }).eq('id', ME.id);
+      if(!error){
+        // the 0041 trigger only logs when weight changes; re-saving the same weight still counts as today's weigh-in
+        await supabase.from('health_weight_logs').upsert({ user_id: ME.id, log_date: ymd(new Date()), weight_kg: w }, { onConflict: 'user_id,log_date' });
+      }
+      btn.disabled = false; btn.textContent = 'Simpan';
+      if(error){ await gembelAlert('Gagal simpan: ' + error.message); return; }
+      PROF.height_cm = h; PROF.weight_kg = w;
+      RAW.weights = await fetchAll(() => supabase.from('health_weight_logs').select('id, log_date, weight_kg').eq('user_id', ME.id).order('log_date'));
+      toast('Tersimpan'); renderBody();
+    });
+    $('view').querySelectorAll('[data-del]').forEach(bt => bt.addEventListener('click', async () => {
+      if(!(await gembelConfirm('Hapus catatan berat ini?'))) return;
+      const { error } = await supabase.from('health_weight_logs').delete().eq('id', bt.dataset.del);
+      if(error){ await gembelAlert('Gagal hapus: ' + error.message); return; }
+      RAW.weights = RAW.weights.filter(w => w.id !== bt.dataset.del);
+      renderBody();
+    }));
+  }
+
+  // ------------------------------------------------------------------ boot
+  async function boot(){
+    const { data: prof } = await supabase.from('profiles').select('height_cm, weight_kg, dob, full_name').eq('id', ME.id).maybeSingle();
+    PROF = prof || {};
+    if(!PROF.height_cm || !PROF.weight_kg){
+      $('app-root').innerHTML = `<div class="empty-hint" style="padding-top:60px;">Isi tinggi & berat badan dulu ya…</div>`;
+      await bodyGate();
+    }
+    $('app-root').innerHTML = `<div class="empty-hint" style="padding-top:60px;">Narik data makan, olahraga & tidur lo…</div>`;
+    try{
+      const [{ data: set, error }] = await Promise.all([
+        supabase.from('health_settings').select('*').eq('user_id', ME.id).maybeSingle(),
+        loadData(),
+      ]);
+      if(error) throw error;
+      SET = set || null;
+    }catch(e){
+      $('app-root').innerHTML = `<div class="empty-hint" style="padding-top:60px;">Gagal narik data: ${esc(e.message || e)}<br><br><a href="#" onclick="location.reload();return false;">Coba lagi</a></div>`;
+      return;
+    }
+    RANGE = [7, 30, 90].includes(Number(lsGet('sehat_range'))) ? Number(lsGet('sehat_range')) : 30;
+
+    if(!SET || !SET.setup_done_at){
+      $('app-root').innerHTML = sourceForm(true);
+      wireSourceForm(true);
+      return;
+    }
+    const h = (location.hash || '').slice(1);
+    switchTab(['ringkasan', 'badan', 'sumber'].includes(h) ? h : 'ringkasan');
+  }
+
+  document.addEventListener('DOMContentLoaded', async () => {
+    const authCtx = await requireAuth('index.html');
+    if(!authCtx) return;
+    ME = authCtx.user;
+    await boot();
+  });
+})();
+</script>
+</body>
+</html>

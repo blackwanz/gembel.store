@@ -128,6 +128,15 @@ window.GEMBEL_APPS = [
     category: 'Utilitas',
     enabled: true,
   },
+  {
+    id: 'sehat',
+    name: 'Sehat',
+    desc: 'Statistik kesehatan otomatis dari catatan lo — makan (tag pengeluaran), olahraga (aktivitas), jam tidur/bangun (Kalender), plus BMI. Mode Simple & Komplex.',
+    icon: '❤️',
+    url: 'sehat.html',
+    category: 'Hobi & Olahraga',
+    enabled: true,
+  },
   // These three are real projects still being built -- the tile is here so they're visible on the
   // roadmap, but clicking through lands on coming-soon.html (a shared "under construction" scene)
   // instead of a real app. See coming-soon.html's own comment for how the ?app=/?domain=/?icon=

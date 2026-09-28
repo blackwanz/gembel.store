@@ -235,6 +235,7 @@
 
       <div id="profile-view" class="profile-grid">
         <div class="profile-item"><div class="k">Tanggal lahir</div><div class="v" id="profil-dob">—</div></div>
+        <div class="profile-item"><div class="k">Tinggi / Berat</div><div class="v" id="profil-body">—</div></div>
         <div class="profile-item"><div class="k">No. HP</div><div class="v" id="profil-phone">—</div></div>
         <div class="profile-item"><div class="k">Pembayaran</div><div class="v" id="profil-wallet">—</div></div>
         <div class="profile-item"><div class="k">Member sejak</div><div class="v" id="profil-since">—</div></div>
@@ -249,6 +250,14 @@
         <div class="field">
           <label>Tanggal lahir</label>
           <input type="date" id="edit-dob">
+        </div>
+        <div class="field">
+          <label>Tinggi badan (cm)</label>
+          <input type="number" id="edit-height" placeholder="cth: 170" min="50" max="260" step="0.1" inputmode="decimal">
+        </div>
+        <div class="field">
+          <label>Berat badan (kg)</label>
+          <input type="number" id="edit-weight" placeholder="cth: 65" min="20" max="400" step="0.1" inputmode="decimal">
         </div>
         <div class="field">
           <label>No. HP</label>
@@ -551,6 +560,9 @@ function fillProfile() {
   document.getElementById('profil-dob').textContent = CURRENT_PROFILE?.dob
     ? new Date(CURRENT_PROFILE.dob + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
     : '—';
+  document.getElementById('profil-body').textContent = (CURRENT_PROFILE?.height_cm || CURRENT_PROFILE?.weight_kg)
+    ? `${CURRENT_PROFILE?.height_cm ? CURRENT_PROFILE.height_cm + ' cm' : '—'} / ${CURRENT_PROFILE?.weight_kg ? CURRENT_PROFILE.weight_kg + ' kg' : '—'}`
+    : '—';
   document.getElementById('profil-phone').textContent = CURRENT_PROFILE?.phone || '—';
   document.getElementById('profil-wallet').textContent = paymentSummary(CURRENT_PROFILE);
   document.getElementById('profil-since').textContent = CURRENT_PROFILE?.created_at
@@ -565,6 +577,8 @@ function setProfileEditing(on) {
   if (on) {
     document.getElementById('edit-name').value = CURRENT_PROFILE?.full_name || '';
     document.getElementById('edit-dob').value = CURRENT_PROFILE?.dob || '';
+    document.getElementById('edit-height').value = CURRENT_PROFILE?.height_cm ?? '';
+    document.getElementById('edit-weight').value = CURRENT_PROFILE?.weight_kg ?? '';
     document.getElementById('edit-phone').value = CURRENT_PROFILE?.phone || '';
     document.getElementById('edit-wallet').value = CURRENT_PROFILE?.wallet_type || 'nothing';
     document.getElementById('edit-wallet-number').value = CURRENT_PROFILE?.wallet_number || '';
@@ -607,10 +621,14 @@ async function saveProfile() {
   const btn = document.getElementById('save-profile-btn');
   btn.disabled = true; btn.textContent = 'Menyimpan…';
   const wallet = document.getElementById('edit-wallet').value;
+  // Height/weight feed Sehat's BMI; empty = null, out-of-range is rejected by the DB check (0041).
+  const numOrNull = (id) => { const v = parseFloat(document.getElementById(id).value); return Number.isFinite(v) ? v : null; };
   const { error } = await supabase.from('profiles').update({
     full_name: document.getElementById('edit-name').value.trim() || null,
     dob: document.getElementById('edit-dob').value || null,
     phone: document.getElementById('edit-phone').value.trim() || null,
+    height_cm: numOrNull('edit-height'),
+    weight_kg: numOrNull('edit-weight'),
     wallet_type: wallet,
     wallet_number: wallet === 'nothing' ? null : (document.getElementById('edit-wallet-number').value.trim() || null),
     bank_name: wallet === 'bank' ? (document.getElementById('edit-bank-name').value.trim() || null) : null,
