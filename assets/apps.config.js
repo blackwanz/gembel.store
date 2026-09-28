@@ -119,6 +119,15 @@ window.GEMBEL_APPS = [
     category: 'Sosial',
     enabled: true,
   },
+  {
+    id: 'nolock',
+    name: 'No Lock',
+    desc: 'Bikin layar tetap nyala, gak auto-lock, selama halaman ini kebuka. Ada mode redup biar gak silau.',
+    icon: '☀️',
+    url: 'nolock.html',
+    category: 'Utilitas',
+    enabled: true,
+  },
   // These three are real projects still being built -- the tile is here so they're visible on the
   // roadmap, but clicking through lands on coming-soon.html (a shared "under construction" scene)
   // instead of a real app. See coming-soon.html's own comment for how the ?app=/?domain=/?icon=

@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>No Lock — Gembel AI PIK</title>
+<!--
+  nolock.html -- keeps the screen awake while this tab is open & visible.
+  Uses the Screen Wake Lock API (navigator.wakeLock). The browser drops the
+  lock whenever the tab is hidden, so it's re-requested on visibilitychange.
+  No login / no DB: nothing here is worth storing.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/app-theme.css">
+<style>
+  body { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px 16px; transition: background .6s ease; }
+  .back-link {
+    position: fixed; top: 14px; left: 14px; font-size: 12.5px; color: var(--text-muted);
+    padding: 6px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+    background: var(--surface); text-decoration: none; transition: var(--transition); z-index: 2;
+  }
+  .back-link:hover { color: var(--text-main); border-color: var(--border-strong); }
+
+  .nl-card { text-align: center; max-width: 360px; width: 100%; animation: nl-in .5s ease both; }
+  @keyframes nl-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+  /* Soft "breathing" ring -- the only continuous animation, cheap (transform/opacity only). */
+  .nl-orb {
+    position: relative; width: 180px; height: 180px; margin: 0 auto 26px; border: none; background: none;
+    cursor: pointer; border-radius: 50%; -webkit-tap-highlight-color: transparent;
+  }
+  .nl-orb .ring {
+    position: absolute; inset: 0; border-radius: 50%;
+    border: 2px solid var(--primary); opacity: .25;
+  }
+  .nl-orb .core {
+    position: absolute; inset: 22px; border-radius: 50%;
+    background: var(--primary-soft); display: flex; align-items: center; justify-content: center;
+    font-size: 54px; transition: background .4s ease, transform .3s ease;
+  }
+  .nl-orb:active .core { transform: scale(.96); }
+  body.on .nl-orb .ring { animation: nl-breathe 3.2s ease-in-out infinite; }
+  body.on .nl-orb .ring.r2 { animation-delay: 1.6s; }
+  @keyframes nl-breathe {
+    0%   { transform: scale(.82); opacity: .45; }
+    100% { transform: scale(1.12); opacity: 0; }
+  }
+  body.off .nl-orb .core { background: var(--surface-hover); filter: grayscale(1); }
+
+  .nl-title { font-family: var(--font-display); font-size: 26px; font-weight: 800; color: var(--text-main); }
+  .nl-sub { margin-top: 6px; font-size: 14px; color: var(--text-muted); min-height: 20px; }
+  .nl-timer { margin-top: 14px; font-family: var(--font-mono); font-size: 15px; color: var(--primary-text); letter-spacing: .5px; }
+  body.off .nl-timer { color: var(--text-faint); }
+  .nl-hint { margin-top: 22px; font-size: 12px; color: var(--text-faint); line-height: 1.5; }
+  .nl-actions { margin-top: 18px; display: flex; gap: 8px; justify-content: center; }
+  .nl-btn {
+    border: 1px solid var(--border); background: var(--surface); color: var(--text-muted);
+    padding: 7px 14px; border-radius: var(--radius-sm); font-size: 12.5px; font-weight: 600; cursor: pointer;
+    transition: var(--transition);
+  }
+  .nl-btn:hover { color: var(--text-main); border-color: var(--border-strong); }
+
+  /* Dim mode: near-black screen so an always-on display doesn't blast light / burn battery. */
+  body.dim { background: #000 !important; }
+  body.dim .nl-card, body.dim .back-link { opacity: .18; }
+  body.dim .nl-card:hover, body.dim .back-link:hover { opacity: .6; }
+
+  @media (prefers-reduced-motion: reduce) {
+    body.on .nl-orb .ring { animation: none; opacity: .3; }
+    .nl-card { animation: none; }
+  }
+</style>
+</head>
+<body class="off">
+  <a class="back-link" href="dashboard.html">← Dashboard</a>
+
+  <main class="nl-card">
+    <button class="nl-orb" id="nl-orb" type="button" aria-label="Nyalakan / matikan No Lock">
+      <span class="ring"></span><span class="ring r2"></span>
+      <span class="core" id="nl-icon">☀️</span>
+    </button>
+    <div class="nl-title" id="nl-title">No Lock</div>
+    <div class="nl-sub" id="nl-sub">Menyalakan…</div>
+    <div class="nl-timer" id="nl-timer">00:00:00</div>
+    <div class="nl-actions">
+      <button class="nl-btn" id="nl-dim" type="button">🌙 Redupkan</button>
+    </div>
+    <div class="nl-hint">Layar gak bakal mati/terkunci selama tab ini kebuka &amp; kelihatan.<br>Pindah tab / minimize = lock dilepas, balik lagi = otomatis nyala lagi.</div>
+  </main>
+
+<script>
+(function () {
+  var sentinel = null;
+  var wanted = true;          // user intent: keep awake or not
+  var startedAt = null;       // when the current awake stretch began
+  var supported = 'wakeLock' in navigator;
+  var lastError = null;       // why the last request failed, shown to the user
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  function render() {
+    var on = !!sentinel && !sentinel.released;
+    document.body.classList.toggle('on', on);
+    document.body.classList.toggle('off', !on);
+    $('nl-icon').textContent = on ? '☀️' : '🌑';
+    if (!supported) {
+      $('nl-sub').textContent = 'Browser ini belum support Wake Lock. Coba Chrome / Safari terbaru.';
+    } else if (on) {
+      $('nl-sub').textContent = 'Layar tetap nyala';
+    } else if (wanted && lastError) {
+      $('nl-sub').textContent = 'Browser nolak (mode hemat baterai / izin). Tap buat coba lagi.';
+    } else if (wanted) {
+      $('nl-sub').textContent = 'Tap lingkaran buat nyalain';
+    } else {
+      $('nl-sub').textContent = 'Mati — layar bisa lock normal';
+    }
+  }
+
+  async function acquire() {
+    if (!supported || !wanted || document.visibilityState !== 'visible') return;
+    if (sentinel && !sentinel.released) return;
+    try {
+      sentinel = await navigator.wakeLock.request('screen');
+      lastError = null;
+      if (!startedAt) startedAt = Date.now();
+      sentinel.addEventListener('release', render);
+    } catch (e) {
+      // e.g. NotAllowedError (battery saver, no user gesture on some browsers)
+      sentinel = null;
+      lastError = e;
+    }
+    render();
+  }
+
+  async function release() {
+    if (sentinel) { try { await sentinel.release(); } catch (e) {} }
+    sentinel = null;
+    startedAt = null;
+    render();
+  }
+
+  $('nl-orb').addEventListener('click', function () {
+    var on = !!sentinel && !sentinel.released;
+    if (on) { wanted = false; release(); }
+    else { wanted = true; acquire(); }
+  });
+
+  $('nl-dim').addEventListener('click', function () {
+    var dim = document.body.classList.toggle('dim');
+    this.textContent = dim ? '☀️ Terangkan' : '🌙 Redupkan';
+  });
+
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') acquire();
+  });
+
+  setInterval(function () {
+    var on = !!sentinel && !sentinel.released;
+    if (!on || !startedAt) return;
+    var s = Math.floor((Date.now() - startedAt) / 1000);
+    var p = function (n) { return (n < 10 ? '0' : '') + n; };
+    $('nl-timer').textContent = p(Math.floor(s / 3600)) + ':' + p(Math.floor(s / 60) % 60) + ':' + p(s % 60);
+  }, 1000);
+
+  render();
+  acquire();
+})();
+</script>
+</body>
+</html>

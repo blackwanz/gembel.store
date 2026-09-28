@@ -5,6 +5,7 @@ import fnmatch
 import json
 import posixpath
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -14,6 +15,7 @@ BASE_DIR = Path(sys.executable).parent if getattr(sys, "frozen", False) else Pat
 CONFIG_PATH = BASE_DIR / "config.json"
 LOG_DIR = BASE_DIR / "logs"
 SSH_CONFIG_PATH = Path.home() / ".ssh" / "config"
+HEARTBEAT_SECONDS = 10
 
 
 def resolve_ssh_target(alias: str) -> dict:
@@ -56,14 +58,39 @@ def run_remote_scripts(ssh: paramiko.SSHClient, cfg: dict, logfile) -> None:
     cmd = f"cd {remote_dir} && {parts}"
     log(f"Running remote command: {cmd}", logfile)
 
-    stdin, stdout, stderr = ssh.exec_command(cmd)
-    for line in stdout:
-        log(f"[remote] {line.rstrip()}", logfile)
-    err_output = stderr.read().decode(errors="replace")
-    exit_status = stdout.channel.recv_exit_status()
+    # pg_dump runs ~1-2 min without printing anything, which used to look like a hang
+    # (and got the window closed before the download step). Poll the channel instead of
+    # blocking on stdout, print a heartbeat while it's quiet, and drain stderr as we go
+    # so a chatty stderr can never fill the SSH window and deadlock.
+    _, stdout, _ = ssh.exec_command(cmd)
+    chan = stdout.channel
+    out_buf, err_buf = "", ""
+    started = last_output = time.monotonic()
+    while True:
+        got = False
+        while chan.recv_ready():
+            out_buf += chan.recv(65536).decode(errors="replace")
+            got = True
+        while chan.recv_stderr_ready():
+            err_buf += chan.recv_stderr(65536).decode(errors="replace")
+            got = True
+        while "\n" in out_buf:
+            line, out_buf = out_buf.split("\n", 1)
+            log(f"[remote] {line.rstrip()}", logfile)
+        if got:
+            last_output = time.monotonic()
+        elif chan.exit_status_ready() and not chan.recv_ready() and not chan.recv_stderr_ready():
+            break
+        elif time.monotonic() - last_output >= HEARTBEAT_SECONDS:
+            print(f"    ... masih jalan ({int(time.monotonic() - started)} detik), jangan ditutup", flush=True)
+            last_output = time.monotonic()
+        time.sleep(0.2)
+    if out_buf.strip():
+        log(f"[remote] {out_buf.rstrip()}", logfile)
+    exit_status = chan.recv_exit_status()
 
-    if err_output.strip():
-        log(f"[remote-stderr] {err_output.strip()}", logfile)
+    if err_buf.strip():
+        log(f"[remote-stderr] {err_buf.strip()}", logfile)
 
     if exit_status != 0:
         raise RuntimeError(f"Remote backup scripts failed with exit code {exit_status}")
@@ -140,5 +167,17 @@ def main() -> int:
             return 1
 
 
+def pause_before_exit() -> None:
+    """Keep a double-clicked console window open so the result can be read.
+    Skipped when stdin isn't a console (scheduled task, piped, etc.)."""
+    if sys.stdin is not None and sys.stdin.isatty():
+        try:
+            input("\nTekan Enter buat nutup jendela ini...")
+        except EOFError:
+            pass
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    code = main()
+    pause_before_exit()
+    sys.exit(code)

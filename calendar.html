@@ -322,6 +322,19 @@
         .dropped-goal.has-value .chip-text { cursor: pointer; }
         .dropped-goal.has-value .chip-text:hover { text-decoration: underline dashed; }
         .chip-value { font-family: var(--font-mono); font-weight: 700; color: var(--primary-text); margin-left: 4px; font-size: 11px; }
+        /* 'time' goals logged later than their red limit */
+        .dropped-goal.is-late { background: var(--danger-bg); box-shadow: inset 3px 0 0 var(--danger); }
+        .dropped-goal.is-late .chip-value { color: var(--danger); }
+        .time-opts { display: none; gap: 6px; }
+        .time-opts label { flex: 1; display: flex; flex-direction: column; gap: 3px; font-size: 10.5px; color: var(--text-muted); }
+        .time-opts .unit-input, .ts-row input { font-family: var(--font-mono); }
+        .track-badge.time-badge { cursor: pointer; }
+        .track-badge.time-badge:hover { color: var(--primary-text); text-decoration: underline dashed; }
+        .track-badge .red-lim { color: var(--danger); }
+        .ts-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+        .ts-row span { flex: 1; font-size: 12.5px; color: var(--text-muted); }
+        .ts-row input { width: 90px; }
+        .ts-hint { font-size: 11px; color: var(--text-faint); margin-bottom: 12px; line-height: 1.45; }
         .remove-cross { color: var(--text-faint); cursor: pointer; font-size: 13px; padding: 0 2px; line-height: 1; transition: color .12s ease; }
         .remove-cross:hover { color: var(--danger); }
 
@@ -666,8 +679,13 @@
                 <div class="format-toggle" id="goal-format-toggle">
                     <button type="button" class="format-btn active" data-format="counter">🔢 Counter</button>
                     <button type="button" class="format-btn" data-format="hours">⏱️ Jam</button>
+                    <button type="button" class="format-btn" data-format="time">🕐 Waktu</button>
                 </div>
                 <input type="text" id="goal-unit-input" class="unit-input" placeholder="satuan (reps/km)" style="display:none;">
+                <div class="time-opts" id="goal-time-opts">
+                    <label>Jam default (24 jam)<input type="text" id="goal-default-time" class="unit-input" placeholder="06:00" maxlength="5" inputmode="numeric" autocomplete="off"></label>
+                    <label>Batas merah (opsional)<input type="text" id="goal-red-limit" class="unit-input" placeholder="08:00" maxlength="5" inputmode="numeric" autocomplete="off"></label>
+                </div>
             </div>
 
             <div class="goal-search-box">
@@ -694,6 +712,20 @@
         </div>
     </div>
 
+    <!-- Settings for a 'time' goal: default clock time + red limit -->
+    <div id="time-settings-overlay" class="modal-overlay">
+        <div class="modal-box">
+            <h3 id="ts-title">Aktivitas</h3>
+            <div class="ts-row"><span>Jam default</span><input type="text" id="ts-default" class="unit-input" maxlength="5" inputmode="numeric" placeholder="06:00" autocomplete="off"></div>
+            <div class="ts-row"><span>🔴 Batas merah</span><input type="text" id="ts-red" class="unit-input" maxlength="5" inputmode="numeric" placeholder="kosong = off" autocomplete="off"></div>
+            <div class="ts-hint">Format 24 jam (mis. 08:00). Kalau jam yang dicatat lewat dari batas merah, aktivitasnya jadi merah di kalender. Kosongin buat matiin.</div>
+            <div class="modal-actions">
+                <button id="ts-cancel">Batal</button>
+                <button id="ts-save">Simpan</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal for entering/editing a goal's numeric value -->
     <div id="value-modal-overlay" class="modal-overlay">
         <div class="modal-box">
@@ -707,6 +739,10 @@
                 <span class="modal-unit">jam</span>
                 <input type="number" id="vm-minutes" min="0" max="59" step="1" inputmode="numeric" placeholder="0">
                 <span class="modal-unit">menit</span>
+            </div>
+            <div class="modal-input-row" id="vm-time-row" style="display:none;">
+                <input type="text" id="vm-time" maxlength="5" inputmode="numeric" placeholder="HH:MM" autocomplete="off" style="font-family:var(--font-mono);">
+                <span class="modal-unit">format 24 jam</span>
             </div>
             <div class="modal-actions">
                 <button id="vm-cancel">Batal</button>
@@ -831,6 +867,7 @@
 
                 const cloudGoals = (goalRows || []).map(r => ({
                     id: r.id, text: r.text, hidden: r.hidden, trackValue: r.track_value, format: r.format, unit: r.unit,
+                    defaultTime: r.default_time || '', redLimit: r.red_limit || '',
                 }));
                 const cloudProgress = {};
                 (entryRows || []).forEach(r => {
@@ -870,6 +907,7 @@
             const goalRows = goals.map((g, i) => ({
                 id: g.id, user_id: CURRENT_USER.id, text: g.text, hidden: !!g.hidden,
                 track_value: !!g.trackValue, format: g.format || 'counter', unit: g.unit || '', sort_order: i,
+                default_time: g.defaultTime || '', red_limit: g.redLimit || '',
             }));
             const entryRows = [];
             for (const dateId in progress) {
@@ -929,6 +967,12 @@
         }
 
         // ============ DATABASE ============
+        const DEFAULT_TIME_GOALS = [
+            { slug: 'bangun', text: 'Bangun', defaultTime: '06:00' },
+            { slug: 'berangkat', text: 'Berangkat Kerja', defaultTime: '09:30' },
+            { slug: 'pulang', text: 'Pulang', defaultTime: '09:30' },
+            { slug: 'tidur', text: 'Tidur', defaultTime: '22:10' },
+        ];
         let goals = [];
         let progress = {};
         let textBackupDb = {};
@@ -936,7 +980,12 @@
         function loadLocalDatabase() {
             goals = JSON.parse(localStorage.getItem(LS_GOALS));
             if (!goals || goals.length === 0) {
+                // Default time activities -- same deterministic ids as the seed in
+                // db/migrations/0039_calendar_time_goals.sql, so a new account never
+                // ends up with two copies of them.
+                const uid = CURRENT_USER ? CURRENT_USER.id : 'local';
                 goals = [
+                    ...DEFAULT_TIME_GOALS.map(d => ({ id: `tm_${d.slug}_${uid}`, text: d.text, hidden: false, trackValue: true, format: 'time', unit: '', defaultTime: d.defaultTime, redLimit: '' })),
                     { id: 'g1', text: 'Badminton Drilling 2 Jam', hidden: false, trackValue: false, format: 'counter', unit: '' },
                     { id: 'g2', text: 'Trading Journal QwerTrade', hidden: false, trackValue: false, format: 'counter', unit: '' },
                     { id: 'g3', text: 'Fix Bug React / Node.js', hidden: false, trackValue: false, format: 'counter', unit: '' },
@@ -1172,6 +1221,8 @@
                 if (g.trackValue === undefined) g.trackValue = false;
                 if (g.unit === undefined) g.unit = '';
                 if (g.format === undefined) g.format = (g.unit === 'jam') ? 'hours' : 'counter';
+                if (g.defaultTime === undefined) g.defaultTime = '';
+                if (g.redLimit === undefined) g.redLimit = '';
             });
         }
 
@@ -1214,8 +1265,43 @@
             return div.innerHTML;
         }
 
+        // ---- 'time' goals: clock time in 24h, stored as minutes since midnight ----
+        // Accepts "9:30", "09.30", "0930", "930", "22" -> minutes, or null if invalid.
+        function parseClock(str) {
+            const s = String(str == null ? '' : str).trim().replace('.', ':');
+            if (!s) return null;
+            let h, m;
+            if (s.includes(':')) {
+                const parts = s.split(':');
+                if (parts.length !== 2 || !/^\d{1,2}$/.test(parts[0]) || !/^\d{1,2}$/.test(parts[1])) return null;
+                h = +parts[0]; m = +parts[1];
+            } else if (/^\d{1,4}$/.test(s)) {
+                if (s.length <= 2) { h = +s; m = 0; }
+                else { h = +s.slice(0, s.length - 2); m = +s.slice(-2); }
+            } else return null;
+            if (h > 23 || m > 59) return null;
+            return h * 60 + m;
+        }
+        function fmtClock(minutes) {
+            if (minutes === null || minutes === undefined || isNaN(minutes)) return '';
+            const mm = Math.round(minutes);
+            return `${pad(Math.floor(mm / 60))}:${pad(mm % 60)}`;
+        }
+        // Red = logged later than the goal's red limit. For an evening limit (>= 12:00),
+        // times before 04:00 count as "after midnight, still the same night" -- so
+        // Tidur at 00:30 with a 23:00 limit is late, not early.
+        function isTimeLate(goal, value) {
+            if (!goal || goal.format !== 'time' || value === null || value === undefined) return false;
+            const limit = parseClock(goal.redLimit);
+            if (limit === null) return false;
+            let v = Number(value);
+            if (limit >= 12 * 60 && v < 4 * 60) v += 24 * 60;
+            return v > limit;
+        }
+
         function formatGoalValue(goal, value) {
             if (value === null || value === undefined) return '—';
+            if (goal.format === 'time') return fmtClock(value);
             if (goal.format === 'hours') {
                 const totalMinutes = Math.round(value * 60);
                 const h = Math.floor(totalMinutes / 60);
@@ -1525,6 +1611,7 @@
                 const checked = e.target.checked;
                 document.getElementById('goal-format-toggle').style.display = checked ? 'flex' : 'none';
                 document.getElementById('goal-unit-input').style.display = (checked && currentNewGoalFormat === 'counter') ? 'block' : 'none';
+                document.getElementById('goal-time-opts').style.display = (checked && currentNewGoalFormat === 'time') ? 'flex' : 'none';
                 syncOptionsRowVisibility();
             });
             document.querySelectorAll('.format-btn').forEach(btn => {
@@ -1532,6 +1619,7 @@
                     currentNewGoalFormat = btn.dataset.format;
                     document.querySelectorAll('.format-btn').forEach(b => b.classList.toggle('active', b === btn));
                     document.getElementById('goal-unit-input').style.display = (currentNewGoalFormat === 'counter') ? 'block' : 'none';
+                    document.getElementById('goal-time-opts').style.display = (currentNewGoalFormat === 'time') ? 'flex' : 'none';
                 });
             });
 
@@ -1596,7 +1684,11 @@
             document.getElementById('vm-cancel').addEventListener('click', () => closeValueModal(null));
             document.getElementById('vm-save').addEventListener('click', () => {
                 const format = document.getElementById('value-modal-overlay').dataset.format;
-                if (format === 'hours') {
+                if (format === 'time') {
+                    const mins = parseClock(document.getElementById('vm-time').value);
+                    if (mins === null) { showToast('Jam gak valid — pakai format 24 jam, mis. 06:30'); return; }
+                    closeValueModal(mins);
+                } else if (format === 'hours') {
                     const h = parseFloat(document.getElementById('vm-hours').value) || 0;
                     const m = parseFloat(document.getElementById('vm-minutes').value) || 0;
                     closeValueModal(h + (m / 60));
@@ -1608,6 +1700,14 @@
             document.getElementById('vm-input').addEventListener('keypress', (e) => { if (e.key === 'Enter') document.getElementById('vm-save').click(); });
             document.getElementById('vm-hours').addEventListener('keypress', (e) => { if (e.key === 'Enter') document.getElementById('vm-save').click(); });
             document.getElementById('vm-minutes').addEventListener('keypress', (e) => { if (e.key === 'Enter') document.getElementById('vm-save').click(); });
+            document.getElementById('vm-time').addEventListener('keypress', (e) => { if (e.key === 'Enter') document.getElementById('vm-save').click(); });
+
+            document.getElementById('ts-cancel').addEventListener('click', closeTimeSettings);
+            document.getElementById('ts-save').addEventListener('click', saveTimeSettings);
+            ['ts-default', 'ts-red'].forEach(id => document.getElementById(id).addEventListener('keypress', (e) => { if (e.key === 'Enter') saveTimeSettings(); }));
+            document.getElementById('time-settings-overlay').addEventListener('click', (e) => {
+                if (e.target.id === 'time-settings-overlay') closeTimeSettings();
+            });
             document.getElementById('value-modal-overlay').addEventListener('click', (e) => {
                 if (e.target.id === 'value-modal-overlay') closeValueModal(null);
             });
@@ -2178,7 +2278,9 @@
                 const eyeIcon = goal.hidden ? EYE_OFF_SVG : EYE_OPEN_SVG;
                 const eyeTitle = goal.hidden ? 'Tampilkan lagi' : 'Sembunyikan';
                 const badge = goal.trackValue
-                    ? (goal.format === 'hours'
+                    ? (goal.format === 'time'
+                        ? `<div class="track-badge time-badge" onclick="openTimeSettings('${goal.id}', event)" title="Klik buat atur jam default & batas merah">🕐 ${escapeHtml(goal.defaultTime || '--:--')}${goal.redLimit ? ` · <span class="red-lim">🔴 &gt;${escapeHtml(goal.redLimit)}</span>` : ''}</div>`
+                        : goal.format === 'hours'
                         ? `<div class="track-badge">⏱️ format jam</div>`
                         : `<div class="track-badge">🔢 dilacak${goal.unit ? ' · ' + escapeHtml(goal.unit) : ''}</div>`)
                     : '';
@@ -2317,13 +2419,25 @@
 
             const trackValue = document.getElementById('goal-track-value').checked;
             const format = trackValue ? currentNewGoalFormat : 'counter';
-            const unit = format === 'hours' ? 'jam' : document.getElementById('goal-unit-input').value.trim();
+            const unit = format === 'hours' ? 'jam' : format === 'time' ? '' : document.getElementById('goal-unit-input').value.trim();
+            let defaultTime = '', redLimit = '';
+            if (format === 'time') {
+                const dRaw = document.getElementById('goal-default-time').value;
+                const rRaw = document.getElementById('goal-red-limit').value;
+                const d = parseClock(dRaw), r = parseClock(rRaw);
+                if ((dRaw.trim() && d === null) || (rRaw.trim() && r === null)) {
+                    showToast('Jam gak valid — pakai format 24 jam, mis. 06:30');
+                    return;
+                }
+                defaultTime = fmtClock(d);
+                redLimit = fmtClock(r);
+            }
 
             // Setiap goal baru SELALU dapat id unik sendiri, walau teksnya sama persis
             // dengan goal lain (aktif ataupun yang sudah pernah dihapus). Ini yang
             // mencegah dua goal "identitas kembar" saling pengaruh saat salah satunya dihapus.
             const newId = 'g_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
-            const newGoal = { id: newId, text: text, hidden: false, trackValue: trackValue, format: format, unit: unit };
+            const newGoal = { id: newId, text: text, hidden: false, trackValue: trackValue, format: format, unit: unit, defaultTime: defaultTime, redLimit: redLimit };
 
             goals.push(newGoal);
             textBackupDb[newId] = text;
@@ -2334,6 +2448,9 @@
             document.getElementById('goal-unit-input').value = '';
             document.getElementById('goal-unit-input').style.display = 'none';
             document.getElementById('goal-format-toggle').style.display = 'none';
+            document.getElementById('goal-time-opts').style.display = 'none';
+            document.getElementById('goal-default-time').value = '';
+            document.getElementById('goal-red-limit').value = '';
             currentNewGoalFormat = 'counter';
             document.querySelectorAll('.format-btn').forEach(b => b.classList.toggle('active', b.dataset.format === 'counter'));
             loadGoals();
@@ -2401,7 +2518,9 @@
             // adds a fresh entry with its own entryId, so they can each be edited or
             // removed independently later without touching the other entries.
             if (goal && goal.trackValue) {
-                const lastVal = getLastValueForGoal(goalId, dateId);
+                const lastVal = goal.format === 'time'
+                    ? parseClock(goal.defaultTime)
+                    : getLastValueForGoal(goalId, dateId);
                 const val = await showValueModal(goal.text, lastVal, goal.unit, goal.format);
                 if (val === null) return; // cancelled
                 progress[dateId].push({ id: goalId, value: val, entryId: makeEntryId() });
@@ -2472,6 +2591,10 @@
                 chip.setAttribute('data-entry-id', entry.entryId);
                 if (goal && goal.hidden) chip.classList.add('hide-from-calendar');
                 if (goal && goal.trackValue) chip.classList.add('has-value');
+                if (isTimeLate(goal, entry.value)) {
+                    chip.classList.add('is-late');
+                    chip.title = `Lewat batas merah ${goal.redLimit}`;
+                }
 
                 const valueLabel = (goal && goal.trackValue)
                     ? `<span class="chip-value">${formatGoalValue(goal, entry.value)}</span>`
@@ -2540,11 +2663,17 @@
         function showValueModal(goalText, defaultValue, unit, format) {
             document.getElementById('vm-title').innerText = goalText;
             const isHours = format === 'hours';
+            const isTime = format === 'time';
             document.getElementById('value-modal-overlay').dataset.format = format || 'counter';
-            document.getElementById('vm-counter-row').style.display = isHours ? 'none' : 'flex';
+            document.getElementById('vm-counter-row').style.display = (isHours || isTime) ? 'none' : 'flex';
             document.getElementById('vm-hours-row').style.display = isHours ? 'flex' : 'none';
+            document.getElementById('vm-time-row').style.display = isTime ? 'flex' : 'none';
 
-            if (isHours) {
+            if (isTime) {
+                const tEl = document.getElementById('vm-time');
+                tEl.value = fmtClock(defaultValue);
+                setTimeout(() => { tEl.focus(); tEl.select(); }, 30);
+            } else if (isHours) {
                 const hasVal = defaultValue !== null && defaultValue !== undefined;
                 const totalMinutes = hasVal ? Math.round(defaultValue * 60) : 0;
                 document.getElementById('vm-hours').value = hasVal ? Math.floor(totalMinutes / 60) : '';
@@ -2559,6 +2688,41 @@
 
             document.getElementById('value-modal-overlay').style.display = 'flex';
             return new Promise(resolve => { valueModalResolve = resolve; });
+        }
+
+        // ============ TIME GOAL SETTINGS (default time + red limit) ============
+        let timeSettingsGoalId = null;
+        window.openTimeSettings = function (goalId, event) {
+            if (event) event.stopPropagation();
+            const goal = goals.find(g => g.id === goalId);
+            if (!goal) return;
+            timeSettingsGoalId = goalId;
+            document.getElementById('ts-title').innerText = goal.text;
+            document.getElementById('ts-default').value = goal.defaultTime || '';
+            document.getElementById('ts-red').value = goal.redLimit || '';
+            document.getElementById('time-settings-overlay').style.display = 'flex';
+            setTimeout(() => document.getElementById('ts-red').focus(), 30);
+        };
+        function closeTimeSettings() {
+            document.getElementById('time-settings-overlay').style.display = 'none';
+            timeSettingsGoalId = null;
+        }
+        function saveTimeSettings() {
+            const goal = goals.find(g => g.id === timeSettingsGoalId);
+            if (!goal) return closeTimeSettings();
+            const dRaw = document.getElementById('ts-default').value;
+            const rRaw = document.getElementById('ts-red').value;
+            const d = parseClock(dRaw), r = parseClock(rRaw);
+            if ((dRaw.trim() && d === null) || (rRaw.trim() && r === null)) {
+                showToast('Jam gak valid — pakai format 24 jam, mis. 08:00');
+                return;
+            }
+            goal.defaultTime = fmtClock(d);
+            goal.redLimit = fmtClock(r);
+            persistAll();
+            closeTimeSettings();
+            loadGoals();
+            renderCalendar();
         }
 
         function closeValueModal(result) {
