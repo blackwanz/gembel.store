@@ -323,8 +323,8 @@
         .dropped-goal.has-value .chip-text:hover { text-decoration: underline dashed; }
         .chip-value { font-family: var(--font-mono); font-weight: 700; color: var(--primary-text); margin-left: 4px; font-size: 11px; }
         /* 'time' goals logged later than their red limit */
-        .dropped-goal.is-late { background: var(--danger-bg); box-shadow: inset 3px 0 0 var(--danger); }
-        .dropped-goal.is-late .chip-value { color: var(--danger); }
+        .dropped-goal.is-late { background: var(--danger-bg); box-shadow: inset 3px 0 0 var(--danger); color: var(--danger); font-weight: 600; }
+        .dropped-goal.is-late .chip-value, .dropped-goal.is-late .remove-cross { color: var(--danger); }
         .time-opts { display: none; gap: 6px; }
         .time-opts label { flex: 1; display: flex; flex-direction: column; gap: 3px; font-size: 10.5px; color: var(--text-muted); }
         .time-opts .unit-input, .ts-row input { font-family: var(--font-mono); }
@@ -718,7 +718,7 @@
             <h3 id="ts-title">Aktivitas</h3>
             <div class="ts-row"><span>Jam default</span><input type="text" id="ts-default" class="unit-input" maxlength="5" inputmode="numeric" placeholder="06:00" autocomplete="off"></div>
             <div class="ts-row"><span>🔴 Batas merah</span><input type="text" id="ts-red" class="unit-input" maxlength="5" inputmode="numeric" placeholder="kosong = off" autocomplete="off"></div>
-            <div class="ts-hint">Format 24 jam (mis. 08:00). Kalau jam yang dicatat lewat dari batas merah, aktivitasnya jadi merah di kalender. Kosongin buat matiin.</div>
+            <div class="ts-hint">Format 24 jam (mis. 08:00). Kalau jam yang dicatat sama atau lewat dari batas merah, aktivitasnya jadi merah di kalender. Kosongin buat matiin.</div>
             <div class="modal-actions">
                 <button id="ts-cancel">Batal</button>
                 <button id="ts-save">Simpan</button>
@@ -1287,7 +1287,7 @@
             const mm = Math.round(minutes);
             return `${pad(Math.floor(mm / 60))}:${pad(mm % 60)}`;
         }
-        // Red = logged later than the goal's red limit. For an evening limit (>= 12:00),
+        // Red = logged at or after the goal's red limit. For an evening limit (>= 12:00),
         // times before 04:00 count as "after midnight, still the same night" -- so
         // Tidur at 00:30 with a 23:00 limit is late, not early.
         function isTimeLate(goal, value) {
@@ -1296,7 +1296,7 @@
             if (limit === null) return false;
             let v = Number(value);
             if (limit >= 12 * 60 && v < 4 * 60) v += 24 * 60;
-            return v > limit;
+            return v >= limit;
         }
 
         function formatGoalValue(goal, value) {
@@ -2593,7 +2593,7 @@
                 if (goal && goal.trackValue) chip.classList.add('has-value');
                 if (isTimeLate(goal, entry.value)) {
                     chip.classList.add('is-late');
-                    chip.title = `Lewat batas merah ${goal.redLimit}`;
+                    chip.title = `Kena batas merah ${goal.redLimit}`;
                 }
 
                 const valueLabel = (goal && goal.trackValue)
