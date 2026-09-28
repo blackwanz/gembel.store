@@ -138,6 +138,15 @@ window.GEMBEL_APPS = [
     enabled: true,
   },
   {
+    id: 'jejak',
+    name: 'Jejak',
+    desc: 'Tracking lari, jalan & motor per bulan dari export Strava / Mi Band / Google Timeline — km harian, speed per ruas, jalur, titik macet, dan kenapa pulang lambat.',
+    icon: '👣',
+    url: 'jejak.html',
+    category: 'Hobi & Olahraga',
+    enabled: true,
+  },
+  {
     id: 'cari',
     name: 'Gembel.com',
     desc: 'Mesin cari ala Google buat bookmark yang lo simpen sendiri — ketik "movie", langsung keluar link-nya. Private cuma buat lo, public bisa dicari semua orang.',

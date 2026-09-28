@@ -1,0 +1,1684 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jejak — Gembel AI PIK</title>
+<meta name="description" content="Jejak — tracking lari, jalan & motor sebulan: km, speed, jalur, titik macet, kenapa pulang lambat.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27%3E%3Crect width=%2764%27 height=%2764%27 rx=%2716%27 fill=%27%232563eb%27/%3E%3Ctext x=%2732%27 y=%2744%27 font-size=%2732%27 text-anchor=%27middle%27%3E%F0%9F%91%A3%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="assets/app-theme.css">
+<style>
+  :root{ --hl:#2563eb; --hl-soft:#e8efff; --good:#16a34a; --mid:#d97706; --bad:#dc2626; }
+  [data-theme="dark"]{ --hl:#60a5fa; --hl-soft:#16223a; --good:#22c55e; --mid:#fbbf24; --bad:#f87171; }
+  body{ background:var(--page-bg); }
+  .top{ display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid var(--border);background:var(--surface); }
+  .wrap{ max-width:960px;margin:0 auto;padding:18px 16px 90px; }
+  .tabs{ display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:100px;padding:4px;margin-bottom:16px;position:sticky;top:8px;z-index:1000;box-shadow:var(--shadow-card); }
+  .tab{ flex:1;border:none;background:none;padding:9px 4px;border-radius:100px;font-weight:700;font-size:12.5px;color:var(--text-muted);cursor:pointer;font-family:inherit;white-space:nowrap; }
+  .tab.active{ background:var(--hl);color:#fff; }
+
+  .panel{ background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);margin-bottom:16px;overflow:hidden; }
+  .panel-head{ padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap; }
+  .panel-head h2{ font-size:15px;display:flex;align-items:center;gap:8px; }
+  .panel-body{ padding:16px 18px; }
+  .muted{ color:var(--text-muted);font-size:12.5px;line-height:1.55; }
+  .faint{ color:var(--text-faint);font-size:11.5px; }
+  .empty-hint{ color:var(--text-faint);font-size:13px;padding:22px 16px;text-align:center;line-height:1.6; }
+  .mono{ font-family:var(--font-mono); }
+
+  .seg{ display:inline-flex;gap:4px;background:var(--surface-muted);border:1px solid var(--border);border-radius:100px;padding:3px;flex-wrap:wrap; }
+  .seg button{ border:none;background:none;color:var(--text-muted);border-radius:100px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit; }
+  .seg button.active{ background:var(--text-main);color:var(--surface); }
+
+  .monthbar{ display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px; }
+  .monthbar b{ font-family:var(--font-display);font-size:18px; }
+
+  .cards{ display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px; }
+  .card{ background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px;position:relative;overflow:hidden; }
+  .card::before{ content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--c,var(--hl)); }
+  .card .k{ font-size:11.5px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;display:flex;justify-content:space-between;gap:6px; }
+  .card .big{ font-family:var(--font-display);font-size:26px;font-weight:800;margin:6px 0 2px; }
+  .card .big small{ font-size:13px;font-weight:600;color:var(--text-muted); }
+  .card .sub{ font-size:12px;color:var(--text-muted);line-height:1.55; }
+  .delta{ font-size:11px;font-weight:700; }
+  .delta.up{ color:var(--good); } .delta.down{ color:var(--bad); } .delta.flat{ color:var(--text-faint); }
+  .pill{ display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:100px; }
+  .pill.good{ background:var(--success-bg);color:var(--success-text); }
+  .pill.mid{ background:var(--warning-bg);color:var(--warning-text); }
+  .pill.bad{ background:var(--danger-bg);color:var(--danger); }
+  .pill.none{ background:var(--border);color:var(--text-muted); }
+  .pill.blue{ background:var(--hl-soft);color:var(--hl); }
+
+  .tips{ list-style:none;margin:0;padding:0; }
+  .tips li{ display:flex;gap:10px;padding:9px 0;border-bottom:1px dashed var(--border);font-size:13px;line-height:1.55; }
+  .tips li:last-child{ border-bottom:none; }
+  .tips li .ic{ flex:0 0 auto;font-size:16px; }
+
+  .stats{ display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:4px 0 12px; }
+  .stat{ background:var(--surface-muted);border:1px solid var(--border);border-radius:var(--radius-md);padding:10px 12px; }
+  .stat .k{ font-size:11px;color:var(--text-muted);font-weight:600; }
+  .stat .v{ font-family:var(--font-display);font-size:17px;font-weight:700;margin-top:3px; }
+  .stat .h{ font-size:10.5px;color:var(--text-faint);margin-top:2px; }
+
+  .chart{ width:100%;display:block;overflow:visible; }
+  .chart text{ font-family:var(--font-body);font-size:10px;fill:var(--text-faint); }
+  .chart .grid{ stroke:var(--border);stroke-width:1; }
+  .chart .tgt{ stroke:var(--text-muted);stroke-width:1.2;stroke-dasharray:4 4; }
+  .chart-title{ font-size:12.5px;font-weight:700;margin:14px 0 6px;display:flex;gap:12px;align-items:center;flex-wrap:wrap; }
+  .legend{ display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text-muted);font-weight:600; }
+  .legend i{ width:9px;height:9px;border-radius:3px;display:inline-block; }
+
+  table.t{ width:100%;border-collapse:collapse;font-size:12.5px; }
+  table.t th{ text-align:left;font-size:11px;color:var(--text-muted);font-weight:700;padding:7px 8px;border-bottom:1px solid var(--border); }
+  table.t td{ padding:7px 8px;border-bottom:1px solid var(--border);vertical-align:middle; }
+  table.t td.n, table.t th.n{ text-align:right;font-family:var(--font-mono);white-space:nowrap; }
+  table.t tr:last-child td{ border-bottom:none; }
+  .tscroll{ overflow-x:auto; }
+  .minibar{ height:7px;border-radius:7px;background:var(--border);overflow:hidden;min-width:60px; }
+  .minibar i{ display:block;height:100%;border-radius:7px; }
+
+  .day-head{ display:flex;justify-content:space-between;align-items:baseline;padding:10px 18px;background:var(--surface-muted);border-bottom:1px solid var(--border);font-size:12.5px;font-weight:700; }
+  .day-head span{ font-weight:600;color:var(--text-muted);font-size:11.5px; }
+  .act{ display:flex;align-items:center;gap:12px;padding:11px 18px;border-bottom:1px solid var(--border);cursor:pointer; }
+  .act:hover{ background:var(--surface-hover); }
+  .act .ic{ width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;flex:0 0 auto; }
+  .act .main{ flex:1;min-width:0; }
+  .act .ttl{ font-weight:700;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+  .act .meta{ font-size:11.5px;color:var(--text-muted);margin-top:2px; }
+  .act .num{ text-align:right;font-family:var(--font-mono);font-size:12.5px;white-space:nowrap; }
+  .act .num small{ display:block;color:var(--text-faint);font-size:10.5px; }
+
+  .map{ height:380px;border-radius:var(--radius-md);border:1px solid var(--border);z-index:1; }
+  .map.tall{ height:480px; }
+  [data-theme="dark"] .leaflet-tile-pane{ filter:invert(1) hue-rotate(180deg) brightness(.85) contrast(.9); }
+  .leaflet-container{ font-family:var(--font-body);background:var(--surface-muted); }
+  .place-lbl{ background:var(--surface);color:var(--text-main);border:1px solid var(--border);font-weight:700;font-size:11px;box-shadow:none; }
+
+  .drop{ border:2px dashed var(--border-strong);border-radius:var(--radius-lg);padding:28px 16px;text-align:center;cursor:pointer;background:var(--surface-muted); }
+  .drop.over{ border-color:var(--hl);background:var(--hl-soft); }
+  .drop b{ font-size:15px; }
+  details.guide{ border:1px solid var(--border);border-radius:var(--radius-md);padding:10px 14px;margin-bottom:8px;background:var(--surface); }
+  details.guide summary{ cursor:pointer;font-weight:700;font-size:13px; }
+  details.guide ol, details.guide ul{ margin:8px 0 2px 18px;font-size:12.5px;line-height:1.65;color:var(--text-muted); }
+  details.guide b{ color:var(--text-main); }
+
+  label.f{ display:block;font-size:12px;font-weight:600;color:var(--text-muted);margin:10px 0 5px; }
+  .in{ width:100%;padding:9px 11px;border-radius:var(--radius-md);border:1px solid var(--border);background:var(--surface);color:var(--text-main);font:inherit;font-size:13.5px; }
+  .in:focus{ outline:none;border-color:var(--hl); }
+  select.in.sm{ padding:4px 6px;font-size:12px;width:auto; }
+  .grid2{ display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0 12px; }
+  .btn-hl{ background:var(--hl);color:#fff; }
+  .btn-hl:hover:not(:disabled){ filter:brightness(.95); }
+  .row{ display:flex;gap:8px;align-items:center;flex-wrap:wrap; }
+
+  .gb-overlay{ position:fixed;inset:0;z-index:1500;background:rgba(10,14,25,.6);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:16px; }
+  .gb-card{ width:100%;max-width:420px;background:var(--surface);color:var(--text-main);border-radius:var(--radius-lg);padding:22px;box-shadow:var(--shadow-lift);max-height:90vh;overflow:auto; }
+  .gb-card h3{ font-family:var(--font-display);font-size:18px;margin-bottom:6px; }
+  .gb-card p{ font-size:13px;color:var(--text-muted);line-height:1.55; }
+  .gb-actions{ display:flex;gap:8px;justify-content:flex-end;margin-top:16px; }
+  .toast{ position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:var(--text-main);color:var(--surface);padding:10px 18px;border-radius:100px;font-size:13px;font-weight:600;z-index:1600;box-shadow:var(--shadow-lift); }
+
+  @media (max-width:560px){
+    .top{ padding:12px 16px; }
+    .tab{ font-size:11.5px;padding:8px 2px; }
+    .panel-body{ padding:14px; }
+    .act{ padding:10px 14px;gap:10px; }
+    .map{ height:300px; } .map.tall{ height:380px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="top">
+  <a href="index.html" style="text-decoration:none;color:inherit;">
+    <div class="logo display" style="font-size:15px;"><span class="g">GEMBEL</span> <span class="e">· Jejak 👣</span></div>
+  </a>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <button class="theme-toggle" onclick="toggleTheme()" title="Ganti tema">🌙</button>
+    <a href="dashboard.html" class="btn btn-ghost btn-sm" style="text-decoration:none;">Dashboard</a>
+  </div>
+</div>
+
+<div class="wrap" id="app-root">
+  <div class="empty-hint">Memuat…</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/dist/umd/supabase.min.js"></script>
+<script src="assets/supabaseClient.js"></script>
+<script src="assets/notif-bell.js"></script>
+<script src="assets/auth.js"></script>
+<script src="assets/popup.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  // Jejak: all parsing (GPX/TCX/FIT/Strava zip/Mi Band CSV/Google Timeline) happens here in the
+  // browser; see db/migrations/0044_jejak.sql for what gets stored per activity.
+  const KINDS = {
+    lari:    { label:'Lari',    ic:'🏃', col:'#f97316', foot:true },
+    jalan:   { label:'Jalan',   ic:'🚶', col:'#16a34a', foot:true },
+    motor:   { label:'Motor',   ic:'🏍️', col:'#2563eb', foot:false },
+    sepeda:  { label:'Sepeda',  ic:'🚲', col:'#9333ea', foot:false },
+    lainnya: { label:'Lainnya', ic:'📍', col:'#64748b', foot:false },
+  };
+  const KIND_ORDER = ['lari', 'jalan', 'motor', 'sepeda', 'lainnya'];
+  const ACT_COLS = 'id, dedupe_key, source, source_type, kind, title, note, started_at, elapsed_s, moving_s, distance_m, elev_gain_m, max_speed_kmh, avg_hr, max_hr, calories, start_lat, start_lng, end_lat, end_lng, stops, splits, commute';
+  const MAX_ROUTE_PTS = 900;
+  const DUP_WINDOW_MS = 180e3;        // two activities starting within 3 min = same activity
+  const CLUSTER_M = 120;              // stops closer than this = same bottleneck spot
+  const MONTHS = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+  const DOW = ['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
+
+  let ME = null, SET = null, PLACES = [], ACTS = [];
+  const ROUTES = {};                  // id -> route array (fetched on demand)
+  let TAB = 'ringkasan', MONTH = null, DETAIL = null, HIST_KIND = 'semua', KDIR = 'pulang';
+  let PENDING = [];                   // parsed import items waiting for confirmation
+  let MAPS = [];
+
+  const $ = (id) => document.getElementById(id);
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+  function lsSet(k, v){ try{ localStorage.setItem(k, v); }catch(e){} }
+  function toast(text){
+    const t = document.createElement('div');
+    t.className = 'toast'; t.textContent = text;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 2400);
+  }
+  function modal(html, { dismissible = true } = {}){
+    const ov = document.createElement('div');
+    ov.className = 'gb-overlay';
+    ov.innerHTML = `<div class="gb-card">${html}</div>`;
+    if(dismissible) ov.addEventListener('click', e => { if(e.target === ov) ov.remove(); });
+    document.body.appendChild(ov);
+    return ov;
+  }
+  function confirmBox(title, text, okLabel = 'Hapus'){
+    return new Promise(res => {
+      const ov = modal(`<h3>${esc(title)}</h3><p>${esc(text)}</p><div class="gb-actions"><button class="btn btn-ghost btn-sm" data-x>Batal</button><button class="btn btn-danger btn-sm" data-ok>${esc(okLabel)}</button></div>`);
+      ov.querySelector('[data-x]').onclick = () => { ov.remove(); res(false); };
+      ov.querySelector('[data-ok]').onclick = () => { ov.remove(); res(true); };
+    });
+  }
+  const norm = (s) => String(s || '').trim().toLowerCase();
+  const sum = (a) => a.reduce((x, y) => x + y, 0);
+  const avg = (a) => a.length ? sum(a) / a.length : null;
+  function median(a){ if(!a.length) return null; const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m-1] + s[m]) / 2; }
+  const num = (v) => { if(v == null || v === '') return NaN; if(typeof v === 'number') return v; let s = String(v).trim(); if(!s.includes('.') && /,\d+$/.test(s)) s = s.replace(',', '.'); return parseFloat(s.replace(/[^\d.eE+-]/g, '')); };
+  const fin = (v) => Number.isFinite(v) ? v : null;
+  const rp = (n) => 'Rp' + Math.round(n || 0).toLocaleString('id-ID');
+  const dec = (n, d = 1) => (n == null || !Number.isFinite(n)) ? '—' : n.toFixed(d).replace('.', ',');
+
+  // ---- formatting
+  function kmStr(m){ return dec((m || 0) / 1000, m < 10000 ? 2 : 1); }
+  function dur(s){
+    if(s == null || !Number.isFinite(s)) return '—';
+    s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60;
+    return h ? `${h}j ${String(m).padStart(2,'0')}m` : m ? `${m}m ${String(x).padStart(2,'0')}d` : `${x}d`;
+  }
+  function durM(s){ if(s == null) return '—'; const m = Math.round(s / 60); return m >= 60 ? `${Math.floor(m/60)}j ${m%60}m` : `${m}m`; }
+  function paceStr(secPerKm){ if(!secPerKm || !Number.isFinite(secPerKm)) return '—'; const s = Math.round(secPerKm); return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0'); }
+  function hhmm(min){ if(min == null) return '—'; min = ((Math.round(min) % 1440) + 1440) % 1440; return String(Math.floor(min/60)).padStart(2,'0') + ':' + String(min % 60).padStart(2,'0'); }
+  function timeMin(t){ if(!t) return null; const [h, m] = String(t).split(':').map(Number); return Number.isFinite(h) ? h * 60 + (m || 0) : null; }
+  function ymd(d){ return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+  const msOf = (a) => Date.parse(a.started_at);
+  const minOfDay = (ms) => { const d = new Date(ms); return d.getHours() * 60 + d.getMinutes(); };
+  const dayKey = (ms) => ymd(new Date(ms));
+  function niceDay(ms){ const d = new Date(ms); return `${DOW[d.getDay()]}, ${d.getDate()} ${MONTHS[d.getMonth()].slice(0,3)}`; }
+  function movKmh(a){ const t = a.moving_s || a.elapsed_s; return t > 0 ? a.distance_m / t * 3.6 : 0; }
+  function stopTotal(a){ return sum((a.stops || []).map(s => s.dur || 0)); }
+  // what a runner wants (pace) vs what a rider wants (km/h)
+  function speedLabel(a){ return KINDS[a.kind]?.foot && a.distance_m > 0 ? paceStr((a.moving_s || a.elapsed_s) / (a.distance_m / 1000)) + ' /km' : dec(movKmh(a)) + ' km/j'; }
+
+  // ---- geo
+  function hav(a, b){
+    const R = 6371008.8, r = Math.PI / 180;
+    const dLat = (b.lat - a.lat) * r, dLng = (b.lng - a.lng) * r;
+    const x = Math.sin(dLat/2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLng/2) ** 2;
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(x)));
+  }
+  const P = (arr) => ({ lat: arr[0], lng: arr[1] });
+  function routeCum(route){ const c = [0]; for(let i = 1; i < route.length; i++) c.push(c[i-1] + hav(P(route[i-1]), P(route[i]))); return c; }
+  const gmaps = (lat, lng) => `https://www.google.com/maps?q=${lat.toFixed(5)},${lng.toFixed(5)}`;
+
+  // ================================================================ PARSING
+  function hintKind(s){
+    s = norm(s); if(!s) return null;
+    if(/motor/.test(s)) return 'motor';
+    if(/vehicle|car\b|driv|mobil|kendaraan|in_taxi/.test(s)) return 'motor';
+    if(/run|lari|jog|treadmill/.test(s)) return 'lari';
+    if(/walk|hik|jalan|foot|trek/.test(s)) return 'jalan';
+    if(/ride|cycl|bike|bicycl|sepeda|riding|velo/.test(s)) return 'sepeda';
+    return null;
+  }
+  // Strava has no "motor" type, so a motor ride usually arrives as "Ride" -- speed decides.
+  function classify(hint, avgKmh, maxKmh){
+    const h = hintKind(hint), mx = maxKmh || 0;
+    if(h === 'motor') return 'motor';
+    if(avgKmh >= 30 || mx >= 60) return 'motor';
+    if(h === 'sepeda') return (avgKmh >= 22 || mx >= 45) ? 'motor' : 'sepeda';
+    if(h === 'lari') return avgKmh > 22 ? 'motor' : 'lari';
+    if(h === 'jalan') return avgKmh > 22 ? 'motor' : avgKmh > 12 ? 'lari' : 'jalan';
+    if(!avgKmh) return 'lainnya';
+    if(avgKmh < 7) return 'jalan';
+    if(avgKmh < 15) return 'lari';
+    if(avgKmh < 22) return 'sepeda';
+    return 'motor';
+  }
+
+  function mkItem(m){
+    return {
+      dedupe_key: 't:' + Math.floor(m.startMs / 60000),
+      source: m.source, source_type: String(m.source_type || '').slice(0, 60),
+      kind: m.kind, title: String(m.title || '').slice(0, 200),
+      started_at: new Date(m.startMs).toISOString(),
+      elapsed_s: Math.max(0, Math.round(m.elapsed_s || 0)),
+      moving_s: Math.max(0, Math.round(m.moving_s || m.elapsed_s || 0)),
+      distance_m: Math.max(0, Math.round((m.distance_m || 0) * 10) / 10),
+      elev_gain_m: fin(m.elev_gain_m) != null ? Math.round(m.elev_gain_m * 10) / 10 : null,
+      max_speed_kmh: fin(m.max_speed_kmh) != null ? Math.min(999, Math.round(m.max_speed_kmh * 10) / 10) : null,
+      avg_hr: fin(m.avg_hr) ? Math.round(m.avg_hr) : null,
+      max_hr: fin(m.max_hr) ? Math.round(m.max_hr) : null,
+      calories: fin(m.calories) ? Math.round(m.calories) : null,
+      start_lat: fin(m.start_lat), start_lng: fin(m.start_lng), end_lat: fin(m.end_lat), end_lng: fin(m.end_lng),
+      route: m.route || null, stops: m.stops || [], splits: m.splits || [],
+      _ms: m.startMs,
+    };
+  }
+
+  // summary-only activity (Mi Band CSV rows, Strava manual entries)
+  function summaryItem(m){
+    if(!Number.isFinite(m.startMs)) return null;
+    const el = m.elapsed_s || 0, mv = m.moving_s || el, avgK = mv > 0 ? (m.distance_m || 0) / mv * 3.6 : 0;
+    return mkItem({ ...m, elapsed_s: el, moving_s: mv, kind: m.kind || classify(m.hint, avgK, m.max_speed_kmh) });
+  }
+
+  // points: [{lat, lng, t(ms), ele?, hr?, dist?}] -> activity with route, stops and km splits
+  function summarize(ptsIn, meta){
+    let pts = ptsIn.filter(p => Number.isFinite(p.t) && Number.isFinite(p.lat) && Number.isFinite(p.lng) && !(p.lat === 0 && p.lng === 0) && Math.abs(p.lat) <= 90)
+      .sort((a, b) => a.t - b.t);
+    pts = pts.filter((p, i) => i === 0 || p.t > pts[i-1].t);
+    if(pts.length < 2) return summaryItem(meta);
+    const n = pts.length, T = (i) => (pts[i].t - pts[0].t) / 1000;
+    const useDev = pts.filter(p => Number.isFinite(p.dist)).length > n * 0.8;
+    const cum = new Float64Array(n);
+    for(let i = 1; i < n; i++){
+      let d;
+      if(useDev && Number.isFinite(pts[i].dist) && Number.isFinite(pts[i-1].dist)) d = Math.max(0, pts[i].dist - pts[i-1].dist);
+      else { d = hav(pts[i-1], pts[i]); const dt = T(i) - T(i-1); if(dt > 0 && d / dt > 70) d = 0; }  // GPS jump
+      cum[i] = cum[i-1] + d;
+    }
+    const dts = []; for(let i = 1; i < n; i++) dts.push(T(i) - T(i-1));
+    const sparse = median(dts) > 20;           // Google Timeline: points minutes apart
+    const elapsed = sparse && meta.elapsed_s ? meta.elapsed_s : T(n-1);
+    const total = Math.max(cum[n-1], sparse ? (meta.distance_m || 0) : 0);
+
+    // speed smoothed over a +-W second window
+    const W = Math.max(4, median(dts) * 2);
+    const spd = new Float64Array(n);
+    for(let i = 0, lo = 0, hi = 0; i < n; i++){
+      while(T(i) - T(lo) > W) lo++;
+      if(hi < i) hi = i;
+      while(hi < n - 1 && T(hi + 1) - T(i) <= W) hi++;
+      const dt = T(hi) - T(lo);
+      spd[i] = dt > 0 ? (cum[hi] - cum[lo]) / dt : 0;
+    }
+    let maxMs = 0; for(let i = 0; i < n; i++) if(spd[i] < 60 && spd[i] > maxMs) maxMs = spd[i];
+    let roughMov = 0; for(let i = 1; i < n; i++) if(spd[i] >= 0.6) roughMov += T(i) - T(i-1);
+    const kind = meta.kind || classify(meta.hint, roughMov > 0 ? cum[n-1] / roughMov * 3.6 : 0, sparse ? null : maxMs * 3.6);
+    const vehicle = !KINDS[kind].foot;
+    const thr = vehicle ? 1.2 : 0.5, minStop = vehicle ? 25 : 45;
+
+    let moving = 0;
+    for(let i = 1; i < n; i++) if(spd[i] >= thr || sparse) moving += T(i) - T(i-1);
+
+    // stops (not at the very start/end -- that's parking, not traffic)
+    const stops = [];
+    if(!sparse){
+      let s0 = -1;
+      const flush = (a, b) => {
+        const d = T(b) - T(a);
+        if(d < minStop || cum[a] < 150 || cum[b] > cum[n-1] - 150) return;
+        let la = 0, ln = 0; for(let k = a; k <= b; k++){ la += pts[k].lat; ln += pts[k].lng; }
+        stops.push({ lat: +(la / (b - a + 1)).toFixed(5), lng: +(ln / (b - a + 1)).toFixed(5), at: Math.round(T(a)), dur: Math.round(d) });
+      };
+      for(let i = 0; i < n; i++){
+        if(spd[i] < thr){ if(s0 < 0) s0 = i; }
+        else if(s0 >= 0){ flush(s0, i); s0 = -1; }
+      }
+    }
+
+    // km splits
+    const splits = [];
+    if(!sparse){
+      let prevT = 0, k = 1;
+      for(let i = 1; i < n && k * 1000 <= cum[n-1]; i++){
+        while(k * 1000 <= cum[i]){
+          const f = cum[i] === cum[i-1] ? 0 : (k * 1000 - cum[i-1]) / (cum[i] - cum[i-1]);
+          const tk = T(i-1) + f * (T(i) - T(i-1));
+          splits.push(Math.round(tk - prevT)); prevT = tk; k++;
+        }
+      }
+    }
+
+    // elevation gain with 3 m hysteresis
+    let gain = null;
+    const eles = pts.map(p => p.ele).filter(Number.isFinite);
+    if(eles.length > n * 0.5){
+      gain = 0; let ref = null;
+      for(let i = 0; i < n; i++){
+        if(!Number.isFinite(pts[i].ele)) continue;
+        let s = 0, c = 0; for(let k = Math.max(0, i-2); k <= Math.min(n-1, i+2); k++) if(Number.isFinite(pts[k].ele)){ s += pts[k].ele; c++; }
+        const e = s / c;
+        if(ref == null || e < ref) ref = e; else if(e - ref > 3){ gain += e - ref; ref = e; }
+      }
+    }
+    const hrs = pts.map(p => p.hr).filter(h => h > 30 && h < 240);
+
+    // simplified route
+    const step = Math.max(8, cum[n-1] / MAX_ROUTE_PTS);
+    const route = [[+pts[0].lat.toFixed(5), +pts[0].lng.toFixed(5), 0]];
+    let last = 0;
+    for(let i = 1; i < n; i++){
+      if(i === n - 1 || cum[i] - cum[last] >= step || (T(i) - T(last) >= 45 && route.length < MAX_ROUTE_PTS * 1.4)){
+        route.push([+pts[i].lat.toFixed(5), +pts[i].lng.toFixed(5), Math.round(T(i))]); last = i;
+      }
+    }
+
+    return mkItem({
+      ...meta, kind,
+      startMs: Number.isFinite(meta.startMs) ? meta.startMs : pts[0].t,
+      elapsed_s: meta.elapsed_s && !sparse ? Math.max(meta.elapsed_s, elapsed) : elapsed,
+      moving_s: meta.moving_s || moving,
+      distance_m: meta.distance_m && !sparse ? meta.distance_m : total,
+      max_speed_kmh: sparse ? null : (meta.max_speed_kmh || maxMs * 3.6),
+      elev_gain_m: meta.elev_gain_m ?? gain,
+      avg_hr: meta.avg_hr || (hrs.length ? avg(hrs) : null),
+      max_hr: meta.max_hr || (hrs.length ? Math.max(...hrs) : null),
+      start_lat: pts[0].lat, start_lng: pts[0].lng, end_lat: pts[n-1].lat, end_lng: pts[n-1].lng,
+      route, stops, splits,
+    });
+  }
+
+  function xmlDoc(text){
+    const d = new DOMParser().parseFromString(text, 'application/xml');
+    if(d.getElementsByTagName('parsererror').length) throw new Error('XML rusak');
+    return d;
+  }
+  const tagAll = (el, name) => Array.from(el.getElementsByTagNameNS('*', name));
+  const tagTxt = (el, name) => { const x = el.getElementsByTagNameNS('*', name)[0]; return x ? x.textContent.trim() : ''; };
+  const STRAVA_GPX_TYPES = { '1':'ride', '4':'hike', '9':'run', '10':'walk' };
+
+  function parseGPX(text, meta = {}){
+    const d = xmlDoc(text);
+    const trk = tagAll(d, 'trk')[0];
+    const type = trk ? tagTxt(trk, 'type') : '';
+    const pts = tagAll(d, 'trkpt').map(p => ({
+      lat: parseFloat(p.getAttribute('lat')), lng: parseFloat(p.getAttribute('lon')),
+      t: Date.parse(tagTxt(p, 'time')), ele: parseFloat(tagTxt(p, 'ele')), hr: parseFloat(tagTxt(p, 'hr')),
+    }));
+    if(!pts.some(p => Number.isFinite(p.t))) throw new Error('GPX tanpa waktu (rute rencana, bukan rekaman)');
+    return summarize(pts, { source:'gpx', title: trk ? tagTxt(trk, 'name') : '', hint: STRAVA_GPX_TYPES[type] || type, source_type: STRAVA_GPX_TYPES[type] || type, ...meta });
+  }
+
+  function parseTCX(text, meta = {}){
+    const d = xmlDoc(text);
+    const act = tagAll(d, 'Activity')[0];
+    const sport = act ? act.getAttribute('Sport') || '' : '';
+    const pts = tagAll(d, 'Trackpoint').map(p => ({
+      t: Date.parse(tagTxt(p, 'Time')),
+      lat: parseFloat(tagTxt(p, 'LatitudeDegrees')), lng: parseFloat(tagTxt(p, 'LongitudeDegrees')),
+      ele: parseFloat(tagTxt(p, 'AltitudeMeters')), dist: parseFloat(tagTxt(p, 'DistanceMeters')),
+      hr: (() => { const h = p.getElementsByTagNameNS('*', 'HeartRateBpm')[0]; return h ? parseFloat(tagTxt(h, 'Value')) : NaN; })(),
+    }));
+    const laps = tagAll(d, 'Lap');
+    const lapMeta = {
+      startMs: laps[0] ? Date.parse(laps[0].getAttribute('StartTime')) : NaN,
+      elapsed_s: sum(laps.map(l => num(tagTxt(l, 'TotalTimeSeconds')) || 0)),
+      distance_m: sum(laps.map(l => num(tagTxt(l, 'DistanceMeters')) || 0)),
+      calories: sum(laps.map(l => num(tagTxt(l, 'Calories')) || 0)) || null,
+    };
+    const m = { source:'tcx', hint: sport, source_type: sport, ...meta };
+    if(pts.filter(p => Number.isFinite(p.lat)).length >= 2) return summarize(pts, { calories: lapMeta.calories, ...m });
+    return summaryItem({ ...lapMeta, ...m });
+  }
+
+  // Minimal FIT decoder: only record (20) and session (18) messages are used.
+  const FIT_EPOCH = 631065600;
+  const FIT_SPORT = { 1:'run', 2:'ride', 11:'walk', 17:'hike' };
+  function parseFIT(buf, meta = {}){
+    const dv = new DataView(buf);
+    const hs = dv.getUint8(0);
+    if(buf.byteLength < 14 || String.fromCharCode(dv.getUint8(8), dv.getUint8(9), dv.getUint8(10), dv.getUint8(11)) !== '.FIT') throw new Error('Bukan file FIT');
+    const end = Math.min(buf.byteLength, hs + dv.getUint32(4, true));
+    const defs = {}, pts = [], sess = {};
+    let p = hs, lastTs = 0;
+    const SZ = { 0:1,1:1,2:1,3:2,4:2,5:4,6:4,7:1,8:4,9:8,10:1,11:2,12:4,13:1 };
+    function val(off, f, le){
+      const bt = f.type & 0x1f;
+      if(SZ[bt] == null || SZ[bt] !== f.size || bt === 7 || bt === 13) return null;
+      let v;
+      switch(bt){
+        case 0: case 2: case 10: v = dv.getUint8(off); return (bt === 10 ? v === 0 : v === 0xFF) ? null : v;
+        case 1: v = dv.getInt8(off); return v === 0x7F ? null : v;
+        case 3: v = dv.getInt16(off, le); return v === 0x7FFF ? null : v;
+        case 4: case 11: v = dv.getUint16(off, le); return (bt === 11 ? v === 0 : v === 0xFFFF) ? null : v;
+        case 5: v = dv.getInt32(off, le); return v === 0x7FFFFFFF ? null : v;
+        case 6: case 12: v = dv.getUint32(off, le); return (bt === 12 ? v === 0 : v === 0xFFFFFFFF) ? null : v;
+        case 8: v = dv.getFloat32(off, le); return Number.isFinite(v) ? v : null;
+        case 9: v = dv.getFloat64(off, le); return Number.isFinite(v) ? v : null;
+      }
+      return null;
+    }
+    function data(lt, cts){
+      const d = defs[lt]; if(!d) throw new Error('FIT rusak');
+      const o = {};
+      for(const f of d.fields){ if(p + f.size > end) throw new Error('FIT kepotong'); o[f.num] = val(p, f, d.le); p += f.size; }
+      p += d.dev;
+      if(o[253] == null && cts != null) o[253] = cts;
+      if(o[253] != null) lastTs = o[253];
+      if(d.gm === 20){
+        const semi = 180 / 2147483648;
+        const alt = o[78] != null ? o[78] / 5 - 500 : o[2] != null ? o[2] / 5 - 500 : NaN;
+        pts.push({ t: (o[253] + FIT_EPOCH) * 1000, lat: o[0] != null ? o[0] * semi : NaN, lng: o[1] != null ? o[1] * semi : NaN,
+          ele: alt, hr: o[3] != null ? o[3] : NaN, dist: o[5] != null ? o[5] / 100 : NaN });
+      } else if(d.gm === 18){
+        Object.assign(sess, {
+          sport: o[5], start: o[2], elapsed: o[7] != null ? o[7] / 1000 : null, timer: o[8] != null ? o[8] / 1000 : null,
+          dist: o[9] != null ? o[9] / 100 : null, cal: o[11], avgHr: o[16], maxHr: o[17],
+          maxSpd: o[124] != null ? o[124] / 1000 : o[15] != null ? o[15] / 1000 : null,
+        });
+      }
+    }
+    while(p < end){
+      const h = dv.getUint8(p++);
+      if(h & 0x80){                                       // compressed timestamp header
+        const off = h & 0x1f;
+        let ts = (lastTs & ~0x1f) + off; if(off < (lastTs & 0x1f)) ts += 0x20;
+        data((h >> 5) & 3, ts);
+        continue;
+      }
+      const lt = h & 0x0f;
+      if(h & 0x40){
+        p++;
+        const le = dv.getUint8(p++) === 0, gm = dv.getUint16(p, le); p += 2;
+        const nf = dv.getUint8(p++), fields = [];
+        for(let i = 0; i < nf; i++){ fields.push({ num: dv.getUint8(p), size: dv.getUint8(p+1), type: dv.getUint8(p+2) }); p += 3; }
+        let dev = 0;
+        if(h & 0x20){ const nd = dv.getUint8(p++); for(let i = 0; i < nd; i++){ dev += dv.getUint8(p+1); p += 3; } }
+        defs[lt] = { gm, le, fields, dev };
+      } else data(lt, null);
+    }
+    const hint = FIT_SPORT[sess.sport] || '';
+    const m = {
+      source:'fit', hint, source_type: hint || (sess.sport != null ? 'sport ' + sess.sport : ''),
+      startMs: sess.start != null ? (sess.start + FIT_EPOCH) * 1000 : NaN,
+      elapsed_s: sess.elapsed || null, moving_s: sess.timer || null, distance_m: sess.dist || null,
+      calories: sess.cal, avg_hr: sess.avgHr, max_hr: sess.maxHr, max_speed_kmh: sess.maxSpd ? sess.maxSpd * 3.6 : null, ...meta,
+    };
+    if(pts.filter(x => Number.isFinite(x.lat)).length >= 2) return summarize(pts, m);
+    if(!Number.isFinite(m.startMs) && pts.length) m.startMs = pts[0].t;
+    return summaryItem(m);
+  }
+
+  async function gunzip(buf){
+    if(typeof DecompressionStream === 'undefined') throw new Error('Browser gak bisa buka .gz — extract dulu');
+    return new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+  }
+
+  function parseCSV(text){
+    text = text.replace(/^﻿/, '');
+    const firstLine = text.slice(0, text.indexOf('\n') > 0 ? text.indexOf('\n') : text.length);
+    const D = (firstLine.split(';').length > firstLine.split(',').length) ? ';' : ',';
+    const rows = []; let row = [], f = '', q = false;
+    for(let i = 0; i < text.length; i++){
+      const c = text[i];
+      if(q){ if(c === '"'){ if(text[i+1] === '"'){ f += '"'; i++; } else q = false; } else f += c; }
+      else if(c === '"') q = true;
+      else if(c === D){ row.push(f); f = ''; }
+      else if(c === '\n' || c === '\r'){ if(c === '\r' && text[i+1] === '\n') i++; row.push(f); rows.push(row); row = []; f = ''; }
+      else f += c;
+    }
+    if(f || row.length){ row.push(f); rows.push(row); }
+    return rows.filter(r => r.length > 1 || r[0]);
+  }
+
+  const MON = { jan:0, feb:1, mar:2, apr:3, may:4, mei:4, jun:5, jul:6, aug:7, agu:7, agt:7, sep:8, oct:9, okt:9, nov:10, dec:11, des:11 };
+  function parseStravaDate(s){
+    s = String(s || '').trim(); if(!s) return NaN;
+    let m = s.match(/([A-Za-z]{3})[a-z]*\.? (\d{1,2}),? (\d{4}),? (\d{1,2})[:.](\d{2})[:.](\d{2}) ?([AaPp][Mm])?/), y, mo, d, h, mi, se, ap;
+    if(m){ mo = MON[m[1].toLowerCase()]; d = +m[2]; y = +m[3]; h = +m[4]; mi = +m[5]; se = +m[6]; ap = m[7]; }
+    else {
+      m = s.match(/(\d{1,2}) ([A-Za-z]{3})[a-z]*\.? (\d{4}),? (\d{1,2})[:.](\d{2})[:.](\d{2}) ?([AaPp][Mm])?/);
+      if(!m) return parseLooseDate(s);
+      d = +m[1]; mo = MON[m[2].toLowerCase()]; y = +m[3]; h = +m[4]; mi = +m[5]; se = +m[6]; ap = m[7];
+    }
+    if(mo == null) return NaN;
+    if(ap){ ap = ap.toUpperCase(); if(ap === 'PM' && h < 12) h += 12; if(ap === 'AM' && h === 12) h = 0; }
+    return Date.UTC(y, mo, d, h, mi, se);   // Strava's CSV dates are UTC
+  }
+  function parseLooseDate(s){
+    if(s == null || s === '') return NaN;
+    if(/^\d{9,13}(\.\d+)?$/.test(String(s).trim())){ const v = +s; return v > 1e11 ? v : v * 1000; }
+    const s2 = String(s).trim().replace(/^(\d{4}-\d{2}-\d{2}) /, '$1T').replace(/([+-]\d{2})(\d{2})$/, '$1:$2');
+    const t = Date.parse(s2); return Number.isFinite(t) ? t : Date.parse(s);
+  }
+
+  // Strava bulk export activities.csv -> { filename: meta } plus rows with no file
+  function stravaMeta(rows){
+    const H = rows[0].map(h => h.trim().toLowerCase());
+    const first = (n) => H.indexOf(n), all = (n) => H.map((h, i) => h === n ? i : -1).filter(i => i >= 0);
+    const c = { id: first('activity id'), date: first('activity date'), name: first('activity name'), type: first('activity type'),
+      el: first('elapsed time'), mov: first('moving time'), file: first('filename'), maxSp: first('max speed'),
+      elev: first('elevation gain'), cal: first('calories'), ahr: first('average heart rate'), mhr: all('max heart rate').pop() ?? -1 };
+    const dists = all('distance');
+    const out = [];
+    for(const r of rows.slice(1)){
+      if(!r[c.date]) continue;
+      let dist = NaN;
+      if(dists.length >= 2) dist = num(r[dists[dists.length - 1]]);
+      if(!Number.isFinite(dist) && dists.length){ const v = num(r[dists[0]]); dist = v < 500 ? v * 1000 : v; }
+      const maxSp = c.maxSp >= 0 ? num(r[c.maxSp]) : NaN;   // m/s
+      out.push({
+        id: r[c.id], file: c.file >= 0 ? String(r[c.file] || '').trim() : '',
+        meta: {
+          source:'strava', title: r[c.name] || '', hint: r[c.type] || '', source_type: r[c.type] || '',
+          startMs: parseStravaDate(r[c.date]),
+          elapsed_s: c.el >= 0 ? fin(num(r[c.el])) : null, moving_s: c.mov >= 0 ? fin(num(r[c.mov])) : null,
+          distance_m: fin(dist), max_speed_kmh: Number.isFinite(maxSp) && maxSp > 0 ? maxSp * 3.6 : null,
+          elev_gain_m: c.elev >= 0 ? fin(num(r[c.elev])) : null, calories: c.cal >= 0 ? fin(num(r[c.cal])) : null,
+          avg_hr: c.ahr >= 0 ? fin(num(r[c.ahr])) : null, max_hr: c.mhr >= 0 ? fin(num(r[c.mhr])) : null,
+        },
+      });
+    }
+    return out;
+  }
+
+  // Zepp Life SPORT.csv, Mi Fitness hlth_center_sport_record.csv (JSON in the Value column), or any
+  // "one row per workout" CSV with recognisable column names. No GPS in these -- summary only.
+  const ZEPP_TYPES = { 1:'run', 6:'walk', 8:'treadmill run', 9:'ride', 10:'indoor ride', 14:'swim', 16:'free', 21:'hike' };
+  function parseSportCSV(rows){
+    const H = rows[0].map(h => norm(h));
+    const iKey = H.indexOf('key'), iVal = H.indexOf('value'), iTime = H.indexOf('time');
+    const out = [];
+    if(iVal >= 0){
+      for(const r of rows.slice(1)){
+        let v; try{ v = JSON.parse(r[iVal]); }catch(e){ continue; }
+        if(!v || typeof v !== 'object') continue;
+        const key = (iKey >= 0 ? r[iKey] : '') + ' ' + (v.sport_type ?? '');
+        if(!/sport|run|walk|rid|cycl|hik|train|swim/i.test(key)) continue;
+        const st = parseLooseDate(v.start_time ?? v.startTime ?? (iTime >= 0 ? r[iTime] : null));
+        const en = parseLooseDate(v.end_time ?? v.endTime);
+        let durS = num(v.duration ?? v.valid_duration ?? v.total_duration);
+        if(!Number.isFinite(durS) && Number.isFinite(en)) durS = (en - st) / 1000;
+        out.push(summaryItem({ source:'miband', hint:key, source_type: key.trim(), startMs: st, elapsed_s: durS,
+          distance_m: fin(num(v.distance ?? v.total_distance)), calories: fin(num(v.calories ?? v.total_cal)),
+          avg_hr: fin(num(v.avg_hrm ?? v.avg_heart_rate)), max_hr: fin(num(v.max_hrm ?? v.max_heart_rate)) }));
+      }
+      return out.filter(Boolean);
+    }
+    const find = (re) => H.findIndex(h => re.test(h));
+    const cS = find(/start ?_?time|starttime|^start|^date|^tanggal|mulai/), cD = find(/sporttime|sport ?time|duration|elapsed|durasi|moving/),
+      cX = find(/distance|jarak/), cC = find(/calor|kalori/), cT = find(/^type|sport|activity|jenis|tipe/), cH = find(/(avg|average|rata).*(hr|heart|jantung)/);
+    if(cS < 0) return [];
+    const kmUnit = cX >= 0 && /\(km\)|km$/.test(H[cX]), minUnit = cD >= 0 && /\(min|menit/.test(H[cD]);
+    for(const r of rows.slice(1)){
+      const t = cT >= 0 ? String(r[cT] || '').trim() : '';
+      const hint = /^\d+$/.test(t) ? (ZEPP_TYPES[t] || 'sport ' + t) : t;
+      let d = cX >= 0 ? num(r[cX]) : NaN; if(kmUnit) d *= 1000;
+      let s = cD >= 0 ? num(r[cD]) : NaN; if(minUnit) s *= 60;
+      out.push(summaryItem({ source:'miband', hint, source_type: hint, startMs: parseLooseDate(r[cS]), elapsed_s: fin(s), distance_m: fin(d),
+        calories: cC >= 0 ? fin(num(r[cC])) : null, avg_hr: cH >= 0 ? fin(num(r[cH])) : null }));
+    }
+    return out.filter(Boolean);
+  }
+
+  // Google Maps Timeline: on-device export (Android semanticSegments / iOS array) and old Takeout
+  // monthly Semantic Location History. Records every trip automatically, no app to start.
+  function llOf(s){
+    if(!s) return null;
+    if(typeof s === 'object'){
+      if(s.latitudeE7 != null) return { lat: s.latitudeE7 / 1e7, lng: s.longitudeE7 / 1e7 };
+      if(s.latE7 != null) return { lat: s.latE7 / 1e7, lng: s.lngE7 / 1e7 };
+      if(s.latLng) return llOf(s.latLng);
+      if(s.placeLocation) return llOf(s.placeLocation);
+      return null;
+    }
+    const m = String(s).replace('geo:', '').replace(/°/g, '').split(',');
+    const lat = parseFloat(m[0]), lng = parseFloat(m[1]);
+    return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+  }
+  function googleKind(t){
+    t = norm(t).replace(/ /g, '_');
+    if(/walk|on_foot/.test(t)) return 'jalan';
+    if(/running/.test(t)) return 'lari';
+    if(/cycl|bicycle/.test(t)) return 'sepeda';
+    if(/motorcycl|passenger_vehicle|in_vehicle|driving|in_car|in_taxi/.test(t)) return 'motor';
+    return 'lainnya';
+  }
+  function parseTimeline(obj){
+    const out = [];
+    const push = (pts, st, en, type, dist) => {
+      if(!Number.isFinite(st) || !Number.isFinite(en) || en <= st) return;
+      const kind = googleKind(type);
+      const it = summarize(pts, { source:'google', source_type: type, hint: type, kind, title: '', startMs: st, elapsed_s: (en - st) / 1000, moving_s: (en - st) / 1000, distance_m: dist || 0 });
+      if(it && it.distance_m >= (kind === 'jalan' ? 300 : 150)) out.push(it);
+    };
+    if(obj && Array.isArray(obj.timelineObjects)){
+      for(const o of obj.timelineObjects){
+        const s = o.activitySegment; if(!s || !s.duration) continue;
+        const st = parseLooseDate(s.duration.startTimestamp ?? s.duration.startTimestampMs), en = parseLooseDate(s.duration.endTimestamp ?? s.duration.endTimestampMs);
+        const pts = [];
+        const a = llOf(s.startLocation), b = llOf(s.endLocation);
+        if(a) pts.push({ ...a, t: st });
+        for(const q of (s.simplifiedRawPath && s.simplifiedRawPath.points) || []){ const ll = llOf(q); const t = parseLooseDate(q.timestamp ?? q.timestampMs); if(ll && Number.isFinite(t)) pts.push({ ...ll, t }); }
+        if(b) pts.push({ ...b, t: en });
+        push(pts, st, en, s.activityType || '', num(s.distance) || 0);
+      }
+      return out;
+    }
+    const segs = Array.isArray(obj) ? obj : (obj && obj.semanticSegments) || [];
+    const path = [];
+    for(const seg of segs){
+      if(!Array.isArray(seg.timelinePath)) continue;
+      const st = Date.parse(seg.startTime);
+      for(const q of seg.timelinePath){
+        const ll = llOf(q.point);
+        const t = q.time ? Date.parse(q.time) : st + num(q.durationMinutesOffsetFromStartTime || 0) * 60000;
+        if(ll && Number.isFinite(t)) path.push({ ...ll, t });
+      }
+    }
+    path.sort((a, b) => a.t - b.t);
+    const lowerBound = (t) => { let lo = 0, hi = path.length; while(lo < hi){ const m = (lo + hi) >> 1; if(path[m].t < t) lo = m + 1; else hi = m; } return lo; };
+    for(const seg of segs){
+      const a = seg.activity; if(!a) continue;
+      const st = Date.parse(seg.startTime), en = Date.parse(seg.endTime);
+      const type = (a.topCandidate && (a.topCandidate.type || a.topCandidate.activityType)) || '';
+      const pts = [];
+      const s0 = llOf(a.start), e0 = llOf(a.end);
+      if(s0) pts.push({ ...s0, t: st });
+      for(let i = lowerBound(st); i < path.length && path[i].t <= en; i++) pts.push(path[i]);
+      if(e0) pts.push({ ...e0, t: en });
+      push(pts, st, en, type, num(a.distanceMeters) || 0);
+    }
+    return out;
+  }
+
+  async function parseByName(name, getBuf, getText, meta){
+    const n = name.toLowerCase();
+    if(n.endsWith('.gz')){
+      const buf = await gunzip(await getBuf());
+      const base = n.slice(0, -3);
+      if(base.endsWith('.fit')) return [parseFIT(buf, meta)];
+      const txt = new TextDecoder().decode(buf);
+      if(base.endsWith('.gpx')) return [parseGPX(txt, meta)];
+      if(base.endsWith('.tcx')) return [parseTCX(txt.trim(), meta)];
+      return [];
+    }
+    if(n.endsWith('.fit')) return [parseFIT(await getBuf(), meta)];
+    if(n.endsWith('.gpx')) return [parseGPX(await getText(), meta)];
+    if(n.endsWith('.tcx')) return [parseTCX((await getText()).trim(), meta)];
+    if(n.endsWith('.json')){
+      let obj; try{ obj = JSON.parse(await getText()); }catch(e){ throw new Error('JSON rusak'); }
+      return parseTimeline(obj);
+    }
+    if(n.endsWith('.csv')){
+      const rows = parseCSV(await getText());
+      if(rows.length < 2) return [];
+      if(rows[0].some(h => /^activity id$/i.test(h.trim()))){
+        return stravaMeta(rows).map(r => r.file ? null : summaryItem(r.meta)).filter(Boolean);
+      }
+      return parseSportCSV(rows);
+    }
+    return [];
+  }
+
+  let JSZIP_P = null;
+  function loadJSZip(){
+    if(window.JSZip) return Promise.resolve();
+    if(!JSZIP_P) JSZIP_P = new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+      s.onload = res; s.onerror = () => rej(new Error('Gagal load JSZip'));
+      document.head.appendChild(s);
+    });
+    return JSZIP_P;
+  }
+
+  async function processFiles(files, sinceMs, progress){
+    const items = [], errors = [];
+    const tick = (t) => progress && progress(t);
+    for(const file of files){
+      const name = file.name;
+      try{
+        if(/\.zip$/i.test(name)){
+          await loadJSZip();
+          let zip;
+          try{ zip = await JSZip.loadAsync(file); }
+          catch(e){ throw new Error('zip gak bisa dibuka' + (/encrypt/i.test(e.message) ? ' (dipassword — extract pakai 7-Zip dulu, upload CSV-nya)' : '')); }
+          const entries = Object.values(zip.files).filter(f => !f.dir);
+          const csvEntry = entries.find(f => /(^|\/)activities\.csv$/i.test(f.name));
+          const done = new Set();
+          if(csvEntry){
+            const metas = stravaMeta(parseCSV(await csvEntry.async('string'))).filter(r => !Number.isFinite(r.meta.startMs) || r.meta.startMs >= sinceMs);
+            let i = 0;
+            for(const r of metas){
+              tick(`${name}: aktivitas ${++i}/${metas.length}`);
+              const f = r.file && (zip.file(r.file) || entries.find(e => e.name.endsWith('/' + r.file) || e.name.endsWith(r.file)));
+              try{
+                if(f){ done.add(f.name); items.push(...await parseByName(f.name, () => f.async('arraybuffer'), () => f.async('string'), { ...r.meta, source:'strava' })); }
+                else items.push(summaryItem(r.meta));
+              }catch(e){ errors.push(`${r.file || r.id}: ${e.message}`); try{ items.push(summaryItem(r.meta)); }catch(_){} }
+            }
+            entries.forEach(e => { if(/(^|\/)activities\//i.test(e.name)) done.add(e.name); });
+          }
+          const rest = entries.filter(e => !done.has(e.name) && e !== csvEntry && /\.(gpx|tcx|fit|gz|csv|json)$/i.test(e.name) && !/(^|\/)__macosx\//i.test(e.name));
+          let j = 0;
+          for(const e of rest){
+            tick(`${name}: file ${++j}/${rest.length}`);
+            try{ items.push(...await parseByName(e.name, () => e.async('arraybuffer'), () => e.async('string'), {})); }
+            catch(err){ errors.push(`${e.name}: ${err.message}`); }
+          }
+        } else {
+          tick(name);
+          items.push(...await parseByName(name, () => file.arrayBuffer(), () => file.text(), {}));
+        }
+      }catch(e){ errors.push(`${name}: ${e.message}`); }
+    }
+    const good = items.filter(it => it && Number.isFinite(it._ms) && it._ms >= sinceMs && (it.distance_m > 0 || it.elapsed_s > 0));
+    // same activity from two sources (e.g. Mi Band synced to Strava): keep the one with a route
+    good.sort((a, b) => a._ms - b._ms);
+    const merged = [];
+    for(const it of good){
+      const prev = merged[merged.length - 1];
+      if(prev && Math.abs(prev._ms - it._ms) < DUP_WINDOW_MS && (prev.kind === it.kind || !prev.route || !it.route)){
+        if(!prev.route && it.route) merged[merged.length - 1] = { ...it, avg_hr: it.avg_hr || prev.avg_hr, max_hr: it.max_hr || prev.max_hr, calories: it.calories || prev.calories };
+        continue;
+      }
+      merged.push(it);
+    }
+    return { items: merged, errors };
+  }
+
+  // ================================================================ DATA
+  async function fetchAll(build){
+    const out = [];
+    for(let from = 0; ; from += 1000){
+      const { data, error } = await build().range(from, from + 999);
+      if(error) throw error;
+      out.push(...(data || []));
+      if(!data || data.length < 1000) break;
+    }
+    return out;
+  }
+  async function loadActs(){
+    ACTS = await fetchAll(() => supabase.from('jejak_activities').select(ACT_COLS).eq('user_id', ME.id).order('started_at', { ascending: false }));
+  }
+  async function loadPlaces(){
+    const { data, error } = await supabase.from('jejak_places').select('*').eq('user_id', ME.id).order('created_at');
+    if(error) throw error;
+    PLACES = data || [];
+  }
+  async function ensureRoutes(ids){
+    const need = ids.filter(id => !(id in ROUTES));
+    for(let i = 0; i < need.length; i += 60){
+      const chunk = need.slice(i, i + 60);
+      const { data, error } = await supabase.from('jejak_activities').select('id, route').in('id', chunk);
+      if(error) throw error;
+      chunk.forEach(id => { ROUTES[id] = null; });
+      (data || []).forEach(r => { ROUTES[r.id] = Array.isArray(r.route) && r.route.length > 1 ? r.route : null; });
+    }
+  }
+  const S = () => SET || { work_start:'08:00', work_end:'17:00', fuel_kmpl:40, fuel_price:10000, run_target_km:0 };
+  const placeRole = (r) => PLACES.find(p => p.role === r) || null;
+
+  function monthActs(y = MONTH.y, m = MONTH.m){
+    const a = new Date(y, m, 1).getTime(), b = new Date(y, m + 1, 1).getTime();
+    return ACTS.filter(x => { const t = msOf(x); return t >= a && t < b; });
+  }
+  function near(lat, lng, p, slack = 1.5){ return lat != null && p && hav({ lat, lng }, p) <= p.radius_m * slack; }
+  function commuteOf(a){
+    if(a.commute === 'bukan') return null;
+    if(a.commute) return a.commute;
+    const R = placeRole('rumah'), K = placeRole('kantor');
+    if(!R || !K || a.start_lat == null || a.end_lat == null) return null;
+    if(near(a.start_lat, a.start_lng, R) && near(a.end_lat, a.end_lng, K)) return 'berangkat';
+    if(near(a.start_lat, a.start_lng, K) && near(a.end_lat, a.end_lng, R)) return 'pulang';
+    return null;
+  }
+
+  // ================================================================ UI SHELL
+  function killMaps(){ MAPS.forEach(m => { try{ m.remove(); }catch(e){} }); MAPS = []; }
+  function mkMap(el){
+    const m = L.map(el, { scrollWheelZoom: false });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(m);
+    m.on('click', () => m.scrollWheelZoom.enable());
+    MAPS.push(m);
+    return m;
+  }
+  function drawPlaces(map, withCircle = true){
+    PLACES.forEach(p => {
+      const col = p.role === 'rumah' ? '#16a34a' : p.role === 'kantor' ? '#2563eb' : '#d97706';
+      if(withCircle) L.circle([p.lat, p.lng], { radius: p.radius_m, color: col, weight: 1, fillOpacity: .08 }).addTo(map);
+      L.circleMarker([p.lat, p.lng], { radius: 5, color: '#fff', weight: 2, fillColor: col, fillOpacity: 1 })
+        .bindTooltip((p.role === 'rumah' ? '🏠 ' : p.role === 'kantor' ? '🏢 ' : '📌 ') + p.name, { permanent: true, direction: 'top', className: 'place-lbl', offset: [0, -6] }).addTo(map);
+    });
+  }
+
+  const TABS = [['ringkasan','Ringkasan'],['riwayat','Riwayat'],['kerja','Kerja'],['peta','Peta'],['data','Data']];
+  function shell(inner){
+    return `<div class="tabs">${TABS.map(([k, l]) => `<button class="tab ${TAB === k ? 'active' : ''}" data-tab="${k}">${l}</button>`).join('')}</div><div id="tab-body">${inner}</div>`;
+  }
+  function monthBar(){
+    const now = new Date(), isNow = MONTH.y === now.getFullYear() && MONTH.m === now.getMonth();
+    return `<div class="monthbar"><button class="btn btn-ghost btn-sm" data-mon="-1">‹</button><b>${MONTHS[MONTH.m]} ${MONTH.y}</b><button class="btn btn-ghost btn-sm" data-mon="1" ${isNow ? 'disabled' : ''}>›</button></div>`;
+  }
+  async function switchTab(t){
+    TAB = t;
+    if(t !== 'riwayat') DETAIL = null;
+    try{ history.replaceState(null, '', '#' + t); }catch(e){}
+    killMaps();
+    $('app-root').innerHTML = shell('<div class="empty-hint">Memuat…</div>');
+    wireShell();
+    try{
+      if(t === 'ringkasan') renderRingkasan();
+      else if(t === 'riwayat') await (DETAIL ? renderDetail(DETAIL) : renderRiwayat());
+      else if(t === 'kerja') await renderKerja();
+      else if(t === 'peta') await renderPeta();
+      else renderData();
+    }catch(e){
+      console.error(e);
+      $('tab-body').innerHTML = `<div class="empty-hint">Error: ${esc(e.message || e)}</div>`;
+    }
+  }
+  function wireShell(){
+    document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => switchTab(b.dataset.tab));
+  }
+  function wireMonth(){
+    document.querySelectorAll('[data-mon]').forEach(b => b.onclick = () => {
+      const d = new Date(MONTH.y, MONTH.m + Number(b.dataset.mon), 1);
+      MONTH = { y: d.getFullYear(), m: d.getMonth() };
+      switchTab(TAB);
+    });
+  }
+  function noData(){
+    return `<div class="panel"><div class="empty-hint" style="padding:40px 16px;">Belum ada data di bulan ini.<br><br><button class="btn btn-hl btn-sm" data-goto="data">📥 Import data Strava / Mi Band</button></div></div>`;
+  }
+  function wireGoto(){ document.querySelectorAll('[data-goto]').forEach(b => b.onclick = () => switchTab(b.dataset.goto)); }
+
+  // ================================================================ CHARTS
+  function stackChart(days, maxY){
+    const W = 760, H = 170, pb = 20, pt = 8, bw = W / days.length;
+    maxY = maxY || 1;
+    let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="height:${H}px">`;
+    for(let g = 0; g <= 3; g++){ const y = pt + (H - pb - pt) * g / 3; s += `<line class="grid" x1="0" x2="${W}" y1="${y}" y2="${y}"/>`; }
+    s += `<text x="2" y="${pt + 9}">${dec(maxY, maxY < 10 ? 1 : 0)} km</text>`;
+    days.forEach((d, i) => {
+      let y = H - pb;
+      KIND_ORDER.forEach(k => {
+        const v = d.parts[k] || 0; if(!v) return;
+        const h = v / maxY * (H - pb - pt);
+        y -= h;
+        s += `<rect x="${i * bw + bw * .15}" y="${y}" width="${bw * .7}" height="${Math.max(h, 1)}" rx="2" fill="${KINDS[k].col}"><title>${d.label}: ${KINDS[k].label} ${dec(v, 2)} km</title></rect>`;
+      });
+      if(days.length <= 31 && (i % (days.length > 16 ? 2 : 1) === 0 || d.today)) s += `<text x="${i * bw + bw / 2}" y="${H - 5}" text-anchor="middle" ${d.today ? 'style="fill:var(--hl);font-weight:700"' : ''}>${d.short}</text>`;
+    });
+    return s + '</svg>';
+  }
+  function lineChart(pts, { col = 'var(--hl)', fmt = (v) => dec(v), invert = false, height = 150 } = {}){
+    if(pts.length < 2) return `<div class="faint">Butuh minimal 2 data buat grafik.</div>`;
+    const W = 760, H = height, pl = 40, pb = 18, pt = 10;
+    const ys = pts.map(p => p.y), lo = Math.min(...ys), hi = Math.max(...ys), span = hi - lo || 1;
+    const X = (i) => pl + (W - pl - 8) * i / (pts.length - 1);
+    const Y = (v) => { const f = (v - lo) / span; return pt + (H - pb - pt) * (invert ? f : 1 - f); };
+    let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" style="height:${H}px">`;
+    [hi, (hi + lo) / 2, lo].forEach(v => { s += `<line class="grid" x1="${pl}" x2="${W}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${pl - 4}" y="${Y(v) + 3}" text-anchor="end">${fmt(v)}</text>`; });
+    s += `<polyline fill="none" stroke="${col}" stroke-width="2.2" stroke-linejoin="round" points="${pts.map((p, i) => X(i) + ',' + Y(p.y)).join(' ')}"/>`;
+    pts.forEach((p, i) => { s += `<circle cx="${X(i)}" cy="${Y(p.y)}" r="3.2" fill="${col}"><title>${esc(p.label)}: ${fmt(p.y)}</title></circle>`; });
+    const every = Math.ceil(pts.length / 10);
+    pts.forEach((p, i) => { if(i % every === 0 || i === pts.length - 1) s += `<text x="${X(i)}" y="${H - 3}" text-anchor="middle">${esc(p.short || '')}</text>`; });
+    return s + '</svg>';
+  }
+  function speedChart(route, foot){
+    const cum = routeCum(route), xs = [], ys = [];
+    for(let i = 1; i < route.length; i++){
+      // speed over a ~6-point window so GPS noise doesn't dominate
+      const a = Math.max(0, i - 3), b = Math.min(route.length - 1, i + 3), dt = route[b][2] - route[a][2];
+      xs.push(cum[i] / 1000); ys.push(dt > 0 ? (cum[b] - cum[a]) / dt * 3.6 : 0);
+    }
+    if(xs.length < 3) return '';
+    const W = 760, H = 150, pl = 36, pb = 18, pt = 8, maxX = xs[xs.length - 1] || 1, maxY = Math.max(...ys, 1);
+    const X = (v) => pl + (W - pl - 6) * v / maxX, Y = (v) => pt + (H - pb - pt) * (1 - v / maxY);
+    let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" style="height:${H}px">`;
+    [maxY, maxY / 2].forEach(v => { s += `<line class="grid" x1="${pl}" x2="${W}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${pl - 4}" y="${Y(v) + 3}" text-anchor="end">${Math.round(v)}</text>`; });
+    s += `<line class="grid" x1="${pl}" x2="${W}" y1="${Y(0)}" y2="${Y(0)}"/>`;
+    s += `<path d="M${X(xs[0])},${Y(0)} ${xs.map((x, i) => `L${X(x)},${Y(ys[i])}`).join(' ')} L${X(maxX)},${Y(0)} Z" fill="var(--hl)" fill-opacity=".15" stroke="var(--hl)" stroke-width="1.5"/>`;
+    for(let k = 1; k < maxX; k += Math.max(1, Math.round(maxX / 10))) s += `<text x="${X(k)}" y="${H - 3}" text-anchor="middle">${k}km</text>`;
+    return s + `<text x="${pl}" y="${H - 3}" text-anchor="start">km/j${foot ? '' : ''}</text></svg>`;
+  }
+
+  // ================================================================ RINGKASAN
+  function totalsByKind(list){
+    const t = {};
+    list.forEach(a => {
+      const o = t[a.kind] || (t[a.kind] = { n: 0, dist: 0, el: 0, mov: 0, list: [] });
+      o.n++; o.dist += +a.distance_m; o.el += a.elapsed_s; o.mov += a.moving_s || a.elapsed_s; o.list.push(a);
+    });
+    return t;
+  }
+  function renderRingkasan(){
+    const list = monthActs();
+    const prevD = new Date(MONTH.y, MONTH.m - 1, 1);
+    const prev = totalsByKind(monthActs(prevD.getFullYear(), prevD.getMonth()));
+    const tot = totalsByKind(list);
+    let h = monthBar();
+    if(!list.length){ $('tab-body').innerHTML = h + noData(); wireMonth(); wireGoto(); return; }
+
+    // today
+    const now = new Date(), isNow = MONTH.y === now.getFullYear() && MONTH.m === now.getMonth();
+    if(isNow){
+      const tk = dayKey(Date.now()), today = list.filter(a => dayKey(msOf(a)) === tk);
+      const tt = totalsByKind(today);
+      h += `<div class="panel"><div class="panel-head"><h2>📍 Hari ini</h2><span class="faint">${niceDay(Date.now())}</span></div><div class="panel-body">`;
+      if(!today.length) h += `<div class="muted">Belum ada aktivitas hari ini. Upload file terbaru di tab Data.</div>`;
+      else h += `<div class="stats">${KIND_ORDER.filter(k => tt[k]).map(k => `<div class="stat"><div class="k">${KINDS[k].ic} ${KINDS[k].label}</div><div class="v">${kmStr(tt[k].dist)} km</div><div class="h">${tt[k].n}× · ${durM(tt[k].el)}</div></div>`).join('')}
+        <div class="stat"><div class="k">Total di jalan</div><div class="v">${durM(sum(today.map(a => a.elapsed_s)))}</div><div class="h">${kmStr(sum(today.map(a => +a.distance_m)))} km</div></div></div>`;
+      h += `</div></div>`;
+    }
+
+    // per-kind cards
+    h += `<div class="cards">`;
+    KIND_ORDER.filter(k => tot[k]).forEach(k => {
+      const o = tot[k], p = prev[k], kd = KINDS[k];
+      const delta = p && p.dist > 0 ? (o.dist - p.dist) / p.dist * 100 : null;
+      const dl = delta == null ? '<span class="delta flat">bulan lalu: —</span>' : `<span class="delta ${delta > 3 ? 'up' : delta < -3 ? 'down' : 'flat'}">${delta > 0 ? '▲' : delta < 0 ? '▼' : '='} ${Math.abs(Math.round(delta))}% vs bln lalu</span>`;
+      const spd = kd.foot ? `pace rata2 <b>${paceStr(o.mov / (o.dist / 1000))}</b> /km` : `speed rata2 <b>${dec(o.dist / o.mov * 3.6)}</b> km/j`;
+      let extra = '';
+      if(k === 'motor') extra = `<br>⛽ bensin ± <b>${rp(o.dist / 1000 / S().fuel_kmpl * S().fuel_price)}</b> (${dec(o.dist / 1000 / S().fuel_kmpl)} L)`;
+      if(k === 'lari' && +S().run_target_km > 0){
+        const pct = Math.min(100, o.dist / 1000 / S().run_target_km * 100);
+        extra = `<div class="minibar" style="margin-top:8px"><i style="width:${pct}%;background:${kd.col}"></i></div><span class="faint">${Math.round(pct)}% dari target ${S().run_target_km} km</span>`;
+      }
+      h += `<div class="card" style="--c:${kd.col}"><div class="k"><span>${kd.ic} ${kd.label}</span><span>${o.n}×</span></div>
+        <div class="big">${kmStr(o.dist)} <small>km</small></div>
+        <div class="sub">${durM(o.el)} total · ${spd}<br>${dl}${extra}</div></div>`;
+    });
+    h += `</div>`;
+
+    // daily chart
+    const nDays = new Date(MONTH.y, MONTH.m + 1, 0).getDate(), days = [];
+    const tk = dayKey(Date.now());
+    for(let d = 1; d <= nDays; d++){ const ms = new Date(MONTH.y, MONTH.m, d).getTime(); days.push({ key: dayKey(ms), label: niceDay(ms), short: String(d), parts: {}, today: dayKey(ms) === tk }); }
+    const byKey = Object.fromEntries(days.map(d => [d.key, d]));
+    list.forEach(a => { const d = byKey[dayKey(msOf(a))]; if(d) d.parts[a.kind] = (d.parts[a.kind] || 0) + a.distance_m / 1000; });
+    const maxDay = Math.max(...days.map(d => sum(Object.values(d.parts))), 1);
+    h += `<div class="panel"><div class="panel-head"><h2>📊 Km per hari</h2><div class="row">${KIND_ORDER.filter(k => tot[k]).map(k => `<span class="legend"><i style="background:${KINDS[k].col}"></i>${KINDS[k].label}</span>`).join('')}</div></div><div class="panel-body">${stackChart(days, maxDay)}</div></div>`;
+
+    // running performance
+    const runs = (tot.lari ? tot.lari.list : []).slice().sort((a, b) => msOf(a) - msOf(b)).filter(a => a.distance_m > 300);
+    if(runs.length){
+      const pace = (a) => (a.moving_s || a.elapsed_s) / (a.distance_m / 1000);
+      const best = runs.reduce((b, a) => pace(a) < pace(b) ? a : b), longest = runs.reduce((b, a) => a.distance_m > b.distance_m ? a : b);
+      const hr = runs.map(a => a.avg_hr).filter(Boolean);
+      h += `<div class="panel"><div class="panel-head"><h2>🏃 Performa lari</h2><span class="faint">makin rendah pace = makin cepat</span></div><div class="panel-body">
+        <div class="stats">
+          <div class="stat"><div class="k">Pace terbaik</div><div class="v">${paceStr(pace(best))}</div><div class="h">${niceDay(msOf(best))} · ${kmStr(best.distance_m)} km</div></div>
+          <div class="stat"><div class="k">Lari terjauh</div><div class="v">${kmStr(longest.distance_m)} km</div><div class="h">${niceDay(msOf(longest))}</div></div>
+          <div class="stat"><div class="k">Frekuensi</div><div class="v">${dec(runs.length / (nDays / 7))}×/mgg</div><div class="h">${runs.length} sesi</div></div>
+          ${hr.length ? `<div class="stat"><div class="k">Detak rata2</div><div class="v">${Math.round(avg(hr))} bpm</div><div class="h">dari ${hr.length} sesi</div></div>` : ''}
+        </div>
+        <div class="chart-title">Pace per sesi (menit/km)</div>
+        ${lineChart(runs.map(a => ({ y: pace(a), label: niceDay(msOf(a)) + ' · ' + kmStr(a.distance_m) + ' km', short: String(new Date(msOf(a)).getDate()) })), { col: KINDS.lari.col, fmt: paceStr, invert: true })}
+      </div></div>`;
+    }
+
+    // insights
+    h += `<div class="panel"><div class="panel-head"><h2>💡 Catatan bulan ini</h2></div><div class="panel-body"><ul class="tips">${insights(list, tot, days).map(([ic, t]) => `<li><span class="ic">${ic}</span><span>${t}</span></li>`).join('')}</ul></div></div>`;
+    $('tab-body').innerHTML = h;
+    wireMonth();
+  }
+
+  function insights(list, tot, days){
+    const out = [];
+    const allDist = sum(list.map(a => +a.distance_m)), allTime = sum(list.map(a => a.elapsed_s));
+    out.push(['🧭', `Total <b>${kmStr(allDist)} km</b> dan <b>${durM(allTime)}</b> bergerak di ${list.length} aktivitas.`]);
+    const active = days.filter(d => Object.keys(d.parts).length);
+    const busiest = days.reduce((b, d) => sum(Object.values(d.parts)) > sum(Object.values(b.parts)) ? d : b, days[0]);
+    if(busiest && sum(Object.values(busiest.parts)) > 0) out.push(['📅', `Hari paling jauh: <b>${busiest.label}</b> — ${dec(sum(Object.values(busiest.parts)), 1)} km.`]);
+    const foot = days.map(d => (d.parts.lari || 0) + (d.parts.jalan || 0) > 0);
+    let gap = 0, cur = 0; const lastIdx = days.findIndex(d => d.today);
+    foot.slice(0, lastIdx >= 0 ? lastIdx + 1 : foot.length).forEach(f => { cur = f ? 0 : cur + 1; gap = Math.max(gap, cur); });
+    if(tot.lari || tot.jalan) out.push(['🔥', `Olahraga kaki di <b>${foot.filter(Boolean).length}</b> dari ${active.length || 0} hari aktif. Jeda terpanjang tanpa lari/jalan: <b>${gap} hari</b>.`]);
+    if(tot.motor){
+      const c = list.filter(a => a.kind === 'motor');
+      const workDays = new Set(c.filter(a => commuteOf(a)).map(a => dayKey(msOf(a)))).size;
+      out.push(['🏍️', `Motor ${kmStr(tot.motor.dist)} km, ${durM(tot.motor.el)} di jalan${workDays ? ` · ${workDays} hari kerja terdeteksi` : ''}. Speed maks: ${dec(Math.max(...c.map(a => +a.max_speed_kmh || 0)), 0)} km/j.`]);
+      const stopT = sum(c.map(stopTotal));
+      if(stopT > 600) out.push(['🚦', `Waktu berhenti di jalan (lampu merah/macet) total <b>${durM(stopT)}</b> — ${Math.round(stopT / tot.motor.el * 100)}% dari waktu naik motor. Detailnya di tab Kerja.`]);
+    }
+    if(!placeRole('rumah') || !placeRole('kantor')) out.push(['🏠', `Set titik <b>Rumah</b> & <b>Kantor</b> (tab Kerja) biar perjalanan berangkat/pulang ke-detect otomatis.`]);
+    return out;
+  }
+
+  // ================================================================ RIWAYAT
+  function actRow(a){
+    const kd = KINDS[a.kind] || KINDS.lainnya, c = commuteOf(a), ms = msOf(a);
+    return `<div class="act" data-open="${a.id}">
+      <div class="ic" style="background:${kd.col}22">${kd.ic}</div>
+      <div class="main"><div class="ttl">${esc(a.title || kd.label)} ${c ? `<span class="pill blue">${c === 'berangkat' ? '→ kantor' : '→ rumah'}</span>` : ''}</div>
+        <div class="meta">${hhmm(minOfDay(ms))}–${hhmm(minOfDay(ms + a.elapsed_s * 1000))} · ${durM(a.elapsed_s)} · ${esc(a.source)}${(a.stops || []).length ? ` · ${a.stops.length}× berhenti` : ''}</div></div>
+      <div class="num"><b>${kmStr(a.distance_m)} km</b><small>${speedLabel(a)}</small></div></div>`;
+  }
+  function renderRiwayat(){
+    let list = monthActs();
+    const kinds = KIND_ORDER.filter(k => list.some(a => a.kind === k));
+    if(HIST_KIND !== 'semua') list = list.filter(a => HIST_KIND === 'kerja' ? commuteOf(a) : a.kind === HIST_KIND);
+    let h = monthBar() + `<div class="row" style="margin-bottom:12px"><div class="seg">${['semua', ...kinds, 'kerja'].map(k => `<button class="${HIST_KIND === k ? 'active' : ''}" data-hk="${k}">${k === 'semua' ? 'Semua' : k === 'kerja' ? '💼 Kerja' : KINDS[k].ic + ' ' + KINDS[k].label}</button>`).join('')}</div></div>`;
+    if(!monthActs().length){ $('tab-body').innerHTML = h + noData(); wireMonth(); wireGoto(); return; }
+    const groups = {};
+    list.forEach(a => { (groups[dayKey(msOf(a))] = groups[dayKey(msOf(a))] || []).push(a); });
+    h += `<div class="panel">`;
+    const keys = Object.keys(groups).sort().reverse();
+    if(!keys.length) h += `<div class="empty-hint">Gak ada yang cocok sama filter ini.</div>`;
+    keys.forEach(k => {
+      const g = groups[k].sort((a, b) => msOf(a) - msOf(b));
+      h += `<div class="day-head">${niceDay(msOf(g[0]))}<span>${kmStr(sum(g.map(a => +a.distance_m)))} km · ${durM(sum(g.map(a => a.elapsed_s)))}</span></div>` + g.map(actRow).join('');
+    });
+    h += `</div>`;
+    $('tab-body').innerHTML = h;
+    wireMonth();
+    document.querySelectorAll('[data-hk]').forEach(b => b.onclick = () => { HIST_KIND = b.dataset.hk; renderRiwayat(); });
+    wireOpen();
+  }
+  function wireOpen(){
+    document.querySelectorAll('[data-open]').forEach(el => el.onclick = () => { DETAIL = el.dataset.open; TAB = 'riwayat'; switchTab('riwayat'); window.scrollTo(0, 0); });
+  }
+
+  function speedColor(r){ return r < .45 ? '#dc2626' : r < .8 ? '#f97316' : r < 1.15 ? '#eab308' : '#16a34a'; }
+  function drawSpeedRoute(map, route){
+    const cum = routeCum(route), sp = [];
+    for(let i = 1; i < route.length; i++){
+      const a = Math.max(0, i - 2), b = Math.min(route.length - 1, i + 2), dt = route[b][2] - route[a][2];
+      sp.push(dt > 0 ? (cum[b] - cum[a]) / dt : 0);
+    }
+    const med = median(sp.filter(v => v > .5)) || 1;
+    let run = [route[0]], col = speedColor(sp[0] / med);
+    for(let i = 1; i < route.length; i++){
+      const c = speedColor(sp[i-1] / med);
+      if(c !== col){ L.polyline(run.map(p => [p[0], p[1]]), { color: col, weight: 5, opacity: .9 }).addTo(map); run = [route[i-1]]; col = c; }
+      run.push(route[i]);
+    }
+    L.polyline(run.map(p => [p[0], p[1]]), { color: col, weight: 5, opacity: .9 }).addTo(map);
+  }
+
+  function passages(route, places){
+    const cum = routeCum(route), out = [];
+    places.forEach(p => {
+      let bi = -1, bd = 1e12;
+      route.forEach((pt, i) => { const d = hav(P(pt), p); if(d < bd){ bd = d; bi = i; } });
+      if(bi >= 0 && bd <= p.radius_m) out.push({ p, t: route[bi][2], d: cum[bi] });
+    });
+    return out.sort((a, b) => a.t - b.t);
+  }
+
+  async function renderDetail(id){
+    const a = ACTS.find(x => x.id === id);
+    if(!a){ DETAIL = null; return renderRiwayat(); }
+    await ensureRoutes([id]);
+    const route = ROUTES[id], kd = KINDS[a.kind], ms = msOf(a), c = commuteOf(a);
+    const stops = a.stops || [], splits = a.splits || [];
+    let h = `<div class="row" style="margin-bottom:12px;justify-content:space-between"><button class="btn btn-ghost btn-sm" data-back>← Riwayat</button><span class="faint">${niceDay(ms)} · ${hhmm(minOfDay(ms))}</span></div>`;
+    h += `<div class="panel"><div class="panel-head"><h2>${kd.ic} ${esc(a.title || kd.label)}</h2>${c ? `<span class="pill blue">${c === 'berangkat' ? 'Berangkat kerja' : 'Pulang kerja'}</span>` : ''}</div><div class="panel-body">
+      <div class="stats">
+        <div class="stat"><div class="k">Jarak</div><div class="v">${kmStr(a.distance_m)} km</div></div>
+        <div class="stat"><div class="k">Durasi total</div><div class="v">${dur(a.elapsed_s)}</div><div class="h">${hhmm(minOfDay(ms))} → ${hhmm(minOfDay(ms + a.elapsed_s * 1000))}</div></div>
+        <div class="stat"><div class="k">Waktu bergerak</div><div class="v">${dur(a.moving_s)}</div><div class="h">berhenti ${dur(Math.max(0, a.elapsed_s - a.moving_s))}</div></div>
+        <div class="stat"><div class="k">${kd.foot ? 'Pace' : 'Speed rata2'}</div><div class="v">${speedLabel(a)}</div><div class="h">${kd.foot ? dec(movKmh(a)) + ' km/j' : 'saat bergerak'}</div></div>
+        ${a.max_speed_kmh ? `<div class="stat"><div class="k">Speed maks</div><div class="v">${dec(+a.max_speed_kmh, 0)} km/j</div></div>` : ''}
+        ${a.elev_gain_m != null ? `<div class="stat"><div class="k">Nanjak</div><div class="v">${Math.round(a.elev_gain_m)} m</div></div>` : ''}
+        ${a.avg_hr ? `<div class="stat"><div class="k">Detak jantung</div><div class="v">${a.avg_hr} bpm</div><div class="h">maks ${a.max_hr || '—'}</div></div>` : ''}
+        ${a.calories ? `<div class="stat"><div class="k">Kalori</div><div class="v">${a.calories}</div></div>` : ''}
+      </div>`;
+    if(route){
+      h += `<div id="dmap" class="map"></div><div class="row faint" style="margin-top:6px">Warna = speed relatif: <span class="legend"><i style="background:#dc2626"></i>pelan/macet</span><span class="legend"><i style="background:#f97316"></i>agak pelan</span><span class="legend"><i style="background:#eab308"></i>normal</span><span class="legend"><i style="background:#16a34a"></i>kencang</span> · titik merah = berhenti</div>`;
+      h += `<div class="chart-title">Speed sepanjang rute (km/j)</div>${speedChart(route, kd.foot)}`;
+    } else h += `<div class="muted">Gak ada data rute GPS (sumbernya cuma ringkasan). Buat peta & analisis jalur, pakai export Strava / GPX.</div>`;
+    h += `</div></div>`;
+
+    // point-to-point
+    if(route){
+      const pas = passages(route, PLACES);
+      if(pas.length >= 2){
+        h += `<div class="panel"><div class="panel-head"><h2>📌 Titik ke titik</h2></div><div class="panel-body tscroll"><table class="t"><tr><th>Dari → Ke</th><th class="n">Jarak</th><th class="n">Waktu</th><th class="n">Speed</th></tr>`;
+        for(let i = 1; i < pas.length; i++){
+          const d = pas[i].d - pas[i-1].d, t = pas[i].t - pas[i-1].t;
+          h += `<tr><td>${esc(pas[i-1].p.name)} → ${esc(pas[i].p.name)}</td><td class="n">${kmStr(d)} km</td><td class="n">${dur(t)}</td><td class="n">${t > 0 ? dec(d / t * 3.6) : '—'} km/j</td></tr>`;
+        }
+        h += `</table></div></div>`;
+      } else if(PLACES.length) h += '';
+    }
+
+    if(stops.length){
+      h += `<div class="panel"><div class="panel-head"><h2>🚦 Berhenti ${stops.length}× · ${dur(stopTotal(a))}</h2></div><div class="panel-body tscroll"><table class="t"><tr><th>Jam</th><th>Lokasi</th><th class="n">Lama</th></tr>`;
+      stops.forEach(s => {
+        const np = PLACES.find(p => hav(s, p) <= Math.max(200, p.radius_m));
+        h += `<tr><td class="mono">${hhmm(minOfDay(ms + s.at * 1000))}</td><td>${np ? '📌 ' + esc(np.name) : `<a href="${gmaps(s.lat, s.lng)}" target="_blank" rel="noopener">${s.lat.toFixed(4)}, ${s.lng.toFixed(4)}</a>`}</td><td class="n">${dur(s.dur)}</td></tr>`;
+      });
+      h += `</table></div></div>`;
+    }
+    if(splits.length){
+      const mx = Math.max(...splits), mn = Math.min(...splits);
+      h += `<div class="panel"><div class="panel-head"><h2>⏱️ Per km</h2><span class="faint">tercepat ${kd.foot ? paceStr(mn) + ' /km' : dec(3600 / mn) + ' km/j'}</span></div><div class="panel-body tscroll"><table class="t"><tr><th>Km</th><th class="n">${kd.foot ? 'Pace' : 'Speed'}</th><th class="n">Waktu</th><th style="width:40%"></th></tr>`;
+      splits.forEach((s, i) => {
+        h += `<tr><td>${i + 1}</td><td class="n">${kd.foot ? paceStr(s) : dec(3600 / s) + ' km/j'}</td><td class="n">${dur(s)}</td><td><div class="minibar"><i style="width:${Math.max(6, mn / s * 100)}%;background:${s === mn ? 'var(--good)' : s === mx ? 'var(--bad)' : kd.col}"></i></div></td></tr>`;
+      });
+      h += `</table></div></div>`;
+    }
+
+    // edit
+    h += `<div class="panel"><div class="panel-head"><h2>✏️ Edit</h2></div><div class="panel-body">
+      <div class="grid2">
+        <div><label class="f">Judul</label><input class="in" id="e-title" value="${esc(a.title)}" maxlength="200"></div>
+        <div><label class="f">Jenis</label><select class="in" id="e-kind">${KIND_ORDER.map(k => `<option value="${k}" ${a.kind === k ? 'selected' : ''}>${KINDS[k].ic} ${KINDS[k].label}</option>`).join('')}</select></div>
+        <div><label class="f">Perjalanan kerja</label><select class="in" id="e-comm">
+          <option value="" ${!a.commute ? 'selected' : ''}>Otomatis (${c ? c : 'bukan'})</option>
+          <option value="berangkat" ${a.commute === 'berangkat' ? 'selected' : ''}>Berangkat kerja</option>
+          <option value="pulang" ${a.commute === 'pulang' ? 'selected' : ''}>Pulang kerja</option>
+          <option value="bukan" ${a.commute === 'bukan' ? 'selected' : ''}>Bukan perjalanan kerja</option></select></div>
+      </div>
+      <label class="f">Catatan (misal: hujan, mampir, ban bocor)</label><input class="in" id="e-note" value="${esc(a.note)}" maxlength="1000">
+      <div class="row" style="margin-top:12px;justify-content:space-between"><button class="btn btn-danger btn-sm" data-del>Hapus aktivitas</button><button class="btn btn-hl btn-sm" data-save>Simpan</button></div>
+      <div class="faint" style="margin-top:8px">Sumber: ${esc(a.source)}${a.source_type ? ' · ' + esc(a.source_type) : ''}</div>
+    </div></div>`;
+    $('tab-body').innerHTML = h;
+    document.querySelector('[data-back]').onclick = () => { DETAIL = null; switchTab('riwayat'); };
+    if(route){
+      const map = mkMap($('dmap'));
+      drawSpeedRoute(map, route);
+      drawPlaces(map, false);
+      L.circleMarker([route[0][0], route[0][1]], { radius: 6, color: '#fff', weight: 2, fillColor: '#16a34a', fillOpacity: 1 }).bindTooltip('Start').addTo(map);
+      const e = route[route.length - 1];
+      L.circleMarker([e[0], e[1]], { radius: 6, color: '#fff', weight: 2, fillColor: '#111827', fillOpacity: 1 }).bindTooltip('Finish').addTo(map);
+      stops.forEach(s => L.circleMarker([s.lat, s.lng], { radius: 4 + Math.min(8, s.dur / 60), color: '#dc2626', weight: 1, fillColor: '#dc2626', fillOpacity: .5 })
+        .bindTooltip(`Berhenti ${dur(s.dur)} · ${hhmm(minOfDay(ms + s.at * 1000))}`).addTo(map));
+      map.fitBounds(L.latLngBounds(route.map(p => [p[0], p[1]])), { padding: [20, 20] });
+    }
+    document.querySelector('[data-save]').onclick = async (ev) => {
+      ev.target.disabled = true;
+      const patch = { title: $('e-title').value.trim(), kind: $('e-kind').value, commute: $('e-comm').value || null, note: $('e-note').value.trim(), updated_at: new Date().toISOString() };
+      const { error } = await supabase.from('jejak_activities').update(patch).eq('id', id);
+      ev.target.disabled = false;
+      if(error){ toast('Gagal: ' + error.message); return; }
+      Object.assign(a, patch); toast('Tersimpan'); renderDetail(id);
+    };
+    document.querySelector('[data-del]').onclick = async () => {
+      if(!await confirmBox('Hapus aktivitas?', 'Aktivitas ini dihapus permanen dari Jejak. File aslinya di Strava/Mi Band gak kena.')) return;
+      const { error } = await supabase.from('jejak_activities').delete().eq('id', id);
+      if(error){ toast('Gagal: ' + error.message); return; }
+      ACTS = ACTS.filter(x => x.id !== id); delete ROUTES[id]; DETAIL = null; toast('Dihapus'); switchTab('riwayat');
+    };
+  }
+
+  // ================================================================ KERJA
+  function suggestHomeWork(){
+    const cells = {};
+    const add = (lat, lng, key) => {
+      if(lat == null) return;
+      const k = Math.round(lat / .002) + ':' + Math.round(lng / .002);
+      const c = cells[k] || (cells[k] = { lat: 0, lng: 0, n: 0, ms: 0, me: 0, es: 0, ee: 0 });
+      c.lat += lat; c.lng += lng; c.n++; c[key]++;
+    };
+    ACTS.filter(a => a.kind === 'motor' || a.kind === 'sepeda').forEach(a => {
+      const h = new Date(msOf(a)).getHours(), morning = h >= 4 && h < 12;
+      add(a.start_lat, a.start_lng, morning ? 'ms' : 'es');
+      add(a.end_lat, a.end_lng, morning ? 'me' : 'ee');
+    });
+    const list = Object.values(cells).map(c => ({ ...c, lat: c.lat / c.n, lng: c.lng / c.n }));
+    const home = list.slice().sort((a, b) => (b.ms + b.ee) - (a.ms + a.ee))[0];
+    const work = list.filter(c => !home || hav(c, home) > 500).sort((a, b) => (b.me + b.es) - (a.me + a.es))[0];
+    return { home: home && home.ms + home.ee >= 2 ? home : null, work: work && work.me + work.es >= 2 ? work : null };
+  }
+
+  function stopClusters(trips){
+    const R = placeRole('rumah'), K = placeRole('kantor'), cl = [];
+    trips.forEach(t => (t.stops || []).forEach(s => {
+      if((R && hav(s, R) < R.radius_m) || (K && hav(s, K) < K.radius_m)) return;
+      let best = null, bd = 1e12;
+      cl.forEach(c => { const d = hav(s, c); if(d < bd){ bd = d; best = c; } });
+      if(best && bd < CLUSTER_M){
+        best.n++; best.total += s.dur; best.max = Math.max(best.max, s.dur); best.trips.add(t.id);
+        best.lat += (s.lat - best.lat) / best.n; best.lng += (s.lng - best.lng) / best.n;
+      } else cl.push({ lat: s.lat, lng: s.lng, n: 1, total: s.dur, max: s.dur, trips: new Set([t.id]) });
+    }));
+    return cl.filter(c => c.trips.size >= 2 || c.total >= 240).sort((a, b) => b.total - a.total);
+  }
+  function spotName(c, i){
+    const np = PLACES.find(p => hav(c, p) <= Math.max(200, p.radius_m));
+    return np ? '📌 ' + np.name : `Titik #${i + 1}`;
+  }
+
+  function explainSlow(a, peers, slotAvg){
+    const why = [];
+    const medStop = median(peers.map(stopTotal)), st = stopTotal(a);
+    if(st - medStop >= 180){
+      const big = (a.stops || []).slice().sort((x, y) => y.dur - x.dur)[0];
+      const np = big && PLACES.find(p => hav(big, p) <= Math.max(200, p.radius_m));
+      why.push(`🚦 Berhenti total <b>${durM(st)}</b> (biasanya ${durM(medStop)})` + (big ? ` — paling lama ${durM(big.dur)} di ${np ? esc(np.name) : `<a href="${gmaps(big.lat, big.lng)}" target="_blank" rel="noopener">titik ini</a>`}${big.dur >= 300 ? ' (mampir?)' : ''}` : ''));
+    }
+    const medSp = median(peers.map(movKmh)), sp = movKmh(a);
+    if(medSp && sp < medSp * .9) why.push(`🐢 Jalan lebih pelan: <b>${dec(sp)} km/j</b> saat bergerak (biasanya ${dec(medSp)}) — kemungkinan padat/hujan`);
+    const medD = median(peers.map(x => +x.distance_m));
+    if(medD && a.distance_m > medD * 1.1) why.push(`🛣️ Jarak <b>+${kmStr(a.distance_m - medD)} km</b> dari biasanya — lewat jalur lain atau mampir`);
+    const dep = minOfDay(msOf(a)), slot = Math.floor(dep / 30), allAvg = avg(peers.map(x => x.elapsed_s));
+    if(slotAvg[slot] && slotAvg[slot].n >= 2 && slotAvg[slot].avg > allAvg + 180) why.push(`🕔 Jalan jam <b>${hhmm(dep)}</b> — di jam segini rata2 ${durM(slotAvg[slot].avg)} (rata2 umum ${durM(allAvg)})`);
+    if(a.note) why.push(`📝 Catatan lo: ${esc(a.note)}`);
+    if(!why.length) why.push('Gak ketemu penyebab jelas dari GPS (bisa jadi sinyal hilang, atau berhenti di tempat yang GPS-nya gak rekam).');
+    return why;
+  }
+
+  async function renderKerja(){
+    const R = placeRole('rumah'), K = placeRole('kantor');
+    let h = monthBar();
+    if(!R || !K){
+      const sg = suggestHomeWork();
+      h += `<div class="panel"><div class="panel-head"><h2>🏠 Set Rumah & Kantor dulu</h2></div><div class="panel-body">
+        <p class="muted">Jejak butuh tau lokasi rumah & kantor lo buat misahin perjalanan <b>berangkat</b> vs <b>pulang</b>. ${sg.home || sg.work ? 'Ini tebakan dari data motor lo:' : 'Upload data perjalanan motor dulu, nanti gw tebak otomatis — atau klik langsung di peta (tab Peta).'}</p>
+        ${[['rumah', 'Rumah', '🏠', sg.home, R], ['kantor', 'Kantor', '🏢', sg.work, K]].map(([role, label, ic, s, have]) => have ? `<div class="stat" style="margin-top:10px">${ic} ${label}: <b>${esc(have.name)}</b> ✓</div>` : s ? `<div class="stat row" style="margin-top:10px;justify-content:space-between"><span>${ic} ${label}? <a href="${gmaps(s.lat, s.lng)}" target="_blank" rel="noopener">${s.lat.toFixed(4)}, ${s.lng.toFixed(4)}</a> <span class="faint">(${s.n} ujung perjalanan)</span></span><button class="btn btn-hl btn-sm" data-sg="${role}" data-lat="${s.lat}" data-lng="${s.lng}">Pakai</button></div>` : '').join('')}
+        <div style="margin-top:12px"><button class="btn btn-ghost btn-sm" data-goto="peta">🗺️ Pilih di peta</button></div>
+      </div></div>`;
+      $('tab-body').innerHTML = h;
+      wireMonth(); wireGoto();
+      document.querySelectorAll('[data-sg]').forEach(b => b.onclick = async () => {
+        b.disabled = true;
+        await savePlace({ role: b.dataset.sg, name: b.dataset.sg === 'rumah' ? 'Rumah' : 'Kantor', lat: +b.dataset.lat, lng: +b.dataset.lng, radius_m: 250 });
+        renderKerja();
+      });
+      return;
+    }
+
+    const trips = monthActs().filter(a => commuteOf(a)).sort((a, b) => msOf(a) - msOf(b));
+    const go = trips.filter(a => commuteOf(a) === 'berangkat'), back = trips.filter(a => commuteOf(a) === 'pulang');
+    if(!trips.length){
+      h += `<div class="panel"><div class="empty-hint" style="padding:36px 16px">Belum ada perjalanan Rumah ⇄ Kantor di bulan ini.<br><span class="faint">Perjalanan dihitung kalau mulai ≤ ${Math.round(R.radius_m * 1.5)} m dari Rumah dan selesai dekat Kantor (atau sebaliknya). Radius bisa diubah di tab Peta.</span></div></div>`;
+      $('tab-body').innerHTML = h; wireMonth(); return;
+    }
+    const ws = timeMin(S().work_start), we = timeMin(S().work_end);
+    const arr = go.map(a => minOfDay(msOf(a) + a.elapsed_s * 1000));
+    const late = go.filter((a, i) => arr[i] > ws);
+    const leave = back.map(a => minOfDay(msOf(a)));
+    const col = (list) => list.length ? `<b>${durM(avg(list.map(a => a.elapsed_s)))}</b>` : '—';
+    h += `<div class="cards">
+      <div class="card" style="--c:#2563eb"><div class="k"><span>→ Berangkat</span><span>${go.length}×</span></div><div class="big">${go.length ? durM(avg(go.map(a => a.elapsed_s))) : '—'}</div>
+        <div class="sub">rata2 durasi · jalan ${hhmm(avg(go.map(a => minOfDay(msOf(a)))))}, tiba ${hhmm(avg(arr))}<br>${go.length ? `<span class="pill ${late.length ? 'bad' : 'good'}">${late.length}× telat</span> dari jam masuk ${hhmm(ws)}` : ''}</div></div>
+      <div class="card" style="--c:#9333ea"><div class="k"><span>← Pulang</span><span>${back.length}×</span></div><div class="big">${back.length ? durM(avg(back.map(a => a.elapsed_s))) : '—'}</div>
+        <div class="sub">rata2 durasi · keluar ${hhmm(avg(leave))}, sampai ${hhmm(avg(back.map(a => minOfDay(msOf(a) + a.elapsed_s * 1000))))}<br>${back.length ? `pulang lewat jam ${hhmm(we)}: <b>${back.filter(a => minOfDay(msOf(a)) > we + 30).length}×</b> (>30m)` : ''}</div></div>
+      <div class="card" style="--c:#f97316"><div class="k"><span>Di jalan</span><span>${trips.length} trip</span></div><div class="big">${durM(sum(trips.map(a => a.elapsed_s)))}</div>
+        <div class="sub">${kmStr(sum(trips.map(a => +a.distance_m)))} km · berhenti total ${durM(sum(trips.map(stopTotal)))}<br>⛽ ± ${rp(sum(trips.map(a => +a.distance_m)) / 1000 / S().fuel_kmpl * S().fuel_price)}</div></div>
+    </div>`;
+
+    // per-day chart: duration berangkat / pulang
+    const byDay = {};
+    trips.forEach(a => { const k = dayKey(msOf(a)); (byDay[k] = byDay[k] || { ms: msOf(a) })[commuteOf(a)] = a.elapsed_s / 60; });
+    const dk = Object.keys(byDay).sort();
+    const mxD = Math.max(...dk.map(k => Math.max(byDay[k].berangkat || 0, byDay[k].pulang || 0)), 1);
+    const W = 760, Hh = 160, bw = W / Math.max(dk.length, 1);
+    let svg = `<svg class="chart" viewBox="0 0 ${W} ${Hh}" preserveAspectRatio="none" style="height:${Hh}px"><text x="2" y="10">${Math.round(mxD)} mnt</text>`;
+    dk.forEach((k, i) => {
+      const d = byDay[k], x = i * bw;
+      [['berangkat', '#2563eb', 0], ['pulang', '#9333ea', 1]].forEach(([dir, c, o]) => {
+        if(!d[dir]) return;
+        const hh = d[dir] / mxD * (Hh - 30);
+        svg += `<rect x="${x + bw * (.12 + o * .38)}" y="${Hh - 18 - hh}" width="${bw * .36}" height="${hh}" rx="2" fill="${c}"><title>${niceDay(d.ms)} ${dir}: ${Math.round(d[dir])} mnt</title></rect>`;
+      });
+      svg += `<text x="${x + bw / 2}" y="${Hh - 4}" text-anchor="middle">${new Date(d.ms).getDate()}</text>`;
+    });
+    svg += `</svg>`;
+    h += `<div class="panel"><div class="panel-head"><h2>⏳ Durasi per hari</h2><div class="row"><span class="legend"><i style="background:#2563eb"></i>Berangkat</span><span class="legend"><i style="background:#9333ea"></i>Pulang</span></div></div><div class="panel-body">${svg}</div></div>`;
+
+    // direction-specific analysis
+    const dirList = KDIR === 'berangkat' ? go : back;
+    h += `<div class="row" style="margin:4px 0 12px"><div class="seg"><button class="${KDIR === 'berangkat' ? 'active' : ''}" data-kd="berangkat">→ Berangkat</button><button class="${KDIR === 'pulang' ? 'active' : ''}" data-kd="pulang">← Pulang</button></div><span class="faint">analisis di bawah buat arah ini</span></div>`;
+
+    const slotAvg = {};
+    dirList.forEach(a => { const s = Math.floor(minOfDay(msOf(a)) / 30); const o = slotAvg[s] || (slotAvg[s] = { n: 0, t: 0 }); o.n++; o.t += a.elapsed_s; });
+    Object.values(slotAvg).forEach(o => { o.avg = o.t / o.n; });
+
+    // why slow
+    const medE = median(dirList.map(a => a.elapsed_s));
+    const slow = dirList.filter(a => a.elapsed_s > medE * 1.15 && a.elapsed_s - medE >= 240).sort((a, b) => b.elapsed_s - a.elapsed_s);
+    h += `<div class="panel"><div class="panel-head"><h2>🤔 Kenapa ${KDIR === 'pulang' ? 'pulang' : 'berangkat'} lambat?</h2><span class="faint">normalnya ± ${durM(medE)}</span></div><div class="panel-body">`;
+    if(dirList.length < 3) h += `<div class="muted">Butuh minimal 3 perjalanan ${KDIR} buat bandingin.</div>`;
+    else if(!slow.length) h += `<div class="muted">👍 Gak ada perjalanan ${KDIR} yang jauh lebih lama dari biasanya bulan ini.</div>`;
+    else slow.slice(0, 6).forEach(a => {
+      h += `<div style="padding:10px 0;border-bottom:1px dashed var(--border)"><div class="row" style="justify-content:space-between"><b style="font-size:13px;cursor:pointer" data-open="${a.id}">${niceDay(msOf(a))} · ${hhmm(minOfDay(msOf(a)))}</b><span class="pill bad">${durM(a.elapsed_s)} (+${durM(a.elapsed_s - medE)})</span></div>
+        <ul class="tips" style="margin-top:4px">${explainSlow(a, dirList, slotAvg).map(w => `<li style="padding:4px 0;border:none">${w}</li>`).join('')}</ul></div>`;
+    });
+    if(KDIR === 'pulang' && back.length){
+      const lateLeave = back.filter(a => minOfDay(msOf(a)) > we + 30);
+      if(lateLeave.length) h += `<div class="muted" style="margin-top:10px">🏢 ${lateLeave.length}× lo baru keluar kantor lebih dari 30 menit setelah jam pulang (${hhmm(we)}) — sampai rumah telat karena berangkatnya telat, bukan jalannya.</div>`;
+    }
+    h += `</div></div>`;
+
+    // departure slots
+    const slots = Object.entries(slotAvg).sort((a, b) => a[0] - b[0]);
+    if(slots.length >= 2){
+      const mx = Math.max(...slots.map(([, o]) => o.avg)), best = slots.filter(([, o]) => o.n >= 2).sort((a, b) => a[1].avg - b[1].avg)[0];
+      h += `<div class="panel"><div class="panel-head"><h2>🕔 Jam jalan vs lama perjalanan</h2>${best ? `<span class="pill good">tercepat: ${hhmm(best[0] * 30)}–${hhmm(best[0] * 30 + 30)}</span>` : ''}</div><div class="panel-body tscroll"><table class="t"><tr><th>Jam jalan</th><th class="n">Trip</th><th class="n">Rata2</th><th style="width:45%"></th></tr>`;
+      slots.forEach(([s, o]) => { h += `<tr><td class="mono">${hhmm(s * 30)}–${hhmm(s * 30 + 30)}</td><td class="n">${o.n}</td><td class="n">${durM(o.avg)}</td><td><div class="minibar"><i style="width:${o.avg / mx * 100}%;background:${o.avg >= mx * .9 ? 'var(--bad)' : 'var(--hl)'}"></i></div></td></tr>`; });
+      h += `</table></div></div>`;
+    }
+
+    // bottlenecks
+    const cl = stopClusters(dirList);
+    h += `<div class="panel"><div class="panel-head"><h2>🚧 Titik hambatan (${KDIR})</h2><span class="faint">tempat lo sering berhenti</span></div><div class="panel-body">`;
+    if(!cl.length) h += `<div class="muted">Belum ada titik berhenti yang berulang. (Butuh rekaman GPS rapat — Strava/GPX, bukan Google Timeline.)</div>`;
+    else {
+      h += `<div class="tscroll"><table class="t"><tr><th>Lokasi</th><th class="n">Kena</th><th class="n">Rata2</th><th class="n">Terlama</th><th class="n">Total</th><th></th></tr>`;
+      cl.slice(0, 10).forEach((c, i) => {
+        h += `<tr><td>${spotName(c, i).startsWith('📌') ? esc(spotName(c, i)) : `<a href="${gmaps(c.lat, c.lng)}" target="_blank" rel="noopener">${spotName(c, i)}</a>`}</td><td class="n">${c.trips.size}/${dirList.length}</td><td class="n">${dur(c.total / c.n)}</td><td class="n">${dur(c.max)}</td><td class="n">${durM(c.total)}</td>
+          <td>${spotName(c, i).startsWith('📌') ? '' : `<button class="btn btn-ghost btn-sm" data-name-spot="${c.lat},${c.lng}">Namai</button>`}</td></tr>`;
+      });
+      h += `</table></div>`;
+    }
+    h += `<div id="kmap" class="map" style="margin-top:12px"></div><div class="faint" style="margin-top:6px">Jalur ${KDIR}: hijau = trip cepat, merah = trip lambat. Lingkaran merah = titik hambatan (makin besar makin lama).</div></div></div>`;
+
+    // checkpoint segments
+    const cps = PLACES.filter(p => p.role === 'titik');
+    h += `<div class="panel"><div class="panel-head"><h2>📌 Speed titik ke titik</h2></div><div class="panel-body" id="seg-body">${cps.length ? '<div class="faint">Ngitung…</div>' : `<div class="muted">Tambahin titik (misal "Lampu merah Pluit", "SPBU", "Flyover") di tab Peta, atau klik "Namai" di titik hambatan — nanti keliatan waktu & speed rata2 tiap ruas: Rumah → titik A → titik B → Kantor.</div>`}</div></div>`;
+
+    $('tab-body').innerHTML = h;
+    wireMonth(); wireOpen();
+    document.querySelectorAll('[data-kd]').forEach(b => b.onclick = () => { KDIR = b.dataset.kd; switchTab('kerja'); });
+    document.querySelectorAll('[data-name-spot]').forEach(b => b.onclick = () => { const [lat, lng] = b.dataset.nameSpot.split(',').map(Number); placeForm({ lat, lng, role: 'titik', radius_m: 120 }, () => switchTab('kerja')); });
+
+    await ensureRoutes(dirList.map(a => a.id));
+    const map = mkMap($('kmap'));
+    const withR = dirList.filter(a => ROUTES[a.id]);
+    const bounds = [];
+    const sorted = withR.slice().sort((a, b) => a.elapsed_s - b.elapsed_s);
+    sorted.forEach((a, i) => {
+      const f = sorted.length > 1 ? i / (sorted.length - 1) : 0;
+      const col = f < .33 ? '#16a34a' : f < .66 ? '#eab308' : '#dc2626';
+      const ll = ROUTES[a.id].map(p => [p[0], p[1]]); bounds.push(...ll);
+      L.polyline(ll, { color: col, weight: 3, opacity: .65 }).bindTooltip(`${niceDay(msOf(a))} · ${durM(a.elapsed_s)}`, { sticky: true }).addTo(map);
+    });
+    cl.slice(0, 10).forEach((c, i) => L.circle([c.lat, c.lng], { radius: 40 + Math.min(160, c.total / 20), color: '#dc2626', weight: 1, fillOpacity: .3 }).bindTooltip(`${spotName(c, i)} · ${c.trips.size}× · total ${durM(c.total)}`).addTo(map));
+    drawPlaces(map);
+    PLACES.forEach(p => bounds.push([p.lat, p.lng]));
+    if(bounds.length) map.fitBounds(L.latLngBounds(bounds), { padding: [20, 20] });
+
+    if(cps.length){
+      const agg = {};
+      withR.forEach(a => {
+        const pas = passages(ROUTES[a.id], PLACES);
+        for(let i = 1; i < pas.length; i++){
+          const k = pas[i-1].p.id + '>' + pas[i].p.id, t = pas[i].t - pas[i-1].t, d = pas[i].d - pas[i-1].d;
+          if(t <= 0) continue;
+          const o = agg[k] || (agg[k] = { name: `${pas[i-1].p.name} → ${pas[i].p.name}`, ts: [], ds: [], order: pas[i-1].t });
+          o.ts.push(t); o.ds.push(d);
+        }
+      });
+      const rows = Object.values(agg).sort((a, b) => a.order - b.order);
+      $('seg-body').innerHTML = rows.length ? `<div class="tscroll"><table class="t"><tr><th>Ruas</th><th class="n">Trip</th><th class="n">Jarak</th><th class="n">Rata2</th><th class="n">Tercepat</th><th class="n">Terlama</th><th class="n">Speed</th></tr>${rows.map(o => `<tr><td>${esc(o.name)}</td><td class="n">${o.ts.length}</td><td class="n">${kmStr(avg(o.ds))} km</td><td class="n">${durM(avg(o.ts))}</td><td class="n">${durM(Math.min(...o.ts))}</td><td class="n">${durM(Math.max(...o.ts))}</td><td class="n">${dec(avg(o.ds) / avg(o.ts) * 3.6)} km/j</td></tr>`).join('')}</table></div>` : `<div class="muted">Belum ada rute ${KDIR} yang lewat titik-titik lo (cek radius titiknya di tab Peta).</div>`;
+    }
+  }
+
+  // ================================================================ PETA
+  async function savePlace(p){
+    const row = { user_id: ME.id, role: p.role, name: p.name, lat: p.lat, lng: p.lng, radius_m: p.radius_m || 150 };
+    let res;
+    const existing = p.id ? PLACES.find(x => x.id === p.id) : (p.role !== 'titik' ? placeRole(p.role) : null);
+    if(existing) res = await supabase.from('jejak_places').update(row).eq('id', existing.id);
+    else res = await supabase.from('jejak_places').insert(row);
+    if(res.error){ toast('Gagal: ' + res.error.message); return false; }
+    await loadPlaces(); toast('Titik tersimpan'); return true;
+  }
+  function placeForm(p, after){
+    const ov = modal(`<h3>${p.id ? 'Edit titik' : 'Tambah titik'}</h3><p class="faint">${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}</p>
+      <label class="f">Jenis</label><select class="in" id="pf-role"><option value="titik">📌 Titik (checkpoint / patokan)</option><option value="rumah">🏠 Rumah</option><option value="kantor">🏢 Kantor</option></select>
+      <label class="f">Nama</label><input class="in" id="pf-name" maxlength="60" placeholder="misal: Lampu merah Grogol" value="${esc(p.name || '')}">
+      <label class="f">Radius (meter) — seberapa dekat dianggap "lewat/sampai"</label><input class="in" id="pf-rad" type="number" min="30" max="2000" value="${p.radius_m || 150}">
+      <div class="gb-actions">${p.id ? '<button class="btn btn-danger btn-sm" data-pdel style="margin-right:auto">Hapus</button>' : ''}<button class="btn btn-ghost btn-sm" data-x>Batal</button><button class="btn btn-hl btn-sm" data-ok>Simpan</button></div>`);
+    ov.querySelector('#pf-role').value = p.role || 'titik';
+    ov.querySelector('#pf-role').onchange = (e) => { const n = ov.querySelector('#pf-name'); if(!n.value || /^(Rumah|Kantor)$/.test(n.value)) n.value = e.target.value === 'rumah' ? 'Rumah' : e.target.value === 'kantor' ? 'Kantor' : ''; if(e.target.value !== 'titik') ov.querySelector('#pf-rad').value = Math.max(200, +ov.querySelector('#pf-rad').value); };
+    ov.querySelector('[data-x]').onclick = () => ov.remove();
+    ov.querySelector('[data-ok]').onclick = async () => {
+      const name = ov.querySelector('#pf-name').value.trim(), role = ov.querySelector('#pf-role').value;
+      const radius_m = Math.max(30, Math.min(2000, Math.round(+ov.querySelector('#pf-rad').value || 150)));
+      if(!name){ toast('Isi namanya dulu'); return; }
+      if(await savePlace({ ...p, name, role, radius_m })){ ov.remove(); after && after(); }
+    };
+    const del = ov.querySelector('[data-pdel]');
+    if(del) del.onclick = async () => {
+      const { error } = await supabase.from('jejak_places').delete().eq('id', p.id);
+      if(error){ toast('Gagal: ' + error.message); return; }
+      await loadPlaces(); ov.remove(); after && after();
+    };
+  }
+  async function renderPeta(){
+    const list = monthActs();
+    const shown = JSON.parse(lsGet('jejak_map_kinds') || 'null') || KIND_ORDER;
+    let h = monthBar() + `<div class="row" style="margin-bottom:10px">${KIND_ORDER.filter(k => list.some(a => a.kind === k)).map(k => `<label class="legend" style="cursor:pointer"><input type="checkbox" data-mk="${k}" ${shown.includes(k) ? 'checked' : ''}> <i style="background:${KINDS[k].col}"></i>${KINDS[k].label}</label>`).join('')}</div>`;
+    h += `<div class="panel"><div class="panel-body"><div id="pmap" class="map tall"></div><div class="faint" style="margin-top:6px">Klik di mana aja di peta buat nambah titik (Rumah, Kantor, lampu merah, SPBU…).</div></div></div>`;
+    h += `<div class="panel"><div class="panel-head"><h2>📌 Titik gw</h2><span class="faint">${PLACES.length} titik</span></div>`;
+    h += PLACES.length ? PLACES.map(p => `<div class="act" data-pedit="${p.id}"><div class="ic" style="background:var(--surface-muted)">${p.role === 'rumah' ? '🏠' : p.role === 'kantor' ? '🏢' : '📌'}</div><div class="main"><div class="ttl">${esc(p.name)}</div><div class="meta">${p.lat.toFixed(5)}, ${p.lng.toFixed(5)} · radius ${p.radius_m} m</div></div><div class="num">edit ›</div></div>`).join('') : `<div class="empty-hint">Belum ada titik.</div>`;
+    h += `</div>`;
+    $('tab-body').innerHTML = h;
+    wireMonth();
+    document.querySelectorAll('[data-mk]').forEach(cb => cb.onchange = () => {
+      lsSet('jejak_map_kinds', JSON.stringify(Array.from(document.querySelectorAll('[data-mk]:checked')).map(x => x.dataset.mk).concat(KIND_ORDER.filter(k => !document.querySelector(`[data-mk="${k}"]`)))));
+      switchTab('peta');
+    });
+    document.querySelectorAll('[data-pedit]').forEach(el => el.onclick = () => placeForm(PLACES.find(p => p.id === el.dataset.pedit), () => switchTab('peta')));
+
+    const vis = list.filter(a => shown.includes(a.kind));
+    await ensureRoutes(vis.map(a => a.id));
+    const map = mkMap($('pmap'));
+    const bounds = [];
+    vis.forEach(a => {
+      const r = ROUTES[a.id]; if(!r) return;
+      const ll = r.map(p => [p[0], p[1]]); bounds.push(...ll);
+      L.polyline(ll, { color: KINDS[a.kind].col, weight: 3, opacity: .55 })
+        .bindTooltip(`${KINDS[a.kind].ic} ${niceDay(msOf(a))} ${hhmm(minOfDay(msOf(a)))} · ${kmStr(a.distance_m)} km`, { sticky: true })
+        .on('click', (e) => { L.DomEvent.stopPropagation(e); DETAIL = a.id; switchTab('riwayat'); window.scrollTo(0, 0); }).addTo(map);
+    });
+    drawPlaces(map);
+    PLACES.forEach(p => bounds.push([p.lat, p.lng]));
+    if(bounds.length) map.fitBounds(L.latLngBounds(bounds), { padding: [20, 20] });
+    else map.setView([-6.2, 106.82], 11);
+    map.on('click', (e) => placeForm({ lat: e.latlng.lat, lng: e.latlng.lng, role: 'titik', radius_m: 150 }, () => switchTab('peta')));
+  }
+
+  // ================================================================ DATA (import + settings)
+  function renderData(){
+    const since = new Date(); since.setMonth(since.getMonth() - 1, 1);
+    let h = `<div class="panel"><div class="panel-head"><h2>📥 Import data</h2></div><div class="panel-body">
+      <div id="drop" class="drop"><b>Drop file di sini</b> atau klik buat pilih<br><span class="faint">.zip (export Strava) · .gpx · .tcx · .fit · .fit.gz · .csv (Mi Fitness / Zepp Life / Strava) · .json (Google Maps Timeline)</span></div>
+      <input type="file" id="file" multiple accept=".zip,.gpx,.tcx,.fit,.gz,.csv,.json" style="display:none">
+      <div class="row" style="margin-top:10px"><label class="faint" for="since">Ambil aktivitas sejak</label><input class="in" type="date" id="since" style="width:auto" value="${ymd(since)}"></div>
+      <div id="imp-status" class="muted" style="margin-top:10px"></div>
+      <div id="imp-preview"></div>
+    </div></div>`;
+
+    h += `<div class="panel"><div class="panel-head"><h2>❓ Cara ambil datanya</h2></div><div class="panel-body">
+      <details class="guide" open><summary>🟧 Strava — paling lengkap (ada rute GPS)</summary><ol>
+        <li><b>Semua sekaligus:</b> buka strava.com di browser (bukan app) → foto profil → <b>Settings → My Account → Download or Delete Your Account → Get Started → Request Your Archive</b>.</li>
+        <li>Link zip dikirim ke email (bisa beberapa jam). Upload zip-nya langsung ke sini, gak usah di-extract.</li>
+        <li><b>Satu-satu (lebih cepat):</b> buka aktivitas di strava.com → tombol <b>⋯</b> → <b>Export GPX</b> (atau Export Original). Upload file-nya.</li>
+        <li>Naik motor: rekam di Strava sebagai <b>Ride</b> (set <i>Only You</i> biar gak muncul di feed) — Jejak otomatis kenalin itu motor dari speed-nya.</li>
+      </ol></details>
+      <details class="guide"><summary>⌚ Mi Band (Mi Fitness / Zepp Life)</summary><ol>
+        <li><b>Cara terbaik:</b> sambungin ke Strava — Mi Fitness: <b>Profil → Third-party data → Strava</b>; Zepp Life: <b>Profil → Tambah akun → Strava</b>. Semua olahraga Mi Band otomatis masuk Strava lengkap sama rutenya, terus ambil dari Strava.</li>
+        <li><b>Export langsung:</b> Mi Fitness → Profil → Settings → <b>Privacy / Manage your data → Export data</b>. File zip-nya dipassword (password dikirim ke email) — extract pakai 7-Zip, upload file CSV yang namanya ada <b>sport</b>-nya.</li>
+        <li>Zepp Life: minta export di <b>user.huami.com</b> → Export data → upload <b>SPORT.csv</b>.</li>
+        <li>Catatan: export Mi Band cuma ringkasan (jarak, durasi, kalori, detak) — <b>gak ada rute</b>, jadi peta & titik macet gak keisi.</li>
+      </ol></details>
+      <details class="guide"><summary>🗺️ Google Maps Timeline — rekam motor otomatis tanpa buka app</summary><ol>
+        <li>Nyalain di Google Maps → foto profil → <b>Your Timeline</b> (Location History ON). Tiap perjalanan kerekam sendiri.</li>
+        <li>Export: HP Android → <b>Settings → Location → Location services → Timeline → Export Timeline data</b>. Upload file .json-nya.</li>
+        <li>Titiknya jarang (per beberapa menit), jadi jarak & durasi akurat tapi titik berhenti / per-km gak kebaca. Buat analisis macet tetap pakai Strava.</li>
+      </ol></details>
+      <details class="guide"><summary>💡 Saran biar datanya enak dianalisis</summary><ul>
+        <li>Rekam <b>tiap</b> berangkat & pulang kerja, start pas keluar pintu, stop pas sampai — jangan pakai auto-pause (biar waktu macet ikut kehitung).</li>
+        <li>Kalau ada kejadian (hujan, mampir, ban bocor) tulis di catatan aktivitas — muncul di analisis "kenapa lambat".</li>
+        <li>Upload seminggu sekali; data yang sama gak bakal dobel.</li>
+      </ul></details>
+    </div></div>`;
+
+    h += `<div class="panel"><div class="panel-head"><h2>✍️ Tambah manual</h2></div><div class="panel-body"><div class="grid2">
+      <div><label class="f">Jenis</label><select class="in" id="m-kind">${KIND_ORDER.map(k => `<option value="${k}">${KINDS[k].ic} ${KINDS[k].label}</option>`).join('')}</select></div>
+      <div><label class="f">Tanggal</label><input class="in" type="date" id="m-date" value="${ymd(new Date())}"></div>
+      <div><label class="f">Jam mulai</label><input class="in" type="time" id="m-time" value="07:00"></div>
+      <div><label class="f">Durasi (menit)</label><input class="in" type="number" id="m-dur" min="1" placeholder="30"></div>
+      <div><label class="f">Jarak (km)</label><input class="in" type="number" id="m-km" min="0" step="0.01" placeholder="5"></div>
+      <div><label class="f">Perjalanan kerja?</label><select class="in" id="m-comm"><option value="">Bukan</option><option value="berangkat">Berangkat</option><option value="pulang">Pulang</option></select></div>
+    </div><label class="f">Judul / catatan</label><input class="in" id="m-title" maxlength="200" placeholder="opsional">
+    <div style="margin-top:12px;text-align:right"><button class="btn btn-hl btn-sm" id="m-save">Tambah</button></div></div></div>`;
+
+    const s = S();
+    h += `<div class="panel"><div class="panel-head"><h2>⚙️ Setelan</h2></div><div class="panel-body"><div class="grid2">
+      <div><label class="f">Jam masuk kerja</label><input class="in" type="time" id="s-ws" value="${String(s.work_start).slice(0,5)}"></div>
+      <div><label class="f">Jam pulang kerja</label><input class="in" type="time" id="s-we" value="${String(s.work_end).slice(0,5)}"></div>
+      <div><label class="f">Motor irit (km/liter)</label><input class="in" type="number" id="s-kmpl" min="1" step="0.5" value="${s.fuel_kmpl}"></div>
+      <div><label class="f">Harga bensin / liter</label><input class="in" type="number" id="s-price" min="0" step="100" value="${s.fuel_price}"></div>
+      <div><label class="f">Target lari per bulan (km, 0 = gak ada)</label><input class="in" type="number" id="s-run" min="0" step="1" value="${s.run_target_km}"></div>
+    </div><div style="margin-top:12px;text-align:right"><button class="btn btn-hl btn-sm" id="s-save">Simpan setelan</button></div>
+    <div class="faint" style="margin-top:10px">Total tersimpan: ${ACTS.length} aktivitas · ${PLACES.length} titik.</div></div></div>`;
+    $('tab-body').innerHTML = h;
+
+    const drop = $('drop'), inp = $('file');
+    drop.onclick = () => inp.click();
+    drop.ondragover = (e) => { e.preventDefault(); drop.classList.add('over'); };
+    drop.ondragleave = () => drop.classList.remove('over');
+    drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove('over'); runImport(Array.from(e.dataTransfer.files)); };
+    inp.onchange = () => { runImport(Array.from(inp.files)); inp.value = ''; };
+
+    $('m-save').onclick = async (ev) => {
+      const d = $('m-date').value, t = $('m-time').value, mins = +$('m-dur').value, km = +$('m-km').value || 0;
+      if(!d || !t || !(mins > 0)){ toast('Isi tanggal, jam & durasi'); return; }
+      const startMs = new Date(d + 'T' + t).getTime();
+      const it = mkItem({ source:'manual', kind: $('m-kind').value, title: $('m-title').value.trim(), startMs, elapsed_s: mins * 60, moving_s: mins * 60, distance_m: km * 1000 });
+      it.dedupe_key = 'm:' + Math.floor(startMs / 60000);
+      delete it._ms;
+      ev.target.disabled = true;
+      const { data, error } = await supabase.from('jejak_activities').insert({ ...it, user_id: ME.id, commute: $('m-comm').value || null }).select(ACT_COLS).single();
+      ev.target.disabled = false;
+      if(error){ toast('Gagal: ' + (/duplicate/.test(error.message) ? 'udah ada aktivitas di jam itu' : error.message)); return; }
+      ACTS.unshift(data); ACTS.sort((a, b) => msOf(b) - msOf(a)); toast('Ditambahkan');
+      $('m-dur').value = ''; $('m-km').value = ''; $('m-title').value = '';
+    };
+    $('s-save').onclick = async (ev) => {
+      const row = { user_id: ME.id, work_start: $('s-ws').value || '08:00', work_end: $('s-we').value || '17:00',
+        fuel_kmpl: Math.max(1, +$('s-kmpl').value || 40), fuel_price: Math.max(0, Math.round(+$('s-price').value || 0)),
+        run_target_km: Math.max(0, +$('s-run').value || 0), updated_at: new Date().toISOString() };
+      ev.target.disabled = true;
+      const { data, error } = await supabase.from('jejak_settings').upsert(row).select().single();
+      ev.target.disabled = false;
+      if(error){ toast('Gagal: ' + error.message); return; }
+      SET = data; toast('Setelan tersimpan');
+    };
+  }
+
+  async function runImport(files){
+    if(!files.length) return;
+    const sinceMs = new Date(($('since').value || '2000-01-01') + 'T00:00:00').getTime();
+    const st = $('imp-status');
+    st.textContent = 'Membaca file…'; $('imp-preview').innerHTML = '';
+    let res;
+    try{ res = await processFiles(files, sinceMs, (t) => { st.textContent = 'Memproses ' + t + '…'; }); }
+    catch(e){ st.textContent = 'Gagal: ' + e.message; return; }
+    // match against what's already stored
+    const existing = ACTS.map(a => ({ a, ms: msOf(a) }));
+    PENDING = res.items.map(it => {
+      const m = existing.find(x => Math.abs(x.ms - it._ms) < DUP_WINDOW_MS);
+      let status = 'baru', on = it.kind !== 'lainnya' || it.source !== 'google';
+      if(m){
+        // stored summary-only rows (Mi Band CSV) have no coordinates; a GPS file can fill them in
+        if(it.route && m.a.start_lat == null){ status = 'lengkapi'; }
+        else { status = 'ada'; on = false; }
+      }
+      return { it, status, on, matchId: m ? m.a.id : null };
+    }).sort((a, b) => b.it._ms - a.it._ms);
+    st.innerHTML = `Ketemu <b>${PENDING.length}</b> aktivitas sejak ${esc($('since').value)}` +
+      (res.errors.length ? ` · <span style="color:var(--danger)">${res.errors.length} file gagal</span> <details style="display:inline"><summary class="faint" style="display:inline;cursor:pointer">lihat</summary><div class="faint">${res.errors.slice(0, 30).map(esc).join('<br>')}</div></details>` : '');
+    if(!PENDING.length){ $('imp-preview').innerHTML = `<div class="muted" style="margin-top:8px">Gak ada aktivitas di rentang tanggal itu. Coba mundurin tanggal "sejak".</div>`; return; }
+    renderPreview();
+  }
+  function renderPreview(){
+    const n = PENDING.filter(p => p.on).length;
+    let h = `<div class="tscroll" style="margin-top:10px;max-height:420px;overflow:auto"><table class="t"><tr><th><input type="checkbox" id="pv-all" ${n === PENDING.length ? 'checked' : ''}></th><th>Waktu</th><th>Jenis</th><th class="n">Km</th><th class="n">Durasi</th><th class="n">Speed</th><th>Sumber</th><th>Status</th></tr>`;
+    PENDING.forEach((p, i) => {
+      const it = p.it;
+      h += `<tr><td><input type="checkbox" data-pv="${i}" ${p.on ? 'checked' : ''}></td><td class="mono" style="white-space:nowrap">${niceDay(it._ms)} ${hhmm(minOfDay(it._ms))}</td>
+        <td><select class="in sm" data-pk="${i}">${KIND_ORDER.map(k => `<option value="${k}" ${it.kind === k ? 'selected' : ''}>${KINDS[k].ic} ${KINDS[k].label}</option>`).join('')}</select></td>
+        <td class="n">${kmStr(it.distance_m)}</td><td class="n">${durM(it.elapsed_s)}</td><td class="n">${speedLabel(it)}</td>
+        <td class="faint">${esc(it.source)}${it.source_type ? ' · ' + esc(it.source_type) : ''}${it.route ? ' · 🗺️' : ''}</td>
+        <td>${p.status === 'baru' ? '<span class="pill good">baru</span>' : p.status === 'lengkapi' ? '<span class="pill mid">lengkapi rute</span>' : '<span class="pill none">sudah ada</span>'}</td></tr>`;
+    });
+    h += `</table></div><div class="row" style="margin-top:12px;justify-content:space-between"><span class="faint">Cek jenisnya — motor/lari ditebak dari speed.</span><button class="btn btn-hl" id="pv-save" ${n ? '' : 'disabled'}>Simpan ${n} aktivitas</button></div>`;
+    $('imp-preview').innerHTML = h;
+    document.querySelectorAll('[data-pv]').forEach(cb => cb.onchange = () => { PENDING[+cb.dataset.pv].on = cb.checked; renderPreview(); });
+    document.querySelectorAll('[data-pk]').forEach(s => s.onchange = () => { PENDING[+s.dataset.pk].it.kind = s.value; });
+    $('pv-all').onchange = (e) => { PENDING.forEach(p => { p.on = e.target.checked; }); renderPreview(); };
+    $('pv-save').onclick = saveImport;
+  }
+  async function saveImport(){
+    const btn = $('pv-save'); btn.disabled = true;
+    const chosen = PENDING.filter(p => p.on);
+    const strip = (it) => { const o = { ...it, user_id: ME.id }; delete o._ms; return o; };
+    let ok = 0, fail = [];
+    const fresh = chosen.filter(p => p.status !== 'lengkapi').map(p => strip(p.it));
+    for(let i = 0; i < fresh.length; i += 25){
+      btn.textContent = `Menyimpan ${Math.min(i + 25, fresh.length)}/${fresh.length}…`;
+      const { error } = await supabase.from('jejak_activities').upsert(fresh.slice(i, i + 25), { onConflict: 'user_id,dedupe_key' });
+      if(error) fail.push(error.message); else ok += Math.min(25, fresh.length - i);
+    }
+    for(const p of chosen.filter(p => p.status === 'lengkapi')){
+      const o = strip(p.it); delete o.dedupe_key; delete o.user_id; o.updated_at = new Date().toISOString();
+      const { error } = await supabase.from('jejak_activities').update(o).eq('id', p.matchId);
+      if(error) fail.push(error.message); else { ok++; delete ROUTES[p.matchId]; }
+    }
+    await loadActs();
+    PENDING = [];
+    $('imp-preview').innerHTML = '';
+    $('imp-status').innerHTML = `✅ ${ok} aktivitas tersimpan.` + (fail.length ? ` <span style="color:var(--danger)">Gagal: ${esc(fail[0])}</span>` : '') + ` <a href="#" data-goto="ringkasan">Lihat ringkasan →</a>`;
+    wireGoto();
+    const latest = ACTS[0];
+    if(latest){ const d = new Date(msOf(latest)); MONTH = { y: d.getFullYear(), m: d.getMonth() }; }
+  }
+
+  // ================================================================ BOOT
+  async function boot(){
+    $('app-root').innerHTML = `<div class="empty-hint" style="padding-top:60px;">Narik jejak lo…</div>`;
+    try{
+      const [{ data: set, error }] = await Promise.all([
+        supabase.from('jejak_settings').select('*').eq('user_id', ME.id).maybeSingle(),
+        loadActs(), loadPlaces(),
+      ]);
+      if(error) throw error;
+      SET = set || null;
+    }catch(e){
+      $('app-root').innerHTML = `<div class="empty-hint" style="padding-top:60px;">Gagal narik data: ${esc(e.message || e)}<br><br><a href="#" onclick="location.reload();return false;">Coba lagi</a></div>`;
+      return;
+    }
+    const now = new Date();
+    MONTH = { y: now.getFullYear(), m: now.getMonth() };
+    const h = (location.hash || '').slice(1);
+    switchTab(TABS.some(t => t[0] === h) ? h : (ACTS.length ? 'ringkasan' : 'data'));
+  }
+
+  document.addEventListener('DOMContentLoaded', async () => {
+    const authCtx = await requireAuth('index.html');
+    if(!authCtx) return;
+    ME = authCtx.user;
+    await boot();
+  });
+})();
+</script>
+</body>
+</html>
