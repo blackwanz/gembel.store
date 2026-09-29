@@ -72,34 +72,119 @@
         let IS_GUEST = false;
         const K_HISTORY = () => `cyber_${UID}_history`;
         const K_STATE   = () => `cyber_${UID}_state`;
+        const K_STAMP   = () => `cyber_${UID}_stamp`;   // ms of the last REAL state change (start/switch/stop)
+        const K_DELETED = () => `cyber_${UID}_deleted`; // ids of sessions deleted by the user (tombstones)
+
+        // One shared history for every device. Both directions MERGE instead of overwrite:
+        // the old loadCloud() replaced local history with the cloud row and saveCloud() blindly
+        // upserted local data, so the first device to sync after 0042_progbar_table.sql (or any
+        // tab left open with stale data) wiped every other device's sessions.
+        //   - history: union by session id, minus tombstoned ids
+        //   - running session: whichever side changed it last (updatedAt stamp) wins; heartbeat
+        //     ticks don't bump the stamp, so an idle/stale device can't stomp a newer state
+        // Stamp + tombstones ride inside current_state ({active:false, ...} when idle), so no
+        // schema change is needed and old clients still read it as "no active session".
+        function readJSON(key, fallback) {
+            try { const v = JSON.parse(localStorage.getItem(key)); return v == null ? fallback : v; }
+            catch (e) { return fallback; }
+        }
+
+        function touchState() { localStorage.setItem(K_STAMP(), String(Date.now())); }
+
+        function sessionSeconds(item) {
+            return (item.segments || []).reduce((acc, s) => acc + (Number(s.duration) || 0), 0);
+        }
+
+        function mergeWithCloud(row) {
+            const meta = (row && row.current_state) || null;
+            const deleted = [...new Set([...readJSON(K_DELETED(), []), ...((meta && meta.deletedIds) || [])])];
+            const gone = new Set(deleted);
+
+            const byId = {};
+            [...((row && row.history) || []), ...readJSON(K_HISTORY(), [])].forEach(it => {
+                if (!it || !it.id || gone.has(it.id)) return;
+                const prev = byId[it.id];
+                if (!prev || sessionSeconds(it) > sessionSeconds(prev)) byId[it.id] = it;
+            });
+            const history = Object.values(byId).sort((a, b) => sessionSortKey(b) - sessionSortKey(a));
+
+            const localStamp = Number(localStorage.getItem(K_STAMP())) || 0;
+            const cloudStamp = (meta && Number(meta.updatedAt)) || 0;
+            let runState, stamp, fromCloud;
+            if (localStamp > 0 && localStamp >= cloudStamp) {
+                runState = readJSON(K_STATE(), null); stamp = localStamp; fromCloud = false;
+            } else {
+                runState = null;
+                if (meta && meta.active) {
+                    runState = { ...meta };
+                    delete runState.updatedAt;
+                    delete runState.deletedIds;
+                }
+                stamp = cloudStamp; fromCloud = true;
+            }
+
+            const prevHistory = localStorage.getItem(K_HISTORY()) || '[]';
+            localStorage.setItem(K_HISTORY(), JSON.stringify(history));
+            localStorage.setItem(K_DELETED(), JSON.stringify(deleted));
+            if (stamp) localStorage.setItem(K_STAMP(), String(stamp));
+            if (fromCloud) {
+                if (runState) localStorage.setItem(K_STATE(), JSON.stringify(runState));
+                else localStorage.removeItem(K_STATE());
+            }
+
+            const cloudHistory = JSON.stringify((row && row.history) || []);
+            return {
+                history, deleted, runState, stamp,
+                historyChanged: JSON.stringify(history) !== prevHistory,
+                stateAdopted: fromCloud && stamp !== localStamp,
+                cloudBehind: !row || JSON.stringify(history) !== cloudHistory
+                    || deleted.length !== ((meta && meta.deletedIds) || []).length || stamp !== cloudStamp,
+            };
+        }
+
+        async function pushMerged(m) {
+            const { error } = await supabase.from('user_progbar_data').upsert({
+                user_id: UID,
+                history: m.history,
+                current_state: {
+                    ...(m.runState && m.runState.active ? m.runState : { active: false }),
+                    updatedAt: m.stamp,
+                    deletedIds: m.deleted,
+                },
+            });
+            if (error) throw error;
+        }
+
+        // Fetch -> merge -> (optionally) push. Never pushes if the fetch failed, so a device that
+        // can't see the cloud can't overwrite it. Returns the merge result, or null when skipped.
+        let syncChain = Promise.resolve();
+        function syncCloud(forcePush) {
+            if (IS_GUEST) return Promise.resolve(null); // guest mode: local-only, never synced
+            const run = async () => {
+                try {
+                    const { data, error } = await supabase.from('user_progbar_data')
+                        .select('history, current_state').eq('user_id', UID).maybeSingle();
+                    if (error) throw error;
+                    const m = mergeWithCloud(data);
+                    if (forcePush || m.cloudBehind) await pushMerged(m);
+                    // Another device started/switched/stopped more recently -> mirror it here.
+                    if (m.stateAdopted) applyLocalStateToUI();
+                    if (m.stateAdopted || m.historyChanged) renderReports();
+                    return m;
+                } catch (e) { console.warn('Cloud sync skip (pakai data lokal):', e.message); return null; }
+            };
+            syncChain = syncChain.then(run, run);
+            return syncChain;
+        }
 
         let cloudTimer = null;
         function saveCloud() {
-            if (IS_GUEST) return; // guest mode: local-only, never synced
+            if (IS_GUEST) return;
             clearTimeout(cloudTimer);
-            cloudTimer = setTimeout(async () => {
-                try {
-                    await supabase.from('user_progbar_data').upsert({
-                        user_id: UID,
-                        history: JSON.parse(localStorage.getItem(K_HISTORY()) || '[]'),
-                        current_state: JSON.parse(localStorage.getItem(K_STATE()) || 'null'),
-                    });
-                } catch (e) { console.warn('Cloud sync skip:', e.message); }
-            }, 2500);
+            cloudTimer = setTimeout(() => syncCloud(true), 2500);
         }
 
-        async function loadCloud() {
-            if (IS_GUEST) return; // guest mode: nothing to pull from Supabase
-            try {
-                const { data } = await supabase.from('user_progbar_data')
-                    .select('*').eq('user_id', UID).maybeSingle();
-                if (data) {
-                    localStorage.setItem(K_HISTORY(), JSON.stringify(data.history || []));
-                    if (data.current_state) localStorage.setItem(K_STATE(), JSON.stringify(data.current_state));
-                    else localStorage.removeItem(K_STATE());
-                }
-            } catch (e) { console.warn('Cloud load skip (pakai data lokal):', e.message); }
-        }
+        function loadCloud() { return syncCloud(false); }
 
         // ===== EXPORT / IMPORT JSON (konsep sama kayak kalender) =====
         function exportHistoryJSON() {
@@ -318,6 +403,7 @@
             overlayText.innerText = `PROCESSING SESSION: ${color.toUpperCase()} // SYSTEM ENGAGED`;
 
             localStorage.setItem(K_STATE(), JSON.stringify(state));
+            touchState();
             saveCloud();
 
             renderActiveProgressBar();
@@ -340,7 +426,10 @@
 
             syncWithSystemTime(); // sinkronisasi & cap terakhir sebelum ditutup
 
-            const history = JSON.parse(localStorage.getItem(K_HISTORY())) || [];
+            // id from the session's start (not "now"): if two open devices both auto-stop the same
+            // session at the target time, they produce the same id and the merge keeps one copy.
+            const sessionId = 'session-' + state.startTime.getTime();
+            const history = (JSON.parse(localStorage.getItem(K_HISTORY())) || []).filter(h => h.id !== sessionId);
 
             // Bulatkan durasi tiap segmen HANYA saat finalisasi (bukan tiap tick)
             const finalSegments = state.segments
@@ -352,7 +441,7 @@
             const endMoment = new Date(Math.min(Date.now(), state.targetTime.getTime()));
 
             history.unshift({
-                id: 'session-' + Date.now(),
+                id: sessionId,
                 date: formatDate(state.startTime),
                 startTime: state.startTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
                 endTime: endMoment.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
@@ -363,6 +452,7 @@
 
             localStorage.setItem(K_HISTORY(), JSON.stringify(history));
             localStorage.removeItem(K_STATE());
+            touchState();
             saveCloud();
             console.log("SYSTEM // Session stopped. Active state cleared.");
 
@@ -390,6 +480,9 @@
             let history = JSON.parse(localStorage.getItem(K_HISTORY())) || [];
             history = history.filter(item => item.id !== id);
             localStorage.setItem(K_HISTORY(), JSON.stringify(history));
+            // tombstone, so the merge doesn't bring it back from another device's copy
+            const deleted = readJSON(K_DELETED(), []);
+            if (!deleted.includes(id)) localStorage.setItem(K_DELETED(), JSON.stringify([...deleted, id]));
             saveCloud();
             renderReports();
         }
@@ -513,11 +606,10 @@
             if (!IS_GUEST) {
                 supabase
                     .channel('progbar_own_sync_' + UID)
-                    .on('postgres_changes', { event: '*', schema: 'public', table: 'user_progbar_data', filter: `user_id=eq.${UID}` }, async () => {
-                        if (state.active) return; // this device is the live one -- don't self-clobber
-                        await loadCloud();
-                        applyLocalStateToUI();
-                        renderReports();
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'user_progbar_data', filter: `user_id=eq.${UID}` }, () => {
+                        // merge handles "who's newer" (see syncCloud) and only touches this
+                        // device's running session when another device changed it more recently
+                        loadCloud();
                     })
                     .subscribe();
             }
