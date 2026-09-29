@@ -14,7 +14,7 @@ window.SITE_CONFIG = {
 
   // Elite price per month, used by the month picker in assets/payment-saweria.js (member can pay
   // for several months at once). Must match public.elite_price_per_month() in
-  // db/migrations/0047_payment_months_and_prize_income.sql -- the DB uses it to cap how many
+  // db/migrations/0048_elite_price_fix_and_expiry.sql -- the DB uses it to cap how many
   // months a confirmed payment is actually worth.
-  elitePricePerMonth: 29999,
+  elitePricePerMonth: 19999,
 };

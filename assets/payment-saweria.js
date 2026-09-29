@@ -37,7 +37,7 @@
   // insert in Part 1 (amount = price x months, plus a `months` column). The DB caps `months` at
   // what the amount actually covers (db/migrations/0047_payment_months_and_prize_income.sql), so
   // this is UX, not a trust boundary.
-  const PRICE_PER_MONTH = Number(window.SITE_CONFIG && window.SITE_CONFIG.elitePricePerMonth) || 29999;
+  const PRICE_PER_MONTH = Number(window.SITE_CONFIG && window.SITE_CONFIG.elitePricePerMonth) || 19999;
   const MONTH_CHOICES = [1, 3, 6, 12, 24];
   const MAX_MONTHS = 120;
   let selectedMonths = 1;
