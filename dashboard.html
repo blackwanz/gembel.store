@@ -111,6 +111,42 @@
 .lb-points small { color: var(--text-faint); }
 .lb-empty { padding: 22px 20px; color: var(--text-faint); text-align: center; }
 
+/* ---- App tiles: per-member pin / rename / category ---- */
+.apps-sub-label { font-size: 12px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; letter-spacing: .05em; margin: 4px 0 10px; }
+#pinned-apps-grid { margin-bottom: 22px; }
+.tool-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.tool-card-actions { display: flex; gap: 4px; }
+.tool-card-btn {
+  width: 32px; height: 32px; border-radius: var(--radius-sm); border: 1px solid transparent; background: transparent;
+  color: var(--text-muted); font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: var(--transition); filter: grayscale(1); opacity: .6;
+}
+.tool-card-btn:hover { background: var(--surface); border-color: var(--border); opacity: 1; filter: none; }
+.tool-card-btn.on { filter: none; opacity: 1; background: var(--surface); border-color: var(--primary-soft-strong); }
+.tool-card .tool-cat { font-size: 11px; font-weight: 600; color: var(--primary-text); margin-bottom: 4px; }
+.tool-card.pinned { border-color: var(--primary); }
+.tool-card.is-hidden { opacity: .6; }
+.tool-card .tool-custom { font-size: 10.5px; color: var(--text-faint); font-weight: 500; margin-left: 4px; }
+.apps-hint { font-size: 12px; color: var(--text-faint); margin-top: 18px; }
+
+.app-edit-overlay {
+  display: none; position: fixed; inset: 0; z-index: 1500; background: rgba(10, 14, 25, .6); backdrop-filter: blur(3px);
+  align-items: center; justify-content: center; padding: 16px;
+}
+.app-edit-overlay.show { display: flex; }
+.app-edit-card {
+  width: 100%; max-width: 460px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: 22px; box-shadow: var(--shadow-soft); max-height: calc(100vh - 32px); overflow-y: auto;
+}
+.app-edit-card h3 { font-size: 17px; color: var(--text-main); margin-bottom: 16px; }
+.app-edit-card textarea {
+  width: 100%; background: var(--surface-muted); border: 1px solid var(--border); color: var(--text-main); padding: 11px 13px;
+  border-radius: var(--radius-sm); font-size: 14px; font-family: inherit; resize: vertical; box-sizing: border-box;
+}
+.app-edit-card textarea:focus { outline: none; border-color: var(--primary); background: var(--surface); }
+.app-edit-default { font-size: 11.5px; color: var(--text-faint); margin-top: 5px; }
+.app-edit-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+
 @media (max-width: 600px) {
   .lb-podium { gap: 8px; }
   .lb-podium-card { padding: 14px 6px; }
@@ -208,10 +244,45 @@
       <input type="text" id="apps-search" class="apps-search-input" placeholder="🔍 Cari app…" oninput="renderBuiltinApps()">
       <div class="filter-row" id="apps-category-filter"></div>
     </div>
+    <!-- Pinned tiles get their own grid above the rest; pins, renames, custom descriptions and
+         categories are per-member overrides from user_app_prefs (0046_user_app_prefs.sql). -->
+    <div id="pinned-apps-block" style="display:none;">
+      <div class="apps-sub-label">📌 Disematkan</div>
+      <div class="apps-grid" id="pinned-apps-grid"></div>
+      <div class="apps-sub-label" id="other-apps-label">Lainnya</div>
+    </div>
     <div class="apps-grid" id="apps-grid">
       <div id="builtin-apps-slot"></div>
     </div>
     <p id="apps-empty" style="display:none;color:var(--text-faint);padding:18px 0;">Gak ada app yang cocok. Coba kata kunci lain.</p>
+    <p class="apps-hint">Tip: klik 📌 buat nyematin app ke atas, atau ⋯ buat ganti nama, deskripsi & kategori versi lo sendiri.</p>
+
+    <div class="app-edit-overlay" id="app-edit-overlay" onclick="if (event.target === this) closeAppEditor()">
+      <form class="app-edit-card" id="app-edit-form" onsubmit="saveAppEditor(event)">
+        <h3 id="app-edit-title">Atur app</h3>
+        <div class="field">
+          <label for="app-edit-name">Nama</label>
+          <input type="text" id="app-edit-name" maxlength="80" required>
+          <div class="app-edit-default" id="app-edit-name-default"></div>
+        </div>
+        <div class="field">
+          <label for="app-edit-desc">Deskripsi versi lo</label>
+          <textarea id="app-edit-desc" maxlength="500" rows="4"></textarea>
+        </div>
+        <div class="field">
+          <label for="app-edit-category">Kategori — pilih, atau ketik nama baru buat bikin kategori sendiri</label>
+          <input type="text" id="app-edit-category" maxlength="40" list="app-edit-category-list" required>
+          <datalist id="app-edit-category-list"></datalist>
+          <div class="app-edit-default" id="app-edit-category-default"></div>
+        </div>
+        <div class="app-edit-actions">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="resetAppEditorFields()">↺ Balikin default</button>
+          <span style="flex:1"></span>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="closeAppEditor()">Batal</button>
+          <button type="submit" class="btn btn-primary btn-sm">Simpan</button>
+        </div>
+      </form>
+    </div>
   </div>
 
   <!-- ===== TAB: PROFIL ===== -->
@@ -781,20 +852,107 @@ async function loadLeaderboard() {
 
 // Renders the first-party app tiles from assets/apps.config.js -- adding or
 // unplugging an app is a one-line edit there, not a dashboard.html change.
+// Each member can layer their own overrides on top (pin, rename, own description, own or
+// brand-new category, hide) -- stored per app in user_app_prefs, keyed by the config `id`.
 let activeAppCategory = 'all';
+const HIDDEN_CAT = '__hidden__';
+let APP_PREFS = {}; // app_id -> user_app_prefs row
 
-// Category chips are derived from whatever's actually in GEMBEL_APPS, so a new category
-// shows up automatically the next time an app is added there -- no second place to edit.
-function renderAppCategoryChips() {
+async function loadAppPrefs() {
+  const { data, error } = await supabase.from('user_app_prefs').select('*').eq('user_id', CURRENT_USER.id);
+  if (error) { console.warn('user_app_prefs:', error.message); return; }
+  APP_PREFS = Object.fromEntries((data || []).map(row => [row.app_id, row]));
+}
+
+// Config entry + the member's overrides, flattened into what the tile actually shows.
+function effectiveApps() {
+  if (!Array.isArray(window.GEMBEL_APPS)) return [];
+  return window.GEMBEL_APPS.filter(a => a.enabled).map(app => {
+    const p = APP_PREFS[app.id] || {};
+    return {
+      ...app,
+      defaultName: app.name,
+      name: p.custom_name || app.name,
+      desc: p.custom_desc ?? app.desc,
+      category: p.custom_category || app.category || 'Lainnya',
+      pinnedAt: p.pinned_at || null,
+      hidden: !!p.hidden,
+      customised: !!(p.custom_name || p.custom_desc != null || p.custom_category),
+    };
+  });
+}
+
+// Upserts one app's overrides; optimistic so pin/hide clicks feel instant, rolled back on error.
+// A row whose every column is back to default is deleted instead of kept around.
+async function saveAppPref(appId, patch) {
+  const prev = APP_PREFS[appId];
+  const row = {
+    pinned_at: null, custom_name: null, custom_desc: null, custom_category: null, hidden: false,
+    ...prev, ...patch, user_id: CURRENT_USER.id, app_id: appId, updated_at: new Date().toISOString(),
+  };
+  const isDefault = !row.pinned_at && !row.custom_name && row.custom_desc == null && !row.custom_category && !row.hidden;
+  if (isDefault) delete APP_PREFS[appId]; else APP_PREFS[appId] = row;
+  renderBuiltinApps();
+
+  const { error } = isDefault
+    ? await supabase.from('user_app_prefs').delete().eq('user_id', CURRENT_USER.id).eq('app_id', appId)
+    : await supabase.from('user_app_prefs').upsert(row);
+  if (error) {
+    if (prev) APP_PREFS[appId] = prev; else delete APP_PREFS[appId];
+    renderBuiltinApps();
+    await gembelAlert('Gagal nyimpen: ' + error.message);
+  }
+}
+
+function toggleAppPin(appId) {
+  saveAppPref(appId, { pinned_at: APP_PREFS[appId]?.pinned_at ? null : new Date().toISOString() });
+}
+
+function toggleAppHidden(appId) {
+  const hide = !APP_PREFS[appId]?.hidden;
+  saveAppPref(appId, hide ? { hidden: true, pinned_at: null } : { hidden: false });
+}
+
+// Category chips are derived from the member's effective categories (config defaults + any they
+// typed themselves), so a new category shows up the moment an app is added or moved into it.
+function renderAppCategoryChips(apps) {
   const chipRow = document.getElementById('apps-category-filter');
-  if (!chipRow || !Array.isArray(window.GEMBEL_APPS)) return;
-  const categories = [...new Set(window.GEMBEL_APPS.filter(a => a.enabled).map(a => a.category || 'Lainnya'))];
-  chipRow.innerHTML = [`<div class="chip-filter${activeAppCategory === 'all' ? ' active' : ''}" data-cat="all">Semua</div>`]
-    .concat(categories.map(cat => `<div class="chip-filter${activeAppCategory === cat ? ' active' : ''}" data-cat="${escapeHtml(cat)}">${escapeHtml(cat)}</div>`))
-    .join('');
+  if (!chipRow) return;
+  const visible = apps.filter(a => !a.hidden);
+  const categories = [...new Set(visible.map(a => a.category))];
+  const hiddenCount = apps.length - visible.length;
+  if (activeAppCategory === HIDDEN_CAT ? !hiddenCount : activeAppCategory !== 'all' && !categories.includes(activeAppCategory)) {
+    activeAppCategory = 'all';
+  }
+
+  const chips = [{ cat: 'all', label: 'Semua' }]
+    .concat(categories.map(cat => ({ cat, label: cat })))
+    .concat(hiddenCount ? [{ cat: HIDDEN_CAT, label: `🙈 Disembunyiin (${hiddenCount})` }] : []);
+  chipRow.innerHTML = chips.map(c =>
+    `<div class="chip-filter${activeAppCategory === c.cat ? ' active' : ''}" data-cat="${escapeHtml(c.cat)}">${escapeHtml(c.label)}</div>`).join('');
   chipRow.querySelectorAll('.chip-filter').forEach(chip => {
     chip.addEventListener('click', () => { activeAppCategory = chip.dataset.cat; renderBuiltinApps(); });
   });
+}
+
+function appTileHTML(app) {
+  const pinned = !!app.pinnedAt;
+  return `
+    <div class="tool-card${pinned ? ' pinned' : ''}${app.hidden ? ' is-hidden' : ''}" data-app-id="${escapeHtml(app.id)}">
+      <div class="tool-card-head">
+        <div class="tool-icon">${app.icon}</div>
+        <div class="tool-card-actions">
+          ${app.hidden ? '' : `<button type="button" class="tool-card-btn${pinned ? ' on' : ''}" data-act="pin" title="${pinned ? 'Lepas pin' : 'Sematkan ke atas'}">📌</button>`}
+          <button type="button" class="tool-card-btn" data-act="menu" title="Opsi">⋯</button>
+        </div>
+      </div>
+      <div>
+        <div class="tool-cat">${escapeHtml(app.category)}</div>
+        <h3 ${app.customised ? `title="Nama asli: ${escapeHtml(app.defaultName)}"` : ''}>${escapeHtml(app.name)}${app.customised ? '<span class="tool-custom">✎</span>' : ''}</h3>
+        <p>${escapeHtml(app.desc)}</p>
+      </div>
+      <a class="btn btn-primary btn-block" href="${app.url}">Buka ${escapeHtml(app.name)} →</a>
+    </div>`;
 }
 
 function renderBuiltinApps() {
@@ -802,29 +960,110 @@ function renderBuiltinApps() {
   const emptyEl = document.getElementById('apps-empty');
   if (!slot || !Array.isArray(window.GEMBEL_APPS)) return;
 
-  if (!document.getElementById('apps-category-filter').childElementCount) renderAppCategoryChips();
+  const apps = effectiveApps();
+  renderAppCategoryChips(apps);
 
   const query = (document.getElementById('apps-search')?.value || '').trim().toLowerCase();
-  const filtered = window.GEMBEL_APPS.filter(app => {
-    if (!app.enabled) return false;
-    if (activeAppCategory !== 'all' && (app.category || 'Lainnya') !== activeAppCategory) return false;
-    if (query && !`${app.name} ${app.desc}`.toLowerCase().includes(query)) return false;
+  const filtered = apps.filter(app => {
+    if (app.hidden !== (activeAppCategory === HIDDEN_CAT)) return false;
+    if (activeAppCategory !== 'all' && activeAppCategory !== HIDDEN_CAT && app.category !== activeAppCategory) return false;
+    // Search the member's own wording AND the original name, so a renamed app is still findable.
+    if (query && !`${app.name} ${app.desc} ${app.category} ${app.defaultName}`.toLowerCase().includes(query)) return false;
     return true;
   });
 
-  if (emptyEl) emptyEl.style.display = filtered.length ? 'none' : 'block';
+  const pinned = filtered.filter(a => a.pinnedAt).sort((a, b) => a.pinnedAt.localeCompare(b.pinnedAt));
+  const rest = filtered.filter(a => !a.pinnedAt);
 
-  slot.innerHTML = filtered.map(app => `
-    <div class="tool-card">
-      <div class="tool-icon">${app.icon}</div>
-      <div>
-        <h3>${escapeHtml(app.name)}</h3>
-        <p>${escapeHtml(app.desc)}</p>
-      </div>
-      <button class="btn btn-primary btn-block" onclick="window.location.href='${app.url}'">Buka ${escapeHtml(app.name)} →</button>
-    </div>
-  `).join('');
+  document.getElementById('pinned-apps-block').style.display = pinned.length ? 'block' : 'none';
+  document.getElementById('other-apps-label').style.display = rest.length ? 'block' : 'none';
+  document.getElementById('pinned-apps-grid').innerHTML = pinned.map(appTileHTML).join('');
+  slot.innerHTML = rest.map(appTileHTML).join('');
+  if (emptyEl) emptyEl.style.display = filtered.length ? 'none' : 'block';
 }
+
+function appMenuItems(appId) {
+  const p = APP_PREFS[appId] || {};
+  const items = [];
+  if (!p.hidden) items.push({ label: p.pinned_at ? 'Lepas pin' : 'Sematkan ke atas', icon: '📌', action: () => toggleAppPin(appId) });
+  items.push({ label: 'Ganti nama, deskripsi & kategori', icon: '✏️', action: () => openAppEditor(appId) });
+  items.push({ label: p.hidden ? 'Tampilin lagi' : 'Sembunyiin', icon: p.hidden ? '👁' : '🙈', action: () => toggleAppHidden(appId) });
+  if (p.custom_name || p.custom_desc != null || p.custom_category) {
+    items.push({ label: 'Balikin nama & deskripsi asli', icon: '↺', danger: true,
+      action: () => saveAppPref(appId, { custom_name: null, custom_desc: null, custom_category: null }) });
+  }
+  return items;
+}
+
+['pinned-apps-grid', 'apps-grid'].forEach(gridId => {
+  const grid = document.getElementById(gridId);
+  grid.addEventListener('click', (e) => {
+    const btn = e.target.closest('.tool-card-btn');
+    if (!btn) return;
+    const appId = btn.closest('[data-app-id]').dataset.appId;
+    if (btn.dataset.act === 'pin') { toggleAppPin(appId); return; }
+    e.stopPropagation(); // the document-level click handler would otherwise close the menu we're opening
+    const r = btn.getBoundingClientRect();
+    showDashContextMenu(r.left, r.bottom + 4, appMenuItems(appId));
+  });
+  grid.addEventListener('contextmenu', (e) => {
+    const card = e.target.closest('[data-app-id]');
+    if (!card) return;
+    e.preventDefault();
+    showDashContextMenu(e.clientX, e.clientY, appMenuItems(card.dataset.appId));
+  });
+});
+
+let editingAppId = null;
+function openAppEditor(appId) {
+  const def = window.GEMBEL_APPS.find(a => a.id === appId);
+  const apps = effectiveApps();
+  const app = apps.find(a => a.id === appId);
+  if (!def || !app) return;
+  editingAppId = appId;
+  document.getElementById('app-edit-title').textContent = `${def.icon} Atur ${def.name}`;
+  document.getElementById('app-edit-name').value = app.name;
+  document.getElementById('app-edit-desc').value = app.desc;
+  document.getElementById('app-edit-category').value = app.category;
+  document.getElementById('app-edit-name-default').textContent = `Nama asli: ${def.name}`;
+  document.getElementById('app-edit-category-default').textContent = `Kategori asli: ${def.category || 'Lainnya'}`;
+  const cats = [...new Set(apps.map(a => a.category))];
+  document.getElementById('app-edit-category-list').innerHTML = cats.map(c => `<option value="${escapeHtml(c)}">`).join('');
+  document.getElementById('app-edit-overlay').classList.add('show');
+  document.getElementById('app-edit-name').focus();
+}
+
+function closeAppEditor() {
+  editingAppId = null;
+  document.getElementById('app-edit-overlay').classList.remove('show');
+}
+
+function resetAppEditorFields() {
+  const def = window.GEMBEL_APPS.find(a => a.id === editingAppId);
+  if (!def) return;
+  document.getElementById('app-edit-name').value = def.name;
+  document.getElementById('app-edit-desc').value = def.desc;
+  document.getElementById('app-edit-category').value = def.category || 'Lainnya';
+}
+
+// Anything left identical to the config default is stored as null, so a later wording change
+// in apps.config.js still reaches members who never actually customised that field.
+function saveAppEditor(e) {
+  e.preventDefault();
+  const def = window.GEMBEL_APPS.find(a => a.id === editingAppId);
+  if (!def) return;
+  const name = document.getElementById('app-edit-name').value.trim();
+  const desc = document.getElementById('app-edit-desc').value.trim();
+  const category = document.getElementById('app-edit-category').value.trim();
+  const appId = editingAppId;
+  closeAppEditor();
+  saveAppPref(appId, {
+    custom_name: name && name !== def.name ? name : null,
+    custom_desc: desc !== def.desc ? desc : null,
+    custom_category: category && category !== (def.category || 'Lainnya') ? category : null,
+  });
+}
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && editingAppId) closeAppEditor(); });
 
 (async () => {
   const ctx = await requireAuth('index.html');
@@ -834,6 +1073,8 @@ function renderBuiltinApps() {
   await loadKtp();
   fillProfile();
   if (location.hash) switchTab(location.hash.slice(1)); // also loads the leaderboard if that's the tab
+  renderBuiltinApps();
+  await loadAppPrefs();
   renderBuiltinApps();
   await loadRequests();
 
