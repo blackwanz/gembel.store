@@ -47,6 +47,9 @@
 .profile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border); }
 .profile-item { background: var(--surface); padding: 16px 24px; min-width: 0; }
 .profile-item.wide { grid-column: 1 / -1; }
+.ktp-hint { font-size: 11.5px; color: var(--text-faint); margin-top: 5px; line-height: 1.5; }
+.ktp-hint.ok { color: var(--success-text); }
+.ktp-hint.err { color: var(--danger); }
 .profile-item .k { font-size: 11.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--text-faint); margin-bottom: 5px; }
 .profile-item .v { font-size: 14.5px; color: var(--text-main); overflow-wrap: anywhere; white-space: pre-line; }
 
@@ -238,6 +241,7 @@
         <div class="profile-item"><div class="k">Tinggi / Berat</div><div class="v" id="profil-body">—</div></div>
         <div class="profile-item"><div class="k">No. HP</div><div class="v" id="profil-phone">—</div></div>
         <div class="profile-item"><div class="k">Pembayaran</div><div class="v" id="profil-wallet">—</div></div>
+        <div class="profile-item"><div class="k">KTP</div><div class="v" id="profil-ktp">—</div></div>
         <div class="profile-item"><div class="k">Member sejak</div><div class="v" id="profil-since">—</div></div>
         <div class="profile-item wide"><div class="k">Bio</div><div class="v" id="profil-bio">—</div></div>
       </div>
@@ -249,7 +253,7 @@
         </div>
         <div class="field">
           <label>Tanggal lahir</label>
-          <input type="date" id="edit-dob">
+          <input type="date" id="edit-dob" onchange="checkKtpInput()">
         </div>
         <div class="field">
           <label>Tinggi badan (cm)</label>
@@ -280,6 +284,19 @@
         <div class="field" id="wallet-number-field" style="display:none;">
           <label id="wallet-number-label">No. HP</label>
           <input type="text" id="edit-wallet-number" placeholder="08xxxxxxxxxx" maxlength="120">
+        </div>
+        <div class="field wide">
+          <label>NIK KTP (16 digit)</label>
+          <input type="text" id="edit-ktp-nik" placeholder="Kosongin kalau belum mau isi" maxlength="19" inputmode="numeric" autocomplete="off" oninput="checkKtpInput()">
+          <div class="ktp-hint" id="ktp-hint">🔒 Cuma lo yang bisa lihat NIK ini. Tanggal lahir di NIK harus sama kayak tanggal lahir di atas. Wajib buat Pintol.com.</div>
+        </div>
+        <div class="field">
+          <label>Nama sesuai KTP</label>
+          <input type="text" id="edit-ktp-name" placeholder="BUDI SANTOSO" maxlength="100">
+        </div>
+        <div class="field">
+          <label>Tempat lahir</label>
+          <input type="text" id="edit-ktp-place" placeholder="JAKARTA" maxlength="80">
         </div>
         <div class="field wide">
           <label>Bio</label>
@@ -318,6 +335,7 @@
 <script src="assets/notif-bell.js"></script>
 <script src="assets/auth.js"></script>
 <script src="assets/popup.js"></script>
+<script src="assets/ktp.js"></script>
 <script src="assets/site-config.js"></script>
 <script>window.PAYMENT_CONTEXT = 'home';</script>
 <script src="assets/payment-saweria.js"></script>
@@ -326,6 +344,13 @@
 <script>
 let CURRENT_USER = null;
 let CURRENT_PROFILE = null;
+// KTP lives in its own owner-only table (profile_ktp, 0045_pintol.sql) -- profiles rows are
+// readable by everyone, a NIK must not be.
+let CURRENT_KTP = null;
+async function loadKtp() {
+  const { data } = await supabase.from('profile_ktp').select('*').eq('user_id', CURRENT_USER.id).maybeSingle();
+  CURRENT_KTP = data || null;
+}
 
 const DASH_TABS = ['apps', 'profil', 'leaderboard'];
 
@@ -565,6 +590,9 @@ function fillProfile() {
     : '—';
   document.getElementById('profil-phone').textContent = CURRENT_PROFILE?.phone || '—';
   document.getElementById('profil-wallet').textContent = paymentSummary(CURRENT_PROFILE);
+  document.getElementById('profil-ktp').textContent = CURRENT_KTP
+    ? `${GembelKTP.mask(CURRENT_KTP.nik)} · ${CURRENT_KTP.verified ? '✓ valid' : '⚠️ tgl lahir gak cocok'}`
+    : 'Belum diisi';
   document.getElementById('profil-since').textContent = CURRENT_PROFILE?.created_at
     ? new Date(CURRENT_PROFILE.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
     : '—';
@@ -584,7 +612,11 @@ function setProfileEditing(on) {
     document.getElementById('edit-wallet-number').value = CURRENT_PROFILE?.wallet_number || '';
     document.getElementById('edit-bank-name').value = CURRENT_PROFILE?.bank_name || '';
     document.getElementById('edit-bio').value = CURRENT_PROFILE?.bio || '';
+    document.getElementById('edit-ktp-nik').value = CURRENT_KTP?.nik || '';
+    document.getElementById('edit-ktp-name').value = CURRENT_KTP?.ktp_name || '';
+    document.getElementById('edit-ktp-place').value = CURRENT_KTP?.birth_place || '';
     updatePaymentFieldsUI();
+    checkKtpInput();
   }
   document.getElementById('profile-view').style.display = on ? 'none' : 'grid';
   document.getElementById('profile-edit').style.display = on ? 'grid' : 'none';
@@ -617,6 +649,43 @@ function updatePaymentFieldsUI() {
   document.getElementById('edit-wallet-number').placeholder = isBank ? 'Nomor rekening' : '08xxxxxxxxxx';
 }
 
+// Live read-out of what the NIK says (birth date / gender / province) while typing. The DB trigger
+// re-checks everything on save; this is only so mistakes show up before pressing the button.
+function checkKtpInput() {
+  const hint = document.getElementById('ktp-hint');
+  const raw = document.getElementById('edit-ktp-nik').value;
+  const r = GembelKTP.parse(raw);
+  if (!r.nik.length) { hint.className = 'ktp-hint'; hint.textContent = '🔒 Cuma lo yang bisa lihat NIK ini. Tanggal lahir di NIK harus sama kayak tanggal lahir di atas. Wajib buat Pintol.com.'; return r; }
+  if (!r.ok) { hint.className = 'ktp-hint err'; hint.textContent = r.reason; return r; }
+  const dob = document.getElementById('edit-dob').value;
+  const fmt = (d) => new Date(d + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+  const mismatch = dob && dob !== r.dob;
+  hint.className = mismatch ? 'ktp-hint err' : 'ktp-hint ok';
+  hint.textContent = `✓ ${r.gender === 'P' ? 'Perempuan' : 'Laki-laki'} · lahir ${fmt(r.dob)} · ${r.province}` +
+    (mismatch ? ` — beda sama tanggal lahir di atas (${fmt(dob)})` : '');
+  return r;
+}
+
+// Profile first (so a changed birth date is already there when the KTP trigger compares against
+// it), then the KTP row: upsert when a NIK is typed, delete when it was cleared.
+async function saveKtp() {
+  const r = checkKtpInput();
+  if (!r.nik.length) {
+    if (!CURRENT_KTP) return null;
+    const { error } = await supabase.from('profile_ktp').delete().eq('user_id', CURRENT_USER.id);
+    return error;
+  }
+  if (!r.ok) return { message: 'KTP: ' + r.reason };
+  const name = document.getElementById('edit-ktp-name').value.trim();
+  if (name.length < 3) return { message: 'KTP: isi nama sesuai KTP' };
+  const place = document.getElementById('edit-ktp-place').value.trim() || null;
+  if (CURRENT_KTP && CURRENT_KTP.verified && CURRENT_KTP.nik === r.nik && CURRENT_KTP.ktp_name === name.toUpperCase()
+      && (CURRENT_KTP.birth_place || null) === (place && place.toUpperCase())) return null;
+  const { error } = await supabase.from('profile_ktp').upsert(
+    { user_id: CURRENT_USER.id, nik: r.nik, ktp_name: name, birth_place: place }, { onConflict: 'user_id' });
+  return error ? { message: 'KTP: ' + error.message } : null;
+}
+
 async function saveProfile() {
   const btn = document.getElementById('save-profile-btn');
   btn.disabled = true; btn.textContent = 'Menyimpan…';
@@ -634,8 +703,11 @@ async function saveProfile() {
     bank_name: wallet === 'bank' ? (document.getElementById('edit-bank-name').value.trim() || null) : null,
     bio: document.getElementById('edit-bio').value.trim() || null,
   }).eq('id', CURRENT_USER.id);
+  const ktpError = error ? null : await saveKtp();
   btn.disabled = false; btn.textContent = 'Simpan profil';
   if (error) { await gembelAlert('Gagal simpan: ' + error.message); return; }
+  await loadKtp();
+  if (ktpError) { CURRENT_PROFILE = await getProfile(CURRENT_USER.id); fillProfile(); await gembelAlert('Profil kesimpen, tapi ' + ktpError.message); return; }
   CURRENT_PROFILE = await getProfile(CURRENT_USER.id);
   fillProfile();
   setProfileEditing(false);
@@ -759,6 +831,7 @@ function renderBuiltinApps() {
   if (!ctx) return;
   CURRENT_USER = ctx.user;
   CURRENT_PROFILE = ctx.profile;
+  await loadKtp();
   fillProfile();
   if (location.hash) switchTab(location.hash.slice(1)); // also loads the leaderboard if that's the tab
   renderBuiltinApps();
@@ -778,7 +851,7 @@ function renderBuiltinApps() {
     .channel('own-profile-' + CURRENT_USER.id)
     .on('postgres_changes',
       { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${CURRENT_USER.id}` },
-      async () => { CURRENT_PROFILE = await getProfile(CURRENT_USER.id); fillProfile(); loadRequests(); }
+      async () => { CURRENT_PROFILE = await getProfile(CURRENT_USER.id); await loadKtp(); fillProfile(); loadRequests(); }
     )
     .subscribe();
 })();

@@ -111,6 +111,15 @@ window.GEMBEL_APPS = [
     enabled: true,
   },
   {
+    id: 'pintol',
+    name: 'Pintol.com',
+    desc: 'Pinjam-meminjam antar member, max Rp3 juta. Bunga sukarela, kalau gak sanggup bayar ya udah dianggap lunas. Wajib rekening/e-wallet, KTP & info kerja bulanan.',
+    icon: '🤝',
+    url: 'pintol.html',
+    category: 'Keuangan',
+    enabled: true,
+  },
+  {
     id: 'gebet',
     name: 'Gebet',
     desc: 'Dating ala Tinder — swipe kiri/kanan, langsung DM lewat komen di foto. 1 foto terbaru (wajib ganti tiap bulan) + bio. Profil bisa di-share tanpa login.',

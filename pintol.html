@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pintol.com — Gembel AI PIK</title>
+<meta name="description" content="Pintol.com — pinjam-meminjam antar member Gembel, bunga sukarela, gak sanggup bayar ya dianggap lunas.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27%3E%3Crect width=%2764%27 height=%2764%27 rx=%2716%27 fill=%27%230d9488%27/%3E%3Ctext x=%2732%27 y=%2744%27 font-size=%2732%27 text-anchor=%27middle%27%3E%F0%9F%A4%9D%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/app-theme.css">
+<style>
+  :root{ --hl:#0d9488; --hl-soft:#e6f6f4; --gold:#d97706; --bad:#dc2626; }
+  [data-theme="dark"]{ --hl:#2dd4bf; --hl-soft:#12302d; --gold:#fbbf24; --bad:#f87171; }
+  body{ background:var(--page-bg); }
+  .top{ display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid var(--border);background:var(--surface); }
+  .brand{ font-family:var(--font-display);font-weight:800;font-size:18px;letter-spacing:-.02em;text-decoration:none;color:var(--text-main); }
+  .brand .p{ color:var(--hl); } .brand .c{ color:var(--text-faint);font-weight:600; }
+  .wrap{ max-width:880px;margin:0 auto;padding:18px 16px 90px; }
+  .tabs{ display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:100px;padding:4px;margin-bottom:16px;position:sticky;top:8px;z-index:20;box-shadow:var(--shadow-card);overflow-x:auto; }
+  .tab{ flex:1;border:none;background:none;padding:9px 10px;border-radius:100px;font-weight:700;font-size:12.5px;color:var(--text-muted);cursor:pointer;font-family:inherit;white-space:nowrap; }
+  .tab.active{ background:var(--hl);color:#fff; }
+  .tab .n{ display:inline-block;min-width:18px;padding:0 5px;border-radius:100px;background:var(--danger);color:#fff;font-size:10.5px;margin-left:4px; }
+
+  .panel{ background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);margin-bottom:16px;overflow:hidden; }
+  .panel-head{ padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap; }
+  .panel-head h2{ font-size:15px;display:flex;align-items:center;gap:8px; }
+  .panel-body{ padding:16px 18px; }
+  .muted{ color:var(--text-muted);font-size:12.5px;line-height:1.55; }
+  .faint{ color:var(--text-faint);font-size:11.5px; }
+  .empty-hint{ color:var(--text-faint);font-size:13px;padding:26px 16px;text-align:center;line-height:1.6; }
+  .mono{ font-family:var(--font-mono); }
+
+  .kpis{ display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px; }
+  .kpi{ background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px; }
+  .kpi .k{ font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint); }
+  .kpi .v{ font-family:var(--font-mono);font-weight:700;font-size:19px;margin-top:4px; }
+  .kpi .s{ font-size:11.5px;color:var(--text-muted);margin-top:2px; }
+  .bar{ height:6px;border-radius:100px;background:var(--surface-muted);overflow:hidden;margin-top:8px; }
+  .bar i{ display:block;height:100%;background:var(--hl);border-radius:100px; }
+
+  /* forms */
+  .grid2{ display:grid;grid-template-columns:1fr 1fr;gap:10px 12px; }
+  .grid2 .wide{ grid-column:1/-1; }
+  label.f{ display:block;font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:5px; }
+  .in{ width:100%;padding:10px 12px;border-radius:var(--radius-md);border:1px solid var(--border);background:var(--surface);color:var(--text-main);font:inherit;font-size:14px; }
+  .in:focus{ outline:none;border-color:var(--hl); }
+  textarea.in{ resize:vertical;min-height:64px;line-height:1.5; }
+  .hint{ font-size:11.5px;color:var(--text-faint);margin-top:5px;line-height:1.5; }
+  .hint.ok{ color:var(--success-text); } .hint.err{ color:var(--bad); }
+  .chips{ display:flex;flex-wrap:wrap;gap:6px;margin-top:6px; }
+  .chip{ border:1px solid var(--border);border-radius:100px;padding:4px 11px;font-size:12px;cursor:pointer;background:var(--surface);color:var(--text-main);font-family:inherit; }
+  .chip:hover{ border-color:var(--hl); }
+  .row-act{ display:flex;justify-content:flex-end;gap:8px;margin-top:14px;flex-wrap:wrap; }
+  .btn-hl{ background:var(--hl);color:#fff;border:none; }
+  .btn-hl:hover{ filter:brightness(1.07); }
+
+  /* gate */
+  .gate-intro{ text-align:center;padding:10px 10px 18px; }
+  .gate-intro h1{ font-size:24px;margin-bottom:6px; }
+  .step{ display:flex;gap:12px;align-items:flex-start; }
+  .step .dot{ width:30px;height:30px;border-radius:50%;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;background:var(--surface-muted);color:var(--text-muted); }
+  .step.done .dot{ background:var(--success-bg);color:var(--success-text); }
+  .step .body{ flex:1;min-width:0; }
+  .step h3{ font-size:15px;margin:4px 0 2px; }
+  .step .done-line{ font-size:13px;color:var(--success-text);margin-top:4px; }
+
+  /* loan cards */
+  .loan{ padding:14px 18px;border-bottom:1px solid var(--border); }
+  .loan:last-child{ border-bottom:none; }
+  .loan.flash{ animation:flash 2.2s ease-out; }
+  @keyframes flash{ 0%{ background:var(--hl-soft); } 100%{ background:transparent; } }
+  .loan-top{ display:flex;justify-content:space-between;gap:12px;align-items:flex-start; }
+  .amt{ font-family:var(--font-mono);font-weight:700;font-size:20px; }
+  .purpose{ font-size:14px;margin-top:4px;line-height:1.5;word-break:break-word; }
+  .meta{ display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12px;color:var(--text-muted);margin-top:8px; }
+  .who{ display:flex;gap:10px;align-items:center;margin-top:12px;padding:10px 12px;border-radius:var(--radius-md);background:var(--surface-muted); }
+  .av{ width:36px;height:36px;border-radius:50%;background:var(--hl);color:#fff;font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center;flex:0 0 auto; }
+  .who .nm{ font-weight:700;font-size:13.5px;display:flex;gap:6px;align-items:center;flex-wrap:wrap; }
+  .who .sub{ font-size:12px;color:var(--text-muted);line-height:1.5; }
+  .pill{ font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:100px;white-space:nowrap; }
+  .pill.ok{ background:var(--success-bg);color:var(--success-text); }
+  .pill.warn{ background:var(--warning-bg);color:var(--warning-text); }
+  .pill.bad{ background:var(--danger-bg);color:var(--bad); }
+  .pill.mute{ background:var(--surface-muted);color:var(--text-muted); }
+  .pill.hl{ background:var(--hl-soft);color:var(--hl); }
+  .acts{ display:flex;gap:8px;flex-wrap:wrap;margin-top:12px; }
+  .pay-box{ margin-top:12px;border:1px dashed var(--hl);border-radius:var(--radius-md);padding:10px 12px;font-size:13px;line-height:1.6; }
+  .pay-box b.num{ font-family:var(--font-mono);font-size:15px; }
+  .copy{ border:none;background:var(--hl-soft);color:var(--hl);border-radius:6px;font-size:11px;font-weight:700;padding:2px 8px;cursor:pointer;margin-left:6px; }
+  .seg{ display:inline-flex;gap:4px;background:var(--surface-muted);border:1px solid var(--border);border-radius:100px;padding:3px; }
+  .seg button{ border:none;background:none;color:var(--text-muted);border-radius:100px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit; }
+  .seg button.active{ background:var(--text-main);color:var(--surface); }
+
+  /* leaderboard */
+  .lb{ display:flex;align-items:center;gap:12px;padding:11px 18px;border-bottom:1px solid var(--border); }
+  .lb:last-child{ border-bottom:none; }
+  .lb .rk{ width:30px;font-family:var(--font-mono);font-weight:700;color:var(--text-faint); }
+  .lb .rk.top{ font-size:18px; }
+  .lb .nm{ flex:1;min-width:0;font-weight:600;font-size:14px; }
+  .lb .nm small{ display:block;font-weight:400;font-size:11.5px;color:var(--text-faint); }
+  .lb .v{ font-family:var(--font-mono);font-weight:700;text-align:right; }
+  .lb .v small{ display:block;font-weight:500;font-size:11px;color:var(--text-faint); }
+  .lb.me{ background:var(--hl-soft); }
+
+  .kv{ display:grid;grid-template-columns:150px 1fr;gap:8px 12px;font-size:13.5px; }
+  .kv .k{ color:var(--text-muted); }
+  table.hist{ width:100%;border-collapse:collapse;font-size:13px; }
+  table.hist th,table.hist td{ text-align:left;padding:8px 6px;border-bottom:1px solid var(--border); }
+  table.hist th{ font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--text-faint); }
+
+  .toast{ position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:var(--text-main);color:var(--surface);padding:10px 18px;border-radius:100px;font-size:13px;font-weight:600;z-index:1600;box-shadow:var(--shadow-lift);max-width:calc(100% - 32px); }
+
+  @media (max-width:640px){
+    .top{ padding:12px 16px; }
+    .kpis{ gap:6px; } .kpi{ padding:10px; } .kpi .k{ font-size:9.5px; } .kpi .v{ font-size:14px; } .kpi .s{ font-size:10.5px; }
+    .grid2{ grid-template-columns:1fr; }
+    .kv{ grid-template-columns:1fr;gap:2px 0; }
+    .kv .k{ margin-top:8px; }
+    .amt{ font-size:18px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="top">
+  <a href="pintol.html" class="brand"><span class="p">PINTOL</span><span class="c">.com</span> <span style="font-size:14px;">🤝</span></a>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <button class="theme-toggle" onclick="toggleTheme()" title="Ganti tema">🌙</button>
+    <a href="dashboard.html" class="btn btn-ghost btn-sm" style="text-decoration:none;">Dashboard</a>
+  </div>
+</div>
+
+<div class="wrap" id="app-root">
+  <div class="empty-hint">Memuat…</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/dist/umd/supabase.min.js"></script>
+<script src="assets/supabaseClient.js"></script>
+<script src="assets/notif-bell.js"></script>
+<script src="assets/auth.js"></script>
+<script src="assets/popup.js"></script>
+<script src="assets/ktp.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  // Pintol.com -- see db/migrations/0045_pintol.sql for the whole model. Short version:
+  //   * Getting in needs rekening/e-wallet (profiles), a valid KTP (profile_ktp) and this month's
+  //     job + salary (pintol_jobs). The DB enforces the same thing on every borrow/lend call.
+  //   * Every loan state change is an RPC (pintol_request/commit/received/paid/repaid/forgive...);
+  //     the page never writes pintol_loans directly (it can't -- no write grants).
+  //   * No money goes through here: the lender transfers to the borrower's account shown by
+  //     pintol_payout(), and back again. The page only keeps the record.
+  const LIMIT = 3000000;
+  const ACTIVE = ['open', 'funding', 'active', 'paying'];
+  const STATUS = {
+    open:      { t: 'Nunggu pemberi pinjaman', c: 'warn' },
+    funding:   { t: 'Lagi ditransfer', c: 'hl' },
+    active:    { t: 'Berjalan', c: 'hl' },
+    paying:    { t: 'Nunggu konfirmasi bayar', c: 'warn' },
+    repaid:    { t: 'Lunas', c: 'ok' },
+    forgiven:  { t: 'Dianggap lunas 🕊️', c: 'mute' },
+    cancelled: { t: 'Dibatalin', c: 'mute' },
+  };
+  const WALLETS = { gopay: 'GoPay', dana: 'DANA', linkaja: 'LinkAja', bank: 'Transfer Bank' };
+
+  let ME = null, PROFILE = null, KTP = null, JOBS = [], MISSING = [];
+  let LOANS = [], PEOPLE = {}, TAB = 'pinjamin', LB_MODE = 'penerima', FLASH = null;
+
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const rp = (n) => 'Rp' + Math.round(Number(n) || 0).toLocaleString('id-ID');
+  const num = (s) => { const v = parseInt(String(s || '').replace(/\D/g, ''), 10); return Number.isFinite(v) ? v : 0; };
+  const pad = (n) => String(n).padStart(2, '0');
+  const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const fmtDate = (s) => s ? new Date(String(s).length === 10 ? s + 'T00:00:00' : s).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+  const initials = (n) => String(n || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
+  const monthKey = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-01`; };
+  const monthName = (m) => new Date((m || monthKey()) + 'T00:00:00').toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+  const nameOf = (id) => (PEOPLE[id] && PEOPLE[id].name) || 'Member';
+  function daysTo(d){ const t = new Date(); t.setHours(0,0,0,0); return Math.round((new Date(d + 'T00:00:00') - t) / 86400000); }
+
+  function toast(msg){
+    const el = document.createElement('div'); el.className = 'toast'; el.textContent = msg;
+    document.body.appendChild(el); setTimeout(() => el.remove(), 2600);
+  }
+  // Keeps whatever's typed while a button runs, and always re-enables it.
+  async function busy(btn, fn){
+    const old = btn ? btn.textContent : '';
+    if(btn){ btn.disabled = true; btn.textContent = 'Bentar…'; }
+    try{ await fn(); } finally { if(btn && btn.isConnected){ btn.disabled = false; btn.textContent = old; } }
+  }
+  async function rpc(name, args){
+    const { data, error } = await supabase.rpc(name, args || {});
+    if(error){ await gembelAlert(error.message); throw error; }
+    return data;
+  }
+
+  // ------------------------------------------------------------- data ----
+
+  async function loadMe(){
+    const [p, k, j, m] = await Promise.all([
+      supabase.from('profiles').select('id,full_name,email,dob,phone,wallet_type,wallet_number,bank_name').eq('id', ME.id).maybeSingle(),
+      supabase.from('profile_ktp').select('*').eq('user_id', ME.id).maybeSingle(),
+      supabase.from('pintol_jobs').select('*').eq('user_id', ME.id).order('month', { ascending: false }).limit(24),
+      supabase.rpc('pintol_missing'),
+    ]);
+    for(const r of [p, k, j, m]) if(r.error) throw r.error;
+    PROFILE = p.data || {}; KTP = k.data; JOBS = j.data || []; MISSING = m.data || [];
+  }
+
+  async function loadLoans(){
+    const all = [];
+    for(let from = 0; ; from += 1000){
+      const { data, error } = await supabase.from('pintol_loans').select('*').order('created_at', { ascending: false }).range(from, from + 999);
+      if(error) throw error;
+      all.push(...data);
+      if(data.length < 1000) break;
+    }
+    LOANS = all;
+    const ids = [...new Set(all.flatMap(l => [l.borrower_id, l.lender_id]).filter(Boolean).concat(ME.id))];
+    const { data, error } = await supabase.rpc('pintol_people', { p_ids: ids });
+    if(error) throw error;
+    PEOPLE = {};
+    (data || []).forEach(p => { PEOPLE[p.id] = p; });
+  }
+
+  async function refresh(){
+    await Promise.all([loadMe(), loadLoans()]);
+    render();
+  }
+
+  // ------------------------------------------------------------- gate ----
+
+  function walletLine(p){
+    if(!p || !WALLETS[p.wallet_type]) return '';
+    return p.wallet_type === 'bank' ? `${p.bank_name || '—'} · ${p.wallet_number || '—'}` : `${WALLETS[p.wallet_type]} · ${p.wallet_number || '—'}`;
+  }
+
+  function walletForm(){
+    const p = PROFILE || {};
+    const t = WALLETS[p.wallet_type] ? p.wallet_type : 'gopay';
+    return `
+      <div class="grid2" id="wf">
+        <div><label class="f">Metode</label>
+          <select class="in" id="w-type">${Object.entries(WALLETS).map(([k, v]) => `<option value="${k}"${k === t ? ' selected' : ''}>${v}</option>`).join('')}</select></div>
+        <div id="w-bank-wrap"><label class="f">Nama bank</label><input class="in" id="w-bank" maxlength="80" placeholder="BCA, Mandiri, BRI…" value="${esc(p.bank_name || '')}"></div>
+        <div class="wide"><label class="f" id="w-num-l">No. HP</label><input class="in" id="w-num" maxlength="60" inputmode="numeric" value="${esc(p.wallet_number || '')}"></div>
+      </div>
+      <div class="hint">Ini rekening yang dikirimin uang pas lo minjam, dan yang ditransfer balik pas lo minjemin. Sama kayak "Metode pembayaran" di profil dashboard.</div>
+      <div class="row-act"><button class="btn btn-hl btn-sm" id="w-save">Simpan rekening</button></div>`;
+  }
+  function wireWallet(after){
+    const sync = () => {
+      const bank = $('w-type').value === 'bank';
+      $('w-bank-wrap').style.display = bank ? '' : 'none';
+      $('w-num-l').textContent = bank ? 'No. rekening' : 'No. HP (akun ' + WALLETS[$('w-type').value] + ')';
+      $('w-num').placeholder = bank ? 'Nomor rekening' : '08xxxxxxxxxx';
+    };
+    $('w-type').onchange = sync; sync();
+    $('w-save').onclick = (e) => busy(e.target, async () => {
+      const type = $('w-type').value, number = $('w-num').value.replace(/[^\d]/g, ''), bank = $('w-bank').value.trim();
+      if(number.length < 5){ await gembelAlert('Nomor ' + (type === 'bank' ? 'rekening' : 'HP') + ' kependekan.'); return; }
+      if(type === 'bank' && bank.length < 2){ await gembelAlert('Isi nama bank-nya.'); return; }
+      const { error } = await supabase.from('profiles').update({ wallet_type: type, wallet_number: number, bank_name: type === 'bank' ? bank : null }).eq('id', ME.id);
+      if(error){ await gembelAlert('Gagal simpan: ' + error.message); return; }
+      toast('Rekening kesimpen'); await after();
+    });
+  }
+
+  function ktpForm(){
+    return `
+      <div class="grid2">
+        <div class="wide"><label class="f">NIK (16 digit)</label><input class="in mono" id="k-nik" maxlength="19" inputmode="numeric" autocomplete="off" placeholder="3171xxxxxxxxxxxx" value="${esc(KTP ? KTP.nik : '')}">
+          <div class="hint" id="k-hint">Tanggal lahir & jenis kelamin dibaca dari NIK, harus cocok sama tanggal lahir di profil lo.</div></div>
+        <div><label class="f">Nama sesuai KTP</label><input class="in" id="k-name" maxlength="100" placeholder="BUDI SANTOSO" value="${esc(KTP ? KTP.ktp_name : (PROFILE.full_name || ''))}"></div>
+        <div><label class="f">Tempat lahir</label><input class="in" id="k-place" maxlength="80" placeholder="JAKARTA" value="${esc(KTP ? KTP.birth_place || '' : '')}"></div>
+      </div>
+      <div class="hint">🔒 NIK cuma bisa dibaca lo sendiri. Member lain cuma lihat tanda "KTP ✓". Satu NIK = satu akun.</div>
+      <div class="row-act"><button class="btn btn-hl btn-sm" id="k-save">Validasi & simpan KTP</button></div>`;
+  }
+  function wireKtp(after){
+    const check = () => {
+      const r = GembelKTP.parse($('k-nik').value), h = $('k-hint');
+      if(!r.nik.length){ h.className = 'hint'; return r; }
+      if(!r.ok){ h.className = 'hint err'; h.textContent = r.reason; return r; }
+      const dobMismatch = PROFILE.dob && PROFILE.dob !== r.dob;
+      h.className = dobMismatch ? 'hint err' : 'hint ok';
+      h.textContent = `✓ ${r.gender === 'P' ? 'Perempuan' : 'Laki-laki'} · lahir ${fmtDate(r.dob)} · ${r.province}` +
+        (dobMismatch ? ` — tapi tanggal lahir di profil lo ${fmtDate(PROFILE.dob)}. Benerin salah satunya.` : '');
+      return r;
+    };
+    $('k-nik').oninput = check; if($('k-nik').value) check();
+    $('k-save').onclick = (e) => busy(e.target, async () => {
+      const r = check();
+      if(!r.ok){ await gembelAlert(r.reason); return; }
+      const name = $('k-name').value.trim();
+      if(name.length < 3){ await gembelAlert('Isi nama sesuai KTP.'); return; }
+      const { error } = await supabase.from('profile_ktp').upsert({ user_id: ME.id, nik: r.nik, ktp_name: name, birth_place: $('k-place').value.trim() || null }, { onConflict: 'user_id' });
+      if(error){ await gembelAlert(error.message); return; }
+      toast('KTP tervalidasi ✓'); await after();
+    });
+  }
+
+  function jobForm(){
+    const cur = JOBS.find(j => j.month === monthKey()), last = cur || JOBS[0] || {};
+    return `
+      <div class="grid2">
+        <div><label class="f">Kerja di mana</label><input class="in" id="j-emp" maxlength="120" placeholder="PT / toko / freelance…" value="${esc(last.employer || '')}"></div>
+        <div><label class="f">Posisi / kerjaan</label><input class="in" id="j-title" maxlength="120" placeholder="Staff gudang, driver…" value="${esc(last.job_title || '')}"></div>
+        <div class="wide"><label class="f">Gaji / penghasilan bulan ${esc(monthName())}</label><input class="in mono" id="j-sal" inputmode="numeric" placeholder="Rp" value="${last.salary != null ? rp(last.salary) : ''}">
+          <div class="chips">${[3000000, 5000000, 7500000, 10000000].map(v => `<button class="chip" data-sal="${v}">${rp(v)}</button>`).join('')}</div></div>
+        <div class="wide"><label class="f">Catatan (opsional)</label><input class="in" id="j-note" maxlength="300" placeholder="cth: lagi kontrak sampai Des" value="${esc(cur ? cur.note || '' : '')}"></div>
+      </div>
+      <div class="hint">Wajib di-update tiap bulan — pemberi pinjaman lihat kerja & gaji bulan ini pas mutusin mau minjemin atau nggak.${!cur && JOBS[0] ? ' Udah diisi dari data bulan ' + esc(monthName(JOBS[0].month)) + ', tinggal cek & simpan.' : ''}</div>
+      <div class="row-act"><button class="btn btn-hl btn-sm" id="j-save">Simpan buat ${esc(monthName())}</button></div>`;
+  }
+  function wireJob(after){
+    const sal = $('j-sal');
+    sal.oninput = () => { const v = num(sal.value); sal.value = v ? rp(v) : ''; };
+    document.querySelectorAll('[data-sal]').forEach(b => b.onclick = () => { sal.value = rp(+b.dataset.sal); });
+    $('j-save').onclick = (e) => busy(e.target, async () => {
+      const emp = $('j-emp').value.trim();
+      if(emp.length < 2){ await gembelAlert('Isi tempat kerja lo (boleh "freelance" / "usaha sendiri").'); return; }
+      const { error } = await supabase.from('pintol_jobs').upsert({
+        user_id: ME.id, month: monthKey(), employer: emp, job_title: $('j-title').value.trim() || null,
+        salary: num(sal.value), note: $('j-note').value.trim() || null, updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id,month' });
+      if(error){ await gembelAlert('Gagal simpan: ' + error.message); return; }
+      toast('Info kerja ' + monthName() + ' kesimpen'); await after();
+    });
+  }
+
+  function renderGate(){
+    const need = (k) => MISSING.includes(k);
+    const cur = JOBS.find(j => j.month === monthKey());
+    const renewal = !need('wallet') && !need('ktp') && JOBS.length && need('job');
+    $('app-root').innerHTML = `
+      <div class="gate-intro">
+        <h1>${renewal ? '📅 Bulan baru, update dulu' : 'Selamat datang di Pintol.com 🤝'}</h1>
+        <div class="muted">${renewal
+          ? `Info kerja & gaji harus diperbarui tiap bulan. Isi yang ${esc(monthName())} dulu baru bisa lanjut minjam / minjemin.`
+          : 'Pinjam-meminjam antar member, max Rp3 juta. Sebelum masuk, lengkapin 3 hal ini dulu — biar yang minjemin tau lo siapa, dan uangnya tau mau dikirim ke mana.'}</div>
+      </div>
+      <div class="panel"><div class="panel-body step ${need('wallet') ? '' : 'done'}">
+        <div class="dot">${need('wallet') ? '1' : '✓'}</div>
+        <div class="body"><h3>Rekening / e-wallet</h3>
+          ${need('wallet') ? walletForm() : `<div class="done-line">${esc(walletLine(PROFILE))}</div>`}</div>
+      </div></div>
+      <div class="panel"><div class="panel-body step ${need('ktp') ? '' : 'done'}">
+        <div class="dot">${need('ktp') ? '2' : '✓'}</div>
+        <div class="body"><h3>Validasi KTP</h3>
+          ${need('ktp') ? (KTP && !KTP.verified ? '<div class="hint err" style="margin-bottom:8px;">Tanggal lahir di profil lo berubah & gak cocok lagi sama NIK. Simpan ulang KTP-nya (atau benerin tanggal lahir di dashboard).</div>' : '') + ktpForm()
+                        : `<div class="done-line">${esc(KTP.ktp_name)} · NIK ${esc(GembelKTP.mask(KTP.nik))}</div>`}</div>
+      </div></div>
+      <div class="panel"><div class="panel-body step ${need('job') ? '' : 'done'}">
+        <div class="dot">${need('job') ? '3' : '✓'}</div>
+        <div class="body"><h3>Kerja & gaji — ${esc(monthName())}</h3>
+          ${need('job') ? jobForm() : `<div class="done-line">${esc(cur.employer)} · ${rp(cur.salary)}/bulan</div>`}</div>
+      </div></div>`;
+    const after = async () => { await loadMe(); if(MISSING.length) renderGate(); else { await loadLoans(); render(); } };
+    if(need('wallet')) wireWallet(after);
+    if(need('ktp')) wireKtp(after);
+    if(need('job')) wireJob(after);
+  }
+
+  // ------------------------------------------------------------- main ----
+
+  function render(){
+    if(MISSING.length){ renderGate(); return; }
+    const mine = LOANS.filter(l => l.borrower_id === ME.id);
+    const lent = LOANS.filter(l => l.lender_id === ME.id);
+    const board = LOANS.filter(l => l.status === 'open' && l.borrower_id !== ME.id);
+    const outstanding = mine.filter(l => ACTIVE.includes(l.status)).reduce((s, l) => s + Number(l.amount), 0);
+    // Badges = things waiting on ME.
+    const todoMine = mine.filter(l => l.status === 'funding').length;
+    const todoLent = lent.filter(l => l.status === 'paying').length;
+    const lentOut = lent.filter(l => ['funding', 'active', 'paying'].includes(l.status)).reduce((s, l) => s + Number(l.amount), 0);
+    const tabs = [
+      ['pinjamin', 'Pinjamin', 0], ['pinjaman', 'Pinjaman Gw', todoMine], ['dipinjemin', 'Gw Pinjemin', todoLent],
+      ['leaderboard', 'Leaderboard', 0], ['data', 'Data Gw', 0],
+    ];
+    $('app-root').innerHTML = `
+      <div class="kpis">
+        <div class="kpi"><div class="k">Sisa limit lo</div><div class="v">${rp(LIMIT - outstanding)}</div>
+          <div class="bar"><i style="width:${Math.min(100, outstanding / LIMIT * 100)}%"></i></div>
+          <div class="s">${rp(outstanding)} dari ${rp(LIMIT)} kepake</div></div>
+        <div class="kpi"><div class="k">Butuh bantuan</div><div class="v">${board.length} orang</div>
+          <div class="s">${rp(board.reduce((s, l) => s + Number(l.amount), 0))} total di daftar</div></div>
+        <div class="kpi"><div class="k">Lo pinjemin</div><div class="v">${rp(lentOut)}</div>
+          <div class="s">lagi jalan · ${rp(lent.filter(l => l.status === 'forgiven').reduce((s, l) => s + Number(l.amount), 0))} udah diikhlasin</div></div>
+      </div>
+      <div class="tabs">${tabs.map(([k, t, n]) => `<button class="tab${TAB === k ? ' active' : ''}" data-tab="${k}">${t}${n ? `<span class="n">${n}</span>` : ''}</button>`).join('')}</div>
+      <div id="tab-body"></div>`;
+    document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { TAB = b.dataset.tab; history.replaceState(null, '', '#' + TAB); render(); });
+    const body = $('tab-body');
+    if(TAB === 'pinjamin') body.innerHTML = tabBoard(board);
+    else if(TAB === 'pinjaman') body.innerHTML = tabMine(mine, outstanding);
+    else if(TAB === 'dipinjemin') body.innerHTML = tabLent(lent);
+    else if(TAB === 'leaderboard') body.innerHTML = tabLeaderboard();
+    else body.innerHTML = tabData();
+    wireTab();
+    if(FLASH){
+      const el = document.querySelector(`[data-loan="${FLASH}"]`);
+      if(el){ el.classList.add('flash'); el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+      FLASH = null;
+    }
+  }
+
+  function personBlock(id, role){
+    const p = PEOPLE[id] || {};
+    const job = p.employer ? `${esc(p.job_title ? p.job_title + ' @ ' : '')}${esc(p.employer)}` : 'Belum isi kerjaan';
+    const stale = p.job_month && p.job_month !== monthKey() ? ` <span class="pill warn">data ${esc(monthName(p.job_month))}</span>` : '';
+    const track = role === 'borrower'
+      ? [p.repaid_count ? `✅ ${p.repaid_count}× lunas` : '', p.forgiven_count ? `🕊️ ${p.forgiven_count}× dianggap lunas (${rp(p.forgiven_total)})` : '',
+         !p.borrowed_count ? 'Baru pertama minjam' : ''].filter(Boolean).join(' · ')
+      : [p.lent_count ? `🤝 udah minjemin ${p.lent_count}× (${rp(p.lent_total)})` : ''].filter(Boolean).join(' · ');
+    return `
+      <div class="who">
+        <div class="av">${esc(initials(p.name))}</div>
+        <div style="min-width:0;">
+          <div class="nm">${esc(p.name || 'Member')} ${p.ktp_verified ? '<span class="pill ok">KTP ✓</span>' : '<span class="pill bad">KTP belum valid</span>'}
+            ${p.age ? `<span class="faint">${p.gender === 'P' ? '♀' : '♂'} ${p.age} th</span>` : ''}</div>
+          <div class="sub">💼 ${job}${p.salary != null ? ` · 💰 ${rp(p.salary)}/bln` : ''}${stale}</div>
+          ${track ? `<div class="sub">${track}</div>` : ''}
+        </div>
+      </div>`;
+  }
+
+  function loanHead(l, extra){
+    const st = STATUS[l.status];
+    const d = daysTo(l.due_date);
+    const due = ['active', 'paying', 'funding', 'open'].includes(l.status)
+      ? (d < 0 ? `<span style="color:var(--bad);">telat ${-d} hari</span>` : d === 0 ? 'hari ini' : `${d} hari lagi`) : '';
+    return `
+      <div class="loan-top">
+        <div style="min-width:0;">
+          <div class="amt">${rp(l.amount)}</div>
+          <div class="purpose">${esc(l.purpose)}</div>
+        </div>
+        <span class="pill ${st.c}">${st.t}</span>
+      </div>
+      <div class="meta">
+        <span>📅 Balikin ${fmtDate(l.due_date)}${due ? ' · ' + due : ''}</span>
+        ${Number(l.offered_interest) > 0 ? `<span style="color:var(--gold);">🎁 Janji bunga sukarela ${rp(l.offered_interest)}</span>` : '<span>Tanpa bunga</span>'}
+        ${Number(l.interest_paid) > 0 ? `<span style="color:var(--gold);">Bunga dibayar ${rp(l.interest_paid)}</span>` : ''}
+        <span>Diajukan ${fmtDate(l.created_at)}</span>
+        ${extra || ''}
+      </div>
+      ${l.status === 'forgiven' && l.forgive_note ? `<div class="muted" style="margin-top:6px;">💬 "${esc(l.forgive_note)}"</div>` : ''}`;
+  }
+
+  function tabBoard(board){
+    if(!board.length) return `<div class="panel"><div class="empty-hint">Belum ada yang butuh pinjaman sekarang. 🙌<br>Kalau lo yang butuh, ajuin di tab <b>Pinjaman Gw</b>.</div></div>`;
+    return `
+      <div class="panel">
+        <div class="panel-head"><h2>🙋 Yang lagi butuh pinjaman</h2><span class="faint">${board.length} permintaan</span></div>
+        ${board.map(l => `
+          <div class="loan" data-loan="${l.id}">
+            ${loanHead(l)}
+            ${personBlock(l.borrower_id, 'borrower')}
+            <div class="acts"><button class="btn btn-hl btn-sm" data-act="commit" data-id="${l.id}">🤝 Gw pinjemin ${rp(l.amount)}</button></div>
+          </div>`).join('')}
+      </div>
+      <div class="muted" style="padding:0 4px;">Klik "Gw pinjemin" → rekening peminjam muncul → lo transfer sendiri → peminjam konfirmasi uangnya masuk. Kalau nanti dia gak sanggup bayar, pinjamannya dianggap lunas (jadi donasi lo).</div>`;
+  }
+
+  function payBox(l){
+    return `<div class="pay-box" data-paybox="${l.id}"><span class="faint">Rekening dimuat…</span></div>`;
+  }
+
+  function tabMine(mine, outstanding){
+    const left = LIMIT - outstanding;
+    const due = new Date(); due.setDate(due.getDate() + 30);
+    const form = left >= 10000 ? `
+      <div class="panel">
+        <div class="panel-head"><h2>✍️ Ajuin pinjaman</h2><span class="faint">sisa limit ${rp(left)}</span></div>
+        <div class="panel-body">
+          <div class="grid2">
+            <div><label class="f">Butuh berapa</label><input class="in mono" id="r-amt" inputmode="numeric" placeholder="Rp">
+              <div class="chips">${[250000, 500000, 1000000, 2000000, left].filter((v, i, a) => v <= left && a.indexOf(v) === i).map(v => `<button class="chip" data-amt="${v}">${rp(v)}${v === left ? ' (max)' : ''}</button>`).join('')}</div></div>
+            <div><label class="f">Bisa balikin tanggal</label><input class="in" type="date" id="r-due" value="${ymd(due)}"></div>
+            <div class="wide"><label class="f">Buat apa</label><textarea class="in" id="r-purpose" maxlength="300" placeholder="Jujur aja — biar yang minjemin ngerti. cth: bayar kos, anak sakit, modal dagang…"></textarea></div>
+            <div class="wide"><label class="f">Bunga sukarela (opsional)</label><input class="in mono" id="r-int" inputmode="numeric" placeholder="Rp0 — gak wajib">
+              <div class="hint">Gak wajib sama sekali. Kalau mau ngasih sesuatu sebagai terima kasih, tulis di sini — nanti pas bayar lo tetep bebas ubah jumlahnya.</div></div>
+          </div>
+          <div class="row-act"><button class="btn btn-hl" id="r-send">Ajuin</button></div>
+        </div>
+      </div>` : `<div class="panel"><div class="empty-hint">Limit lo udah kepake semua (${rp(LIMIT)}). Lunasin atau tutup pinjaman yang jalan dulu.</div></div>`;
+    const list = mine.length ? `
+      <div class="panel">
+        <div class="panel-head"><h2>📋 Pinjaman gw</h2></div>
+        ${mine.map(l => {
+          let acts = '', box = '';
+          if(l.status === 'open') acts = `<button class="btn btn-ghost btn-sm" data-act="cancel" data-id="${l.id}">Batalin</button>`;
+          if(l.status === 'funding'){
+            box = `<div class="pay-box">🤝 <b>${esc(nameOf(l.lender_id))}</b> mau minjemin & lagi transfer ke <b>${esc(walletLine(PROFILE))}</b>. Cek saldo lo — kalau udah masuk, konfirmasi.</div>`;
+            acts = `<button class="btn btn-hl btn-sm" data-act="received" data-id="${l.id}">✅ Uang udah masuk</button>
+                    <button class="btn btn-ghost btn-sm" data-act="release" data-id="${l.id}">Gak jadi / gak masuk-masuk</button>`;
+          }
+          if(l.status === 'active'){
+            box = `<div class="muted" style="margin-top:10px;">Pemberi pinjaman: <b>${esc(nameOf(l.lender_id))}</b>. Transfer balik ke:</div>` + payBox(l);
+            acts = `<button class="btn btn-hl btn-sm" data-act="paid" data-id="${l.id}">💸 Gw udah bayar</button>
+                    <button class="btn btn-ghost btn-sm" data-act="forgive" data-id="${l.id}">🕊️ Gak sanggup bayar</button>`;
+          }
+          if(l.status === 'paying'){
+            box = `<div class="pay-box">⏳ Lo udah bilang bayar ${rp(Number(l.amount) + Number(l.interest_paid))}. Nunggu <b>${esc(nameOf(l.lender_id))}</b> konfirmasi.</div>`;
+          }
+          const extra = l.lender_id && !['open', 'funding'].includes(l.status) ? `<span>🤝 dari ${esc(nameOf(l.lender_id))}</span>` : '';
+          return `<div class="loan" data-loan="${l.id}">${loanHead(l, extra)}${box}${acts ? `<div class="acts">${acts}</div>` : ''}</div>`;
+        }).join('')}
+      </div>` : '';
+    return form + list;
+  }
+
+  function tabLent(lent){
+    if(!lent.length) return `<div class="panel"><div class="empty-hint">Lo belum pernah minjemin siapa-siapa.<br>Cek tab <b>Pinjamin</b> — ada yang butuh bantuan?</div></div>`;
+    return `
+      <div class="panel">
+        <div class="panel-head"><h2>🤝 Yang gw pinjemin</h2></div>
+        ${lent.map(l => {
+          let acts = '', box = '';
+          if(l.status === 'funding'){
+            box = `<div class="muted" style="margin-top:10px;">Transfer <b>${rp(l.amount)}</b> ke:</div>` + payBox(l) +
+                  `<div class="faint" style="margin-top:6px;">Udah transfer? Tinggal tunggu ${esc(nameOf(l.borrower_id))} konfirmasi uangnya masuk.</div>`;
+            acts = `<button class="btn btn-ghost btn-sm" data-act="release" data-id="${l.id}">Gak jadi minjemin</button>`;
+          }
+          if(l.status === 'active') acts = `<button class="btn btn-ghost btn-sm" data-act="forgive" data-id="${l.id}">🕊️ Ikhlasin (anggap lunas)</button>`;
+          if(l.status === 'paying'){
+            box = `<div class="pay-box">💸 ${esc(nameOf(l.borrower_id))} bilang udah transfer <b class="num">${rp(Number(l.amount) + Number(l.interest_paid))}</b>${Number(l.interest_paid) > 0 ? ` (termasuk bunga sukarela ${rp(l.interest_paid)})` : ''}. Cek rekening lo.</div>`;
+            acts = `<button class="btn btn-hl btn-sm" data-act="repaid" data-id="${l.id}">✅ Udah diterima, lunas</button>
+                    <button class="btn btn-ghost btn-sm" data-act="not_received" data-id="${l.id}">Belum masuk</button>
+                    <button class="btn btn-ghost btn-sm" data-act="forgive" data-id="${l.id}">🕊️ Ikhlasin</button>`;
+          }
+          return `<div class="loan" data-loan="${l.id}">${loanHead(l)}${personBlock(l.borrower_id, 'borrower')}${box}${acts ? `<div class="acts">${acts}</div>` : ''}</div>`;
+        }).join('')}
+      </div>`;
+  }
+
+  function tabLeaderboard(){
+    const agg = {};
+    const add = (id, amt) => { const a = agg[id] || (agg[id] = { id, total: 0, count: 0, extra: 0 }); a.total += Number(amt); a.count++; return a; };
+    let rows, title, note;
+    if(LB_MODE === 'penerima'){
+      LOANS.filter(l => l.status === 'forgiven').forEach(l => add(l.borrower_id, l.amount));
+      title = '🏆 Total Penerima Manfaat'; note = 'Penikmat fasilitas — yang utangnya dianggap lunas. Makin gede, makin banyak dibantu orang.';
+    } else if(LB_MODE === 'dermawan'){
+      LOANS.filter(l => l.lender_id && ['active', 'paying', 'repaid', 'forgiven'].includes(l.status)).forEach(l => {
+        const a = add(l.lender_id, l.amount); if(l.status === 'forgiven') a.extra += Number(l.amount);
+      });
+      title = '💚 Dermawan'; note = 'Yang paling banyak minjemin. Angka kecil di bawah = yang akhirnya diikhlasin.';
+    } else {
+      LOANS.filter(l => l.status === 'repaid').forEach(l => { const a = add(l.borrower_id, l.amount); a.extra += Number(l.interest_paid); });
+      title = '⭐ Paling Amanah'; note = 'Yang minjam terus balikin. Angka kecil = total bunga sukarela yang dikasih.';
+    }
+    rows = Object.values(agg).sort((a, b) => b.total - a.total || b.count - a.count);
+    const medal = ['🥇', '🥈', '🥉'];
+    return `
+      <div style="margin-bottom:12px;text-align:center;"><div class="seg">
+        ${[['penerima', 'Penerima Manfaat'], ['dermawan', 'Dermawan'], ['amanah', 'Amanah']].map(([k, t]) => `<button class="${LB_MODE === k ? 'active' : ''}" data-lb="${k}">${t}</button>`).join('')}
+      </div></div>
+      <div class="panel">
+        <div class="panel-head"><h2>${title}</h2></div>
+        <div class="panel-body muted" style="padding-top:10px;padding-bottom:10px;border-bottom:1px solid var(--border);">${note}</div>
+        ${rows.length ? rows.slice(0, 50).map((r, i) => `
+          <div class="lb${r.id === ME.id ? ' me' : ''}">
+            <div class="rk${i < 3 ? ' top' : ''}">${i < 3 ? medal[i] : '#' + (i + 1)}</div>
+            <div class="av">${esc(initials(nameOf(r.id)))}</div>
+            <div class="nm">${esc(nameOf(r.id))}${r.id === ME.id ? ' <span class="pill hl">LO</span>' : ''}
+              <small>${r.count}× ${LB_MODE === 'dermawan' ? 'minjemin' : LB_MODE === 'amanah' ? 'lunas' : 'dianggap lunas'}${PEOPLE[r.id] && PEOPLE[r.id].employer ? ' · ' + esc(PEOPLE[r.id].employer) : ''}</small></div>
+            <div class="v">${rp(r.total)}${LB_MODE === 'dermawan' && r.extra ? `<small>🕊️ ${rp(r.extra)}</small>` : ''}${LB_MODE === 'amanah' && r.extra ? `<small>🎁 ${rp(r.extra)}</small>` : ''}</div>
+          </div>`).join('') : '<div class="empty-hint">Belum ada yang masuk leaderboard ini.</div>'}
+      </div>`;
+  }
+
+  function tabData(){
+    return `
+      <div class="panel">
+        <div class="panel-head"><h2>🪪 Identitas & rekening</h2><a href="dashboard.html" class="btn btn-ghost btn-sm" style="text-decoration:none;">Edit di profil</a></div>
+        <div class="panel-body kv">
+          <div class="k">Nama sesuai KTP</div><div>${esc(KTP.ktp_name)} <span class="pill ok">KTP ✓</span></div>
+          <div class="k">NIK</div><div class="mono">${esc(GembelKTP.mask(KTP.nik))}</div>
+          <div class="k">Lahir</div><div>${esc(KTP.birth_place ? KTP.birth_place + ', ' : '')}${fmtDate(KTP.dob)} · ${KTP.gender === 'P' ? 'Perempuan' : 'Laki-laki'}</div>
+          <div class="k">Rekening / e-wallet</div><div>${esc(walletLine(PROFILE))}</div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>💼 Kerja & gaji — ${esc(monthName())}</h2><span class="pill ok">udah diisi</span></div>
+        <div class="panel-body">${jobForm()}</div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>🗓️ Riwayat per bulan</h2></div>
+        <div class="panel-body" style="overflow-x:auto;">
+          <table class="hist"><thead><tr><th>Bulan</th><th>Kerja</th><th>Gaji</th></tr></thead><tbody>
+          ${JOBS.map(j => `<tr><td>${esc(monthName(j.month))}</td><td>${esc((j.job_title ? j.job_title + ' @ ' : '') + j.employer)}</td><td class="mono">${rp(j.salary)}</td></tr>`).join('')}
+          </tbody></table>
+        </div>
+      </div>
+      `;
+  }
+
+  // ---------------------------------------------------------- actions ----
+
+  async function fillPayBoxes(){
+    for(const el of document.querySelectorAll('[data-paybox]')){
+      const { data, error } = await supabase.rpc('pintol_payout', { p_loan: el.dataset.paybox });
+      if(error){ el.innerHTML = `<span class="hint err">${esc(error.message)}</span>`; continue; }
+      const p = data && data[0];
+      if(!p){ el.textContent = '—'; continue; }
+      el.innerHTML = `<b>${esc(p.wallet_type === 'bank' ? 'Bank ' + (p.bank_name || '') : WALLETS[p.wallet_type] || p.wallet_type)}</b> a.n. ${esc(p.name)}<br>
+        <b class="num">${esc(p.wallet_number || '—')}</b><button class="copy" data-copy="${esc(p.wallet_number || '')}">Salin</button>
+        ${p.phone ? `<div class="faint">HP: ${esc(p.phone)}</div>` : ''}`;
+    }
+    document.querySelectorAll('[data-copy]').forEach(b => b.onclick = async () => {
+      try{ await navigator.clipboard.writeText(b.dataset.copy); toast('Nomor disalin'); }catch(_){ toast(b.dataset.copy); }
+    });
+  }
+
+  function wireTab(){
+    document.querySelectorAll('[data-lb]').forEach(b => b.onclick = () => { LB_MODE = b.dataset.lb; render(); });
+    document.querySelectorAll('[data-act]').forEach(b => b.onclick = () => act(b));
+    fillPayBoxes();
+
+    if($('r-send')){
+      const money = (id) => { const el = $(id); el.oninput = () => { const v = num(el.value); el.value = v ? rp(v) : ''; }; };
+      money('r-amt'); money('r-int');
+      document.querySelectorAll('[data-amt]').forEach(b => b.onclick = () => { $('r-amt').value = rp(+b.dataset.amt); });
+      $('r-send').onclick = (e) => busy(e.target, async () => {
+        const amount = num($('r-amt').value), purpose = $('r-purpose').value.trim(), due = $('r-due').value;
+        if(amount < 10000){ await gembelAlert('Minimal Rp10.000.'); return; }
+        if(purpose.length < 3){ await gembelAlert('Tulis buat apa pinjamannya.'); return; }
+        if(!due){ await gembelAlert('Isi tanggal lo bisa balikin.'); return; }
+        if(!(await gembelConfirm(`Ajuin pinjaman ${rp(amount)}, balikin ${fmtDate(due)}?`))) return;
+        try{ await rpc('pintol_request', { p_amount: amount, p_purpose: purpose, p_due: due, p_interest: num($('r-int').value) }); }catch(_){ return; }
+        toast('Pinjaman diajuin — sekarang nongol di daftar member lain'); await refresh();
+      });
+    }
+    if($('j-save')) wireJob(async () => { await loadMe(); await loadLoans(); render(); });
+  }
+
+  async function act(btn){
+    const id = btn.dataset.id, a = btn.dataset.act, l = LOANS.find(x => x.id === id);
+    if(!l) return;
+    let args = { p_id: id }, fn = 'pintol_' + a, ok = '';
+    if(a === 'commit'){
+      if(!(await gembelConfirm(`Minjemin ${rp(l.amount)} ke ${nameOf(l.borrower_id)}?\n\nAbis ini rekening dia muncul, lo transfer sendiri. Kalau nanti dia gak sanggup bayar, dianggap lunas.`))) return;
+      ok = 'Siap! Rekeningnya ada di tab Gw Pinjemin'; TAB = 'dipinjemin'; FLASH = id;
+    } else if(a === 'cancel'){
+      if(!(await gembelConfirm('Batalin permintaan ini?'))) return; ok = 'Dibatalin';
+    } else if(a === 'release'){
+      if(!(await gembelConfirm(l.borrower_id === ME.id ? 'Lepas pemberi pinjaman ini? Permintaan lo balik ke daftar.' : 'Gak jadi minjemin? Permintaannya balik ke daftar.'))) return; ok = 'Dilepas';
+    } else if(a === 'received'){
+      if(!(await gembelConfirm(`Konfirmasi ${rp(l.amount)} udah masuk ke rekening lo?`))) return; ok = 'Pinjaman jalan. Jangan lupa balikin ya 🙏';
+    } else if(a === 'paid'){
+      const v = await gembelPrompt(`Lo transfer balik ${rp(l.amount)} ke ${nameOf(l.lender_id)}.\n\nMau kasih bunga sukarela? (gak wajib, isi 0 kalau nggak)`, String(Math.round(Number(l.offered_interest) || 0)));
+      if(v === null || v === undefined) return;
+      args.p_interest = num(v); ok = 'Nunggu konfirmasi pemberi pinjaman';
+    } else if(a === 'repaid'){
+      if(!(await gembelConfirm(`Uang ${rp(Number(l.amount) + Number(l.interest_paid))} udah masuk ke rekening lo?`))) return; ok = 'Lunas ✅';
+    } else if(a === 'not_received'){
+      if(!(await gembelConfirm('Bilang ke peminjam pembayarannya belum masuk?'))) return; ok = 'Dikabarin';
+    } else if(a === 'forgive'){
+      const mineLoan = l.borrower_id === ME.id;
+      if(!(await gembelConfirm(mineLoan
+        ? `Gak sanggup bayar ${rp(l.amount)}?\n\nGpp — utangnya dianggap lunas. Tapi nama lo masuk leaderboard Total Penerima Manfaat.`
+        : `Ikhlasin ${rp(l.amount)} dari ${nameOf(l.borrower_id)}? Dianggap lunas & dia masuk leaderboard Penerima Manfaat.`))) return;
+      const note = await gembelPrompt(mineLoan ? 'Pesan buat yang minjemin (opsional):' : 'Pesan buat peminjam (opsional):', '');
+      args.p_note = note || null; ok = 'Dianggap lunas 🕊️';
+    }
+    await busy(btn, async () => {
+      try{ await rpc(fn, args); }catch(_){ await refresh(); return; }
+      toast(ok); await refresh();
+    });
+  }
+
+  // ------------------------------------------------------------- boot ----
+
+  function readHash(){
+    const h = (location.hash || '').slice(1);
+    if(h.startsWith('loan-')){
+      FLASH = h.slice(5);
+      const l = LOANS.find(x => x.id === FLASH);
+      if(l) TAB = l.borrower_id === ME.id ? 'pinjaman' : l.lender_id === ME.id ? 'dipinjemin' : 'pinjamin';
+    } else if(['pinjamin', 'pinjaman', 'dipinjemin', 'leaderboard', 'data'].includes(h)) TAB = h;
+  }
+
+  window.addEventListener('hashchange', () => { if(!MISSING.length){ readHash(); render(); } });
+
+  document.addEventListener('DOMContentLoaded', async () => {
+    const authCtx = await requireAuth('index.html');
+    if(!authCtx) return;
+    ME = authCtx.user;
+    try{
+      await loadMe();
+      if(!MISSING.length) await loadLoans();
+    }catch(err){
+      $('app-root').innerHTML = `<div class="panel"><div class="empty-hint">Gagal memuat: ${esc(err.message || err)}</div></div>`;
+      return;
+    }
+    if(!MISSING.length) readHash();
+    render();
+  });
+})();
+</script>
+</body>
+</html>
