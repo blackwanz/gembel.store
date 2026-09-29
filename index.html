@@ -150,6 +150,7 @@
 
   <footer class="site-footer">
     © 2026 Gembel AI PIK — bagian dari Gembel Elite. Jujur, apa adanya, dan tetep ngoding.
+    · <a href="terms.html" style="color:inherit;">Syarat &amp; Ketentuan</a>
     <div style="margin-top:6px;font-family:'Sora',serif;font-style:italic;font-size:10.5px;letter-spacing:0.04em;opacity:0.45;">Salus Populi Suprema Lex Esto</div>
   </footer>
 </section>
@@ -200,7 +201,11 @@
           <input type="password" id="signup-password" placeholder="Min. 8 karakter, huruf besar, angka, simbol" autocomplete="new-password" required minlength="8">
           <div style="font-size:11.5px;color:var(--text-faint);margin-top:5px;">Min. 8 karakter, 1 huruf besar, 1 angka, 1 simbol.</div>
         </div>
-        <button type="submit" class="btn btn-primary btn-block" id="signup-submit" onclick="handleSignup()">Daftar gratis →</button>
+        <label style="display:flex;gap:9px;align-items:flex-start;font-size:12.5px;line-height:1.55;color:var(--text-muted);margin:4px 0 16px;cursor:pointer;">
+          <input type="checkbox" id="signup-terms" style="margin-top:3px;flex-shrink:0;width:16px;height:16px;cursor:pointer;" onchange="document.getElementById('signup-submit').disabled = !this.checked">
+          <span>Saya paham semua aplikasi di sini dibuat dengan AI tanpa jaminan, keamanan data tidak dijamin, dan setiap pembayaran adalah sawer sukarela. Saya menyetujui <a href="terms.html" target="_blank" rel="noopener" style="color:var(--primary);font-weight:600;">Syarat &amp; Ketentuan</a>.</span>
+        </label>
+        <button type="submit" class="btn btn-primary btn-block" id="signup-submit" onclick="handleSignup()" disabled>Daftar gratis →</button>
         <div class="login-foot">Udah punya akun? <a onclick="switchAuthTab('login')">Masuk di sini</a></div>
       </form>
 
@@ -387,6 +392,9 @@ async function offerEliteThenRoute() {
   }
 }
 
+// Naikkan setiap kali isi terms.html berubah secara berarti.
+const TERMS_VERSION = 1;
+
 async function handleSignup() {
   hideMsg();
   const name = document.getElementById('signup-name').value.trim();
@@ -395,10 +403,12 @@ async function handleSignup() {
   if (!name || !email || !password) { showMsg('Lengkapi semua field dulu ya.', 'error'); return; }
   const pwErr = validatePasswordStrength(password);
   if (pwErr) { showMsg(pwErr, 'error'); return; }
+  if (!document.getElementById('signup-terms').checked) { showMsg('Centang persetujuan Syarat & Ketentuan dulu ya.', 'error'); return; }
   setLoading('signup-submit', true, 'Daftar gratis →');
   const { data, error } = await supabase.auth.signUp({
     email, password,
-    options: { data: { full_name: name } }
+    // Bukti persetujuan: versi terms + waktu centang, disimpan di user metadata.
+    options: { data: { full_name: name, terms_version: TERMS_VERSION, terms_accepted_at: new Date().toISOString() } }
   });
   setLoading('signup-submit', false, 'Daftar gratis →');
   if (error) { showMsg(friendlyAuthError(error), 'error'); return; }
