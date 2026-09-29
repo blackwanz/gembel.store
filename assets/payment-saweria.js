@@ -29,7 +29,89 @@
   const STUCK_AFTER_MS = 60 * 1000;
   const SAWERIA_USERNAME = 'irwanKNTL';
 
-  let lastInserted = null; // { amount, base_amount, unique_code, expires_at } for the UI panel below
+  let lastInserted = null; // { amount, base_amount, unique_code, expires_at, months } for the UI panel below
+
+  // ---- Part 0: month picker ----
+  // auth.js's modal is fixed at one month. This injects a picker into its .pay-body so a member
+  // can pay any number of months (up to 10 years) in one go; the chosen count is applied to the
+  // insert in Part 1 (amount = price x months, plus a `months` column). The DB caps `months` at
+  // what the amount actually covers (db/migrations/0047_payment_months_and_prize_income.sql), so
+  // this is UX, not a trust boundary.
+  const PRICE_PER_MONTH = Number(window.SITE_CONFIG && window.SITE_CONFIG.elitePricePerMonth) || 29999;
+  const MONTH_CHOICES = [1, 3, 6, 12, 24];
+  const MAX_MONTHS = 120;
+  let selectedMonths = 1;
+
+  function monthsLabel(m) {
+    if (m % 12 === 0) return (m / 12) + ' tahun';
+    return m + ' bulan';
+  }
+
+  function applyMonthsToModal(modal) {
+    const total = PRICE_PER_MONTH * selectedMonths;
+    const newPrice = modal.querySelector('.pay-price .new');
+    const per = modal.querySelector('.pay-price .per');
+    const goBtn = modal.querySelector('#pay-go');
+    const oldPrice = modal.querySelector('.pay-price .old');
+    if (oldPrice) {
+      // auth.js's struck-through "normal price" is per month; scale it with the pick so the promo
+      // comparison stays apples to apples.
+      if (!oldPrice.dataset.perMonth) oldPrice.dataset.perMonth = String(Number(oldPrice.textContent.replace(/[^0-9]/g, '')) || 0);
+      const perMonthOld = Number(oldPrice.dataset.perMonth);
+      if (perMonthOld) oldPrice.textContent = formatRupiah(perMonthOld * selectedMonths);
+    }
+    if (newPrice) newPrice.textContent = formatRupiah(total);
+    if (per) per.textContent = '/ ' + monthsLabel(selectedMonths);
+    if (goBtn) goBtn.textContent = 'Bayar ' + formatRupiah(total) + ' →';
+    modal.querySelectorAll('[data-pay-months]').forEach((b) => {
+      const on = Number(b.dataset.payMonths) === selectedMonths;
+      b.style.background = on ? 'var(--accent, #6366f1)' : 'transparent';
+      b.style.color = on ? '#fff' : 'inherit';
+      b.style.borderColor = on ? 'transparent' : 'var(--border)';
+    });
+    const custom = modal.querySelector('#pay-months-custom');
+    if (custom && document.activeElement !== custom) custom.value = selectedMonths;
+    const note = modal.querySelector('#pay-months-note');
+    if (note) note.textContent = selectedMonths > 1
+      ? `${formatRupiah(PRICE_PER_MONTH)} × ${selectedMonths} bulan · Elite ${selectedMonths * 30} hari · +${(selectedMonths).toLocaleString('id-ID')} juta poin`
+      : 'Bisa bayar sekaligus buat beberapa bulan / tahun ke depan.';
+  }
+
+  function injectMonthPicker() {
+    const modal = document.getElementById('pay-modal');
+    if (!modal || modal.querySelector('#pay-months')) return;
+    const price = modal.querySelector('.pay-price');
+    if (!price) return;
+    selectedMonths = 1;
+    const wrap = document.createElement('div');
+    wrap.id = 'pay-months';
+    wrap.style.cssText = 'margin:12px 0 14px;';
+    const chipCss = 'padding:6px 10px;border:1px solid var(--border);border-radius:999px;background:transparent;color:inherit;font-size:12.5px;font-weight:700;cursor:pointer;';
+    wrap.innerHTML = `
+      <div style="font-size:12px;font-weight:700;margin-bottom:6px;">Mau bayar berapa lama?</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+        ${MONTH_CHOICES.map((m) => `<button type="button" data-pay-months="${m}" style="${chipCss}">${monthsLabel(m)}</button>`).join('')}
+        <label style="display:flex;align-items:center;gap:4px;font-size:12px;">
+          <input type="number" id="pay-months-custom" min="1" max="${MAX_MONTHS}" value="1" style="width:64px;padding:5px 6px;border:1px solid var(--border);border-radius:8px;background:transparent;color:inherit;"> bulan
+        </label>
+      </div>
+      <div id="pay-months-note" style="font-size:11px;color:var(--text-faint);margin-top:6px;"></div>
+    `;
+    price.insertAdjacentElement('afterend', wrap);
+    wrap.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-pay-months]');
+      if (!b) return;
+      selectedMonths = Number(b.dataset.payMonths);
+      applyMonthsToModal(modal);
+    });
+    wrap.querySelector('#pay-months-custom').addEventListener('input', (e) => {
+      const n = Math.floor(Number(e.target.value));
+      if (!n || n < 1) return;
+      selectedMonths = Math.min(MAX_MONTHS, n);
+      applyMonthsToModal(modal);
+    });
+    applyMonthsToModal(modal);
+  }
 
   // ---- Part 1: append the unique code before the insert goes out ----
   const originalFrom = window.supabase.from.bind(window.supabase);
@@ -44,13 +126,16 @@
 
       list.forEach((row) => {
         if (row == null || row.amount == null || row.unique_code != null) return; // already has one, or nothing to base a code on
-        const base = Number(row.amount);
+        // auth.js always sends its own one-month price; the picker (Part 0) decides the real total.
+        const months = Math.max(1, Math.min(MAX_MONTHS, selectedMonths || 1));
+        const base = PRICE_PER_MONTH * months;
         const code = CODE_MIN + Math.floor(Math.random() * (CODE_MAX - CODE_MIN + 1));
         row.base_amount = base;
         row.amount = base + code;
         row.unique_code = code;
+        row.months = months;
         row.expires_at = new Date(Date.now() + EXPIRES_MS).toISOString();
-        lastInserted = { amount: row.amount, base_amount: base, unique_code: code, expires_at: row.expires_at };
+        lastInserted = { amount: row.amount, base_amount: base, unique_code: code, expires_at: row.expires_at, months };
       });
 
       return originalInsert(isArray ? list : list[0], options);
@@ -81,7 +166,7 @@
         <span style="font-size:17px;font-weight:700;">Bayar ${formatRupiah(info.amount)}</span>
         <button type="button" id="pay-saweria-copy-btn" title="Salin nominal" style="width:26px;height:26px;font-size:13px;line-height:1;background:none;border:1px solid var(--border);border-radius:8px;cursor:pointer;color:inherit;">📋</button>
       </div>
-      <p style="font-size:11px;color:var(--text-faint);margin:6px 0 12px;">Jangan dibulatkan -- kode unik <strong>${info.unique_code}</strong> ditambahin ke harga asli ${formatRupiah(info.base_amount)} biar sistem tau ini tagihan lo. Berlaku <span id="pay-saweria-countdown">15:00</span> lagi.</p>
+      <p style="font-size:11px;color:var(--text-faint);margin:6px 0 12px;">Jangan dibulatkan -- kode unik <strong>${info.unique_code}</strong> ditambahin ke harga asli ${formatRupiah(info.base_amount)} biar sistem tau ini tagihan lo${info.months > 1 ? ` (Elite ${monthsLabel(info.months)})` : ''}. Berlaku <span id="pay-saweria-countdown">15:00</span> lagi.</p>
       <a href="https://saweria.co/${SAWERIA_USERNAME}" target="_blank" rel="noopener" id="pay-saweria-bayar-btn" class="btn btn-primary btn-block">Bayar →</a>
       <button type="button" id="pay-saweria-sudah-btn" class="btn btn-ghost btn-block" style="margin-top:8px;display:none;" disabled></button>
       <p id="pay-saweria-status" style="font-size:12px;margin:10px 0 0;color:var(--text-muted);display:none;">⏳ Nunggu donasi masuk ke Saweria...</p>
@@ -298,6 +383,6 @@
     pending = false;
   }
 
-  const observer = new MutationObserver(tryInjectAmount);
+  const observer = new MutationObserver(() => { injectMonthPicker(); tryInjectAmount(); });
   observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
 })();

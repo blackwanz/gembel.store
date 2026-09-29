@@ -639,7 +639,12 @@ function fillProfile() {
     ? '👑 ADMIN'
     : (elite ? '<span class="plan-badge elite">ELITE ⭐</span>' : '<span class="plan-badge free">FREE</span>');
   const upBtn = document.getElementById('upgrade-btn');
-  if (upBtn) upBtn.style.display = (elite || CURRENT_PROFILE?.role === 'admin') ? 'none' : 'inline-flex';
+  // Elite members can pay ahead too (multi-month picker in assets/payment-saweria.js; each payment
+  // stacks onto plan_until), so the button stays -- just relabelled.
+  if (upBtn) {
+    upBtn.style.display = CURRENT_PROFILE?.role === 'admin' ? 'none' : 'inline-flex';
+    upBtn.textContent = elite ? '⭐ Perpanjang Elite' : '⭐ Upgrade Elite';
+  }
   document.getElementById('chip-avatar').classList.toggle('admin', CURRENT_PROFILE?.role === 'admin');
 
   document.getElementById('profil-email').textContent = CURRENT_USER.email;

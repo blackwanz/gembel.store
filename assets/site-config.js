@@ -11,4 +11,10 @@ window.SITE_CONFIG = {
   // assets/payment-qr.js strips non-digits before building the wa.me link anyway, so any
   // format works here.
   whatsappAdminNumber: '+62895331699681',
+
+  // Elite price per month, used by the month picker in assets/payment-saweria.js (member can pay
+  // for several months at once). Must match public.elite_price_per_month() in
+  // db/migrations/0047_payment_months_and_prize_income.sql -- the DB uses it to cap how many
+  // months a confirmed payment is actually worth.
+  elitePricePerMonth: 29999,
 };

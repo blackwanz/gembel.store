@@ -49,6 +49,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/dist/umd/supabase.min.js"></script>
 <script src="assets/supabaseClient.js"></script>
 <script src="assets/auth.js"></script>
+<script src="assets/site-config.js"></script>
 <style>
   :root{
     --bg:#f3f5fb;
@@ -498,6 +499,47 @@
   .live-reg-players{ font-size:11.5px; color:var(--text-dim); }
   .live-reg-time{ font-size:11px; color:var(--text-faint); flex:none; }
 
+  /* Gladiator format -- solo and duo entries share one bracket */
+  .cat-tab .fmt-dot.gladiator{ background:var(--danger); }
+  .tag-solo{ background:var(--danger-bg); color:var(--danger); }
+  .tag-duo{ background:var(--accent2-bg); color:var(--accent2); }
+  .entry-toggle{ display:flex; gap:8px; margin-bottom:14px; }
+  .entry-toggle .radio-card{ min-width:140px; }
+  .reg-solo .p2-block{ display:none; }
+
+  /* Prize board -- public live prize pool */
+  .prize-board{
+    position:relative; overflow:hidden; margin-bottom:14px; padding:18px 20px;
+    border-radius:var(--radius-lg); border:1px solid var(--accent);
+    background:linear-gradient(135deg, var(--accent-bg), var(--surface) 70%);
+    box-shadow:var(--shadow);
+  }
+  .prize-board-top{ display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  .prize-label{ font-size:11.5px; font-weight:800; letter-spacing:0.12em; text-transform:uppercase; color:var(--accent); display:flex; align-items:center; gap:8px; }
+  .prize-live-dot{ width:8px; height:8px; border-radius:50%; background:var(--danger); animation:prizePulse 1.4s ease-in-out infinite; }
+  @keyframes prizePulse{ 0%,100%{ opacity:1; transform:scale(1); } 50%{ opacity:0.35; transform:scale(0.7); } }
+  .prize-amount{ font-family:var(--font-display); font-weight:900; font-size:clamp(34px, 8vw, 54px); line-height:1; margin-top:6px; color:var(--text); }
+  .prize-amount.bump{ animation:prizeBump 0.7s ease-out; }
+  @keyframes prizeBump{ 0%{ color:var(--success); transform:scale(1.06); } 100%{ color:var(--text); transform:scale(1); } }
+  .prize-sub{ font-size:12.5px; color:var(--text-dim); margin-top:6px; }
+  .prize-splits{ display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; }
+  .prize-split{ flex:1; min-width:120px; background:var(--bg-elev); border:1px solid var(--border); border-radius:var(--radius-md); padding:9px 12px; }
+  .prize-split-label{ font-size:11px; font-weight:800; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.06em; }
+  .prize-split-amt{ font-family:var(--font-mono); font-weight:600; font-size:15px; margin-top:3px; }
+  .prize-edit-row{ display:grid; grid-template-columns:1fr 150px auto; gap:8px; align-items:center; margin-bottom:8px; }
+  .prize-edit-row.split{ grid-template-columns:1fr 90px auto; }
+  .prize-switch{ display:flex; align-items:center; gap:10px; font-weight:700; font-size:13.5px; cursor:pointer; }
+  .prize-switch input{ width:18px; height:18px; accent-color:var(--accent-solid); }
+  .prize-breakdown{ width:100%; border-collapse:collapse; font-size:13px; }
+  .prize-breakdown td{ padding:7px 4px; border-bottom:1px solid var(--border); }
+  .prize-breakdown td:last-child{ text-align:right; font-family:var(--font-mono); white-space:nowrap; }
+  .prize-breakdown tr.minus td:last-child{ color:var(--danger); }
+  .prize-breakdown tr.owner td{ color:var(--accent); font-weight:700; }
+  .prize-breakdown tr.total td{ font-weight:800; font-size:15px; border-bottom:none; }
+  @media (max-width:520px){
+    .prize-edit-row{ grid-template-columns:1fr 110px auto; }
+  }
+
   @media (max-width:820px){
     .reg-grid{ grid-template-columns:1fr; }
   }
@@ -582,7 +624,8 @@
   }
   var uid = uidFactory();
 
-  function createDummyTeam(randomizeStatus){
+  // solo=true builds a one-player Gladiator entry (see isGladiator) instead of a pair.
+  function createDummyTeam(randomizeStatus, solo){
     var p1 = randomPersonName(), p2 = randomPersonName();
     var fullVerified = Math.random() < 0.5;
     var partial = !fullVerified && Math.random() < 0.6;
@@ -598,12 +641,12 @@
     }
     return {
       id: uid('team'),
-      name: randomTeamName(),
+      name: solo ? p1 : randomTeamName(),
       subtitle: '',
       isDummy: true, // lets "Hapus Semua Tim Contoh" find and remove exactly these, and nothing else
       status: status,
       createdAt: Date.now(),
-      players: [
+      players: solo ? [ { name:p1, email: randomEmail(p1) } ] : [
         { name:p1, email: randomEmail(p1) },
         { name:p2, email: randomEmail(p2), partnerVerified: checks.email }
       ],
@@ -884,6 +927,7 @@
     categories: [],
     rulesText: "PERATURAN TURNAMEN\n\n1. Sistem Pertandingan\n   - Format mengikuti pengaturan tiap kategori: gugur langsung atau fase grup dilanjutkan babak gugur.\n   - Setiap pertandingan memakai sistem rally point, best of 3 game, tiap game hingga 21 poin (deuce maksimal 30 poin).\n\n2. Kehadiran & Walkover (W.O.)\n   - Pemain wajib hadir di lapangan maksimal 15 menit setelah nama tim dipanggil.\n   - Keterlambatan lebih dari 15 menit dinyatakan kalah W.O. dan lawan otomatis melaju ke babak berikutnya.\n\n3. Pendaftaran Tim\n   - Satu tim terdiri dari 2 pemain (ganda) yang wajib mengisi data diri lengkap dan email aktif.\n   - Verifikasi tanggal lahir, email, GoPay, dan rekening bank wajib diselesaikan sebelum pendaftaran ditutup.\n   - Panitia berhak mendiskualifikasi tim jika data yang diberikan tidak valid.\n\n4. Pengunduran Diri & Diskualifikasi\n   - Tim yang mengundurkan diri sebelum bertanding dicatat sebagai W.O.; lawan melaju otomatis.\n   - Tim yang terbukti melanggar ketentuan dapat didiskualifikasi panitia kapan saja selama turnamen berlangsung.\n\n5. Perlengkapan\n   - Shuttlecock disediakan panitia, menggunakan bulu angsa standar pertandingan.\n   - Pemain wajib memakai sepatu indoor non-marking.\n\n6. Keputusan Wasit\n   - Keputusan wasit dan panitia bersifat final dan mengikat.",
     rulesOpen: false,
+    prize: null, // set from defaultPrize()/normalizePrize() once a tournament loads
     ui: {
       adminTab: 'ringkasan',
       playerTab: 'daftar',
@@ -913,10 +957,216 @@
       cupList: [],
       showCupSwitcher: false,
       showArchivedCups: false,
-      bracketSizeChoice: 'auto'
+      bracketSizeChoice: 'auto',
+      // Gladiator registration: true while the form is set to a one-player (solo) entry.
+      regSolo: false,
+      // Admin's unsaved edits on the Hadiah tab -- kept apart from S.prize so a realtime reload of
+      // the tournament row (another admin saving anything) can't wipe what's being typed.
+      prizeDraft: null,
+      lastPrizeShown: null
     }
   };
   function isAdminView(){ return S.isAdmin && !S.ui.viewAsPlayer; }
+
+  /* ---------------- FORMATS ---------------- */
+  // 'gladiator' is a knockout bracket where an entry can be one player (solo) or a pair -- solos
+  // and pairs are drawn together, so who meets who just depends on who signed up.
+  var FORMAT_LABELS = { knockout:'Langsung Gugur', groups:'Grup lalu Gugur', gladiator:'Gladiator (Single & Ganda Campur)' };
+  function formatLabel(fmt){ return FORMAT_LABELS[fmt] || FORMAT_LABELS.knockout; }
+  function isGladiator(cat){ return !!cat && cat.format==='gladiator'; }
+  function isSoloTeam(team){ return !!team && team.players.length < 2; }
+  function playerNamesText(team){
+    return team.players.map(function(p){ return p.name; }).filter(Boolean).join(' & ');
+  }
+  // SOLO/GANDA chip, only meaningful (and only shown) inside a Gladiator category.
+  function entryTypeTag(cat, team){
+    if(!isGladiator(cat) || !team) return '';
+    return isSoloTeam(team) ? '<span class="tag tag-solo">Solo</span>' : '<span class="tag tag-duo">Ganda</span>';
+  }
+
+  /* ---------------- PRIZE POOL ----------------
+     Tournament-wide, stored in tournaments.data.prize (admin-only write, everyone reads -- same
+     RLS as the rest of data). Pool = every confirmed Elite payment (Saweria) inside the
+     tournament period, minus the Saweria fee and the organiser's cut, plus any manual income
+     (sponsor etc.), split into the configured juara/doorprize slots. The payment total comes from
+     the tournament_payment_income() RPC (db/migrations/0047_payment_months_and_prize_income.sql)
+     -- players can't read other people's payment_requests rows, so they only ever get the
+     aggregate -- and is re-polled so the board moves when someone pays.
+
+     The same period drives the entry requirement: minPoints leaderboard points (1 juta per month
+     paid) summed over the period's months. Registration isn't blocked on it; the admin sees who
+     falls short on the Tim tab and can DQ them. */
+  var PRICE_PER_MONTH = Number(window.SITE_CONFIG && window.SITE_CONFIG.elitePricePerMonth) || 29999;
+  function defaultPrize(){
+    return {
+      enabled: false,
+      title: 'Total Hadiah',
+      fromPayments: true,
+      periodStart: '2026-09-15',
+      periodEnd: '2026-12-25',
+      saweriaPct: 5,
+      ownerPct: 10,
+      minPoints: 3000000,
+      extras: [],
+      splits: [
+        { label:'Juara 1', pct:50 }, { label:'Juara 2', pct:25 },
+        { label:'Juara 3', pct:15 }, { label:'Doorprize', pct:10 }
+      ]
+    };
+  }
+  function normalizePrize(p){
+    var d = defaultPrize();
+    if(!p || typeof p!=='object') return d;
+    Object.keys(d).forEach(function(k){ if(p[k]!==undefined) d[k] = p[k]; });
+    d.extras = Array.isArray(d.extras) ? d.extras : [];
+    d.splits = Array.isArray(d.splits) ? d.splits : [];
+    return d;
+  }
+  function clonePrize(p){ return JSON.parse(JSON.stringify(p)); }
+  function num(v){ var n = Number(v); return isFinite(n) ? n : 0; }
+  function fmtRp(n){ return 'Rp' + Math.floor(Math.max(0, n)).toLocaleString('id-ID'); }
+  function fmtPoints(n){ return Math.floor(num(n)).toLocaleString('id-ID'); }
+  function fmtShortDate(iso){
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(iso||'')) return '?';
+    var pr = iso.split('-');
+    return new Date(Number(pr[0]), Number(pr[1])-1, Number(pr[2])).toLocaleDateString('id-ID', { day:'numeric', month:'short', year:'numeric' });
+  }
+  function validPeriod(p){
+    return /^\d{4}-\d{2}-\d{2}$/.test(p.periodStart||'') && /^\d{4}-\d{2}-\d{2}$/.test(p.periodEnd||'') && p.periodStart <= p.periodEnd;
+  }
+  function periodKey(p){ return (p.periodStart||'')+'|'+(p.periodEnd||''); }
+
+  // Live data behind the pool and the entry requirement, cached per period -- a draft with a
+  // different period on the admin's Hadiah tab gets its own fetch without disturbing the saved one.
+  var prizeData = { income: {}, points: {}, loading: {} };
+  async function fetchPaymentIncome(p){
+    var key = periodKey(p);
+    if(!validPeriod(p) || prizeData.loading['i'+key]) return;
+    prizeData.loading['i'+key] = true;
+    try{
+      var res = await supabase.rpc('tournament_payment_income', { p_start: p.periodStart, p_end: p.periodEnd });
+      if(res.error) throw res.error;
+      var row = Array.isArray(res.data) ? res.data[0] : res.data;
+      prizeData.income[key] = { total: num(row && row.total), payments: num(row && row.payments), months: num(row && row.months), error: null };
+    }catch(e){
+      console.warn('Prize income load failed:', e.message);
+      var prev = prizeData.income[key];
+      prizeData.income[key] = { total: prev?prev.total:0, payments: prev?prev.payments:0, months: prev?prev.months:0, error: e.message };
+    }
+    prizeData.loading['i'+key] = false;
+  }
+  function monthStartIso(iso){ return iso.slice(0,7)+'-01'; }
+  async function fetchMemberPoints(p){
+    var key = periodKey(p);
+    if(!validPeriod(p) || prizeData.loading['p'+key]) return;
+    prizeData.loading['p'+key] = true;
+    try{
+      var res = await supabase.from('leaderboard_points').select('user_id,points')
+        .gte('period_month', monthStartIso(p.periodStart)).lte('period_month', monthStartIso(p.periodEnd));
+      if(res.error) throw res.error;
+      var byUser = {};
+      (res.data||[]).forEach(function(r){ byUser[r.user_id] = (byUser[r.user_id]||0) + num(r.points); });
+      prizeData.points[key] = byUser;
+    }catch(e){
+      console.warn('Member points load failed:', e.message);
+    }
+    prizeData.loading['p'+key] = false;
+  }
+  async function refreshPrizeData(){
+    if(!S.prize) return;
+    var jobs = [fetchPaymentIncome(S.prize), fetchMemberPoints(S.prize)];
+    var d = S.ui.prizeDraft;
+    if(d && periodKey(d)!==periodKey(S.prize)) jobs.push(fetchPaymentIncome(d), fetchMemberPoints(d));
+    await Promise.all(jobs);
+    render();
+  }
+  // The pool only moves when a payment gets confirmed somewhere on the site, and this page has no
+  // realtime signal for that (payment_requests RLS hides other users' rows), so poll.
+  var prizePollTimer = null;
+  function startPrizePolling(){
+    if(prizePollTimer) return;
+    prizePollTimer = setInterval(function(){
+      if(document.hidden) return;
+      if(S.tournamentId && S.prize && !S.ui.showCupSwitcher) refreshPrizeData();
+    }, 45000);
+  }
+  function memberPointsFor(userId){
+    var byUser = S.prize && prizeData.points[periodKey(S.prize)];
+    if(!byUser || !userId) return null;
+    return byUser[userId] || 0;
+  }
+  // Per player of a team: whether their leaderboard points in the period reach minPoints. A
+  // partner who never accepted the invite has no account linked yet, so they can't meet it.
+  function teamEligibility(team){
+    var min = num(S.prize && S.prize.minPoints);
+    var rows = team.players.map(function(p, idx){
+      var userId = idx===0 ? team.registeredBy : (p.inviteStatus==='accepted' ? p.userId : null);
+      var pts = memberPointsFor(userId);
+      return { name: p.name || ('Pemain '+(idx+1)), userId: userId || null, points: pts, ok: !!userId && pts!=null && pts>=min };
+    });
+    var known = !!team.registeredBy; // admin-added / slot / dummy teams have no account behind them
+    return { rows: rows, known: known, ok: known && rows.every(function(r){ return r.ok; }) };
+  }
+  function computePrize(p){
+    var inc = prizeData.income[periodKey(p)] || null;
+    var gross = (p.fromPayments && inc) ? inc.total : 0;
+    var saweria = Math.round(gross * num(p.saweriaPct) / 100);
+    var net = gross - saweria;
+    var owner = Math.round(net * num(p.ownerPct) / 100);
+    var fromPay = net - owner;
+    var extrasTotal = p.extras.reduce(function(sum, x){ return sum + Math.max(0, num(x.amount)); }, 0);
+    var pool = fromPay + extrasTotal;
+    var perMonth = p.fromPayments ? Math.floor(PRICE_PER_MONTH * (1 - num(p.saweriaPct)/100) * (1 - num(p.ownerPct)/100)) : 0;
+    var pctTotal = p.splits.reduce(function(sum, s){ return sum + num(s.pct); }, 0);
+    return {
+      income: inc, gross: gross, saweria: saweria, net: net, owner: owner,
+      fromPay: fromPay, extrasTotal: extrasTotal, pool: pool, perMonth: perMonth, pctTotal: pctTotal,
+      splits: p.splits.map(function(s){ return { label: s.label, pct: num(s.pct), amount: Math.floor(pool * num(s.pct) / 100) }; })
+    };
+  }
+  // preview=true (admin Hadiah tab) leaves off the id so it doesn't collide with / hijack the live
+  // board's count-up animation.
+  function renderPrizeBoard(p, preview){
+    var c = computePrize(p);
+    var sub = 'Periode '+fmtShortDate(p.periodStart)+' &ndash; '+fmtShortDate(p.periodEnd);
+    if(p.fromPayments && c.income) sub += ' &middot; '+c.income.payments+' pembayaran member ('+c.income.months+' bulan)';
+    if(p.fromPayments && c.perMonth>0) sub += '<br>Naik <strong>'+fmtRp(c.perMonth)+'</strong> tiap ada member bayar 1 bulan &mdash; makin rame, makin gede!';
+    var splits = c.splits.filter(function(s){ return s.pct>0; }).map(function(s, i){
+      var medal = ['🥇','🥈','🥉'][i] || '🎁';
+      return '<div class="prize-split"><div class="prize-split-label">'+medal+' '+escapeHtml(s.label)+'</div><div class="prize-split-amt">'+fmtRp(s.amount)+'</div></div>';
+    }).join('');
+    return '<div class="prize-board">' +
+      '<div class="prize-board-top"><div>' +
+      '<div class="prize-label"><span class="prize-live-dot"></span>LIVE &middot; '+escapeHtml(p.title||'Total Hadiah')+'</div>' +
+      '<div class="prize-amount"'+(preview?'':' id="prizeAmount"')+' data-target="'+Math.floor(c.pool)+'">'+fmtRp(c.pool)+'</div>' +
+      '<div class="prize-sub">'+sub+'</div>' +
+      '</div></div>' +
+      (splits ? '<div class="prize-splits">'+splits+'</div>' : '') +
+      '</div>';
+  }
+  // Counts the big number up/down from what was last on screen instead of snapping, so a new
+  // registration visibly "adds" to the pot.
+  var prizeAnimFrame = null;
+  function animatePrizeAmount(){
+    var el = document.getElementById('prizeAmount');
+    if(!el) return;
+    var target = Number(el.getAttribute('data-target')) || 0;
+    var from = S.ui.lastPrizeShown;
+    S.ui.lastPrizeShown = target;
+    if(prizeAnimFrame){ cancelAnimationFrame(prizeAnimFrame); prizeAnimFrame = null; }
+    if(from==null || from===target) return;
+    if(target>from){ el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
+    var start = null, dur = 900;
+    function step(ts){
+      if(start===null) start = ts;
+      var k = Math.min(1, (ts-start)/dur);
+      var eased = 1 - Math.pow(1-k, 3);
+      el.textContent = fmtRp(from + (target-from)*eased);
+      if(k<1) prizeAnimFrame = requestAnimationFrame(step); else prizeAnimFrame = null;
+    }
+    el.textContent = fmtRp(from);
+    prizeAnimFrame = requestAnimationFrame(step);
+  }
 
   function getCat(){
     for(var i=0;i<S.categories.length;i++) if(S.categories[i].id===S.activeCategoryId) return S.categories[i];
@@ -958,7 +1208,7 @@
       try{
         await supabase.from('tournaments').update({
           name: S.tournamentName,
-          data: { rulesText: S.rulesText, categories: serializeCategoriesForCloud() }
+          data: { rulesText: S.rulesText, categories: serializeCategoriesForCloud(), prize: S.prize }
         }).eq('id', S.tournamentId);
       }catch(e){ console.warn('Cloud sync skip:', e.message); }
     }, 900);
@@ -1018,7 +1268,8 @@
     // Used by the admin "Data Contoh" panel to preview the UI at scale. Batched into a single
     // insert (rather than n sequential round-trips) since n can be up to 4000.
     var drafts = [];
-    for(var i=0;i<n;i++) drafts.push(createDummyTeam());
+    // A Gladiator category gets a realistic solo/duo mix (~40% solo) so the mixed bracket can be previewed.
+    for(var i=0;i<n;i++) drafts.push(createDummyTeam(true, isGladiator(cat) && Math.random()<0.4));
     var rows = drafts.map(function(t){
       return { tournament_id: S.tournamentId, category_id: cat.id, name: t.name, payload: teamToPayload(t) };
     });
@@ -1105,20 +1356,25 @@
     S.registrationOpen = !!row.registration_open;
     var data = row.data || {};
     S.rulesText = data.rulesText || S.rulesText;
+    S.prize = normalizePrize(data.prize);
     S.categories = (data.categories || []).map(function(c){ c.teams = []; return c; });
     S.activeCategoryId = S.categories.length ? S.categories[0].id : null;
     await loadTournamentTeams();
+    refreshPrizeData(); // payment total + member points for this tournament's period; renders when done
     return true;
   }
   async function createTournamentAdmin(name){
     var res = await supabase.from('tournaments').insert({
       name: name || 'Turnamen Baru', created_by: S.currentUserId, registration_open: false,
-      data: { rulesText: S.rulesText, categories: [] }
+      data: { rulesText: S.rulesText, categories: [], prize: defaultPrize() }
     }).select().single();
     if(res.error){ toast('Gagal membuat turnamen: '+res.error.message, 'error'); return false; }
     S.tournamentId = res.data.id;
     S.tournamentName = res.data.name;
     S.registrationOpen = false;
+    S.prize = defaultPrize();
+    S.ui.prizeDraft = null;
+    S.ui.lastPrizeShown = null;
     S.categories = [];
     S.activeCategoryId = null;
     return true;
@@ -1153,6 +1409,8 @@
     S.ui.showCupSwitcher = false;
     S.ui.adminTab = 'ringkasan';
     S.ui.playerTab = 'daftar';
+    S.ui.prizeDraft = null;
+    S.ui.lastPrizeShown = null;
     render();
   }
   var realtimeChannel = null;
@@ -1191,7 +1449,7 @@
   }
   function buildArchiveHTML(cat){
     var dateStr = new Date().toLocaleDateString('id-ID', { day:'numeric', month:'long', year:'numeric' });
-    var fmtLabel = cat.format==='groups' ? 'Grup lalu Gugur' : 'Langsung Gugur';
+    var fmtLabel = formatLabel(cat.format);
     var html = '<div class="archive-header">' +
       '<div class="archive-brand">Rally Bracket &middot; Arsip Turnamen</div>' +
       '<h1>'+escapeHtml(cat.name)+'</h1>' +
@@ -1268,7 +1526,7 @@
   }
 
   function addCategory(name, format){
-    var cat = { id: uid('cat'), name: name || 'Kategori Baru', format: format==='groups' ? 'groups' : 'knockout', groupSize:4, advancePerGroup:2, teams:[], groups:null, groupsLocked:false, bracket:null, sample:false };
+    var cat = { id: uid('cat'), name: name || 'Kategori Baru', format: FORMAT_LABELS[format] ? format : 'knockout', groupSize:4, advancePerGroup:2, teams:[], groups:null, groupsLocked:false, bracket:null, sample:false };
     S.categories.push(cat);
     S.activeCategoryId = cat.id;
     return cat;
@@ -1407,7 +1665,7 @@
         '<span class="mc-name-wrap"><span class="mc-name">'+(team?escapeHtml(team.name):'— TBD')+'</span>'+
         (team && team.subtitle ? '<span class="mc-subtitle">'+escapeHtml(team.subtitle)+'</span>' : '') +
         '</span>'+
-        (team?teamStatusTag(team):'')+
+        (team?entryTypeTag(cat, team)+teamStatusTag(team):'')+
         (score!=null ? '<span class="mc-score mono">'+score+'</span>' : '') +
         '</div>';
     }
@@ -1679,13 +1937,13 @@
   function renderCategoryTabs(){
     var tabs = S.categories.map(function(c){
       return '<button class="cat-tab '+(c.id===S.activeCategoryId?'active':'')+'" data-action="select-category" data-id="'+c.id+'">' +
-        '<span class="fmt-dot '+(c.format==='groups'?'groups':'')+'"></span>' + escapeHtml(c.name) + '</button>';
+        '<span class="fmt-dot '+(c.format==='knockout'?'':escapeHtml(c.format))+'"></span>' + escapeHtml(c.name) + '</button>';
     }).join('');
     var addForm = '';
     if(S.ui.showAddCategory){
       addForm = '<div class="add-cat-form">' +
         '<input id="newCategoryName" placeholder="Nama kategori (contoh: Ganda Putri Divisi Umum)">' +
-        '<select id="newCategoryFormat"><option value="knockout">Langsung Gugur</option><option value="groups">Grup lalu Gugur</option></select>' +
+        '<select id="newCategoryFormat"><option value="knockout">Langsung Gugur</option><option value="groups">Grup lalu Gugur</option><option value="gladiator">Gladiator (Single &amp; Ganda)</option></select>' +
         '<button class="btn btn-primary btn-sm" data-action="create-category">'+ICONS.plus+' Buat</button>' +
         '<button class="btn btn-ghost btn-sm" data-action="cancel-add-category">Batal</button>' +
         '</div>';
@@ -1700,7 +1958,7 @@
     if(!cat) return '<div class="panel empty-state">'+ICONS.empty+'<div>Belum ada kategori turnamen. Buat kategori baru untuk mulai.</div></div>';
     var tabs = [['ringkasan','Ringkasan'],['pengaturan','Pengaturan'],['tim','Tim']];
     if(cat.format==='groups') tabs.push(['grup','Grup']);
-    tabs.push(['bagan','Bagan'], ['live','Bagan Live']);
+    tabs.push(['bagan','Bagan'], ['live','Bagan Live'], ['hadiah','🏆 Hadiah']);
     var nav = tabs.map(function(t){
       return '<button class="subnav-btn '+(S.ui.adminTab===t[0]?'active':'')+'" data-action="admin-tab" data-tab="'+t[0]+'">'+t[1]+'</button>';
     }).join('');
@@ -1711,7 +1969,152 @@
     else if(S.ui.adminTab==='grup') body = renderAdminGrup(cat);
     else if(S.ui.adminTab==='bagan') body = renderAdminBagan(cat);
     else if(S.ui.adminTab==='live') body = renderBaganLive(cat);
+    else if(S.ui.adminTab==='hadiah') body = renderAdminHadiah();
     return '<div class="subnav">'+nav+'</div>' + body;
+  }
+  function renderAdminHadiah(){
+    var p = S.ui.prizeDraft || S.prize;
+    var dirty = !!S.ui.prizeDraft;
+    var c = computePrize(p);
+    function numInput(id, field, value, extra){
+      return '<input type="number" min="0" id="'+id+'" data-prize-field="'+field+'" value="'+escapeHtml(value)+'"'+(extra||'')+'>';
+    }
+    var toggle = '<div class="banner"><label class="prize-switch"><input type="checkbox" id="prizeEnabledToggle" '+(S.prize.enabled?'checked':'')+'> Tampilkan papan hadiah ke semua pemain</label>' +
+      '<span class="hint">'+(S.prize.enabled?'Lagi tampil LIVE di atas halaman turnamen.':'Masih disembunyikan &mdash; cuma admin yang lihat pengaturan ini.')+'</span></div>';
+
+    var periodOk = validPeriod(p);
+    var periodSection = '<div class="panel">' +
+      '<div class="panel-head"><div><div class="panel-title">Periode &amp; Syarat Ikut</div><div class="panel-desc">Semua pembayaran Elite (Saweria) yang ke-confirm di periode ini masuk hitungan hadiah. Periode yang sama dipakai buat ngecek poin syarat ikut.</div></div></div>' +
+      '<div class="field-row">' +
+      '<div class="field"><label for="prizeStartInput">Mulai</label><input type="date" id="prizeStartInput" data-prize-field="periodStart" value="'+escapeHtml(p.periodStart)+'"></div>' +
+      '<div class="field"><label for="prizeEndInput">Selesai</label><input type="date" id="prizeEndInput" data-prize-field="periodEnd" value="'+escapeHtml(p.periodEnd)+'"></div>' +
+      '<div class="field"><label for="prizeMinPointsInput">Minimal poin buat ikut</label>'+numInput('prizeMinPointsInput','minPoints',p.minPoints,' step="1000000"')+'</div>' +
+      '</div>' +
+      (periodOk ? '' : '<div class="hint" style="margin-top:6px;color:var(--danger);font-weight:700;">Tanggal selesai harus sesudah tanggal mulai.</div>') +
+      '<div class="hint" style="margin-top:8px;">1x bayar 1 bulan = 1.000.000 poin, jadi '+fmtPoints(p.minPoints)+' poin = '+(num(p.minPoints)/1000000)+' bulan bayar di periode ini. Yang belum cukup tetap bisa daftar &mdash; cek &amp; DQ di tab Tim.</div>' +
+      '</div>';
+
+    var paySection = '<div class="panel">' +
+      '<div class="panel-head"><div><div class="panel-title">Dari Pembayaran Member</div><div class="panel-desc">Uang Saweria dikurangi potongan Saweria, lalu bagian lo, sisanya masuk hadiah.</div></div></div>' +
+      '<label class="prize-switch" style="margin-bottom:12px;"><input type="checkbox" data-prize-field="fromPayments" '+(p.fromPayments?'checked':'')+'> Masukkan pembayaran member ke hadiah</label>' +
+      '<div class="field-row">' +
+      '<div class="field"><label for="prizeSaweriaInput">Potongan Saweria (%)</label>'+numInput('prizeSaweriaInput','saweriaPct',p.saweriaPct,' step="0.1" max="100"')+'</div>' +
+      '<div class="field"><label for="prizeOwnerInput">Bagian lo / panitia (%)</label>'+numInput('prizeOwnerInput','ownerPct',p.ownerPct,' step="1" max="100"')+'</div>' +
+      '</div></div>';
+
+    var extrasRows = p.extras.map(function(x, i){
+      return '<div class="prize-edit-row">' +
+        '<input type="text" id="prizeExtraLabel_'+i+'" data-prize-field="extra" data-idx="'+i+'" data-key="label" value="'+escapeHtml(x.label)+'" placeholder="cth: Sponsor Toko Raket">' +
+        '<input type="number" min="0" step="1000" id="prizeExtraAmount_'+i+'" data-prize-field="extra" data-idx="'+i+'" data-key="amount" value="'+escapeHtml(x.amount)+'" placeholder="Rp">' +
+        '<button class="btn btn-sm btn-danger" data-action="prize-remove-extra" data-idx="'+i+'" title="Hapus">'+ICONS.trash+'</button></div>';
+    }).join('');
+    var extrasSection = '<div class="panel">' +
+      '<div class="panel-head"><div><div class="panel-title">Income Tambahan</div><div class="panel-desc">Sponsor, sawer, atau modal hadiah dari lo &mdash; masuk 100% ke hadiah (tanpa potongan).</div></div>' +
+      '<button class="btn btn-sm" data-action="prize-add-extra">'+ICONS.plus+' Income</button></div>' +
+      (extrasRows || '<div class="hint">Belum ada income tambahan.</div>') +
+      '</div>';
+
+    var splitRows = p.splits.map(function(s, i){
+      var amt = c.splits[i] ? c.splits[i].amount : 0;
+      return '<div class="prize-edit-row split">' +
+        '<input type="text" id="prizeSplitLabel_'+i+'" data-prize-field="split" data-idx="'+i+'" data-key="label" value="'+escapeHtml(s.label)+'" placeholder="cth: Juara 1">' +
+        '<input type="number" min="0" max="100" id="prizeSplitPct_'+i+'" data-prize-field="split" data-idx="'+i+'" data-key="pct" value="'+escapeHtml(s.pct)+'" placeholder="%">' +
+        '<div class="field-inline" style="gap:6px;align-items:center;flex-wrap:nowrap;"><span class="mono hint" style="min-width:96px;text-align:right;">'+fmtRp(amt)+'</span>' +
+        '<button class="btn btn-sm btn-danger" data-action="prize-remove-split" data-idx="'+i+'" title="Hapus">'+ICONS.trash+'</button></div></div>';
+    }).join('');
+    var pctOk = Math.abs(c.pctTotal-100) < 0.001;
+    var splitSection = '<div class="panel">' +
+      '<div class="panel-head"><div><div class="panel-title">Pembagian Hadiah</div><div class="panel-desc">Persen dari total hadiah untuk juara &amp; doorprize.</div></div>' +
+      '<button class="btn btn-sm" data-action="prize-add-split">'+ICONS.plus+' Slot</button></div>' +
+      splitRows +
+      '<div class="hint" style="margin-top:6px;color:'+(pctOk?'var(--success)':'var(--danger)')+';font-weight:700;">Total: '+c.pctTotal+'%'+(pctOk?'':' &mdash; harus pas 100%')+'</div>' +
+      '</div>';
+
+    var incomeLine = c.income
+      ? c.income.payments+' pembayaran ke-confirm ('+c.income.months+' bulan) &middot; '+fmtShortDate(p.periodStart)+' &ndash; '+fmtShortDate(p.periodEnd)
+      : (periodOk ? 'Memuat pembayaran&hellip;' : 'Periode belum valid');
+    var incomeErr = c.income && c.income.error
+      ? '<div class="hint" style="margin-top:8px;color:var(--danger);font-weight:700;">Gagal ambil data pembayaran: '+escapeHtml(c.income.error)+' &mdash; migrasi 0047 udah dijalankan?</div>' : '';
+    var breakdown = '<div class="panel">' +
+      '<div class="panel-head"><div><div class="panel-title">Hitungan Live</div><div class="panel-desc">Rincian ini cuma kelihatan di admin &mdash; pemain cuma lihat total hadiah &amp; pembagiannya.</div></div>' +
+      '<button class="btn btn-sm" data-action="prize-refresh">Refresh</button></div>' +
+      '<table class="prize-breakdown"><tbody>' +
+      '<tr><td>Pembayaran member<br><span class="hint">'+incomeLine+'</span>'+(p.fromPayments?'':' <span class="hint">(nonaktif)</span>')+'</td><td>'+fmtRp(c.gross)+'</td></tr>' +
+      '<tr class="minus"><td>Potongan Saweria ('+num(p.saweriaPct)+'%)</td><td>&minus;'+fmtRp(c.saweria)+'</td></tr>' +
+      '<tr class="owner"><td>💰 Bagian lo ('+num(p.ownerPct)+'%)</td><td>'+fmtRp(c.owner)+'</td></tr>' +
+      '<tr><td>Masuk hadiah dari pembayaran ('+(100-num(p.ownerPct))+'%)</td><td>'+fmtRp(c.fromPay)+'</td></tr>' +
+      '<tr><td>Income tambahan</td><td>+'+fmtRp(c.extrasTotal)+'</td></tr>' +
+      '<tr class="total"><td>🏆 Total hadiah</td><td>'+fmtRp(c.pool)+'</td></tr>' +
+      '</tbody></table>' + incomeErr +
+      '<div class="hint" style="margin-top:8px;">Tiap member bayar 1 bulan ('+fmtRp(PRICE_PER_MONTH)+'): hadiah +'+fmtRp(c.perMonth)+'. Angka ini ke-refresh otomatis tiap ~45 detik.</div>' +
+      '</div>';
+
+    var head = '<div class="panel">' +
+      '<div class="panel-head"><div><div class="panel-title">Hadiah Turnamen</div><div class="panel-desc">Atur nama hadiah, periode, sumber uangnya, dan pembagiannya.</div></div>' +
+      '<div class="field-inline">' +
+      (dirty ? '<button class="btn btn-ghost" data-action="prize-cancel">Batal</button>' : '') +
+      '<button class="btn btn-primary" data-action="prize-save" '+(dirty?'':'disabled')+'>Simpan Hadiah</button></div></div>' +
+      '<div class="field"><label for="prizeTitleInput">Nama hadiah (tampil di papan)</label><input type="text" id="prizeTitleInput" data-prize-field="title" value="'+escapeHtml(p.title)+'" placeholder="cth: Total Hadiah Gladiator Cup"></div>' +
+      (dirty ? '<div class="hint" style="margin-top:8px;color:var(--warning);font-weight:700;">Ada perubahan yang belum disimpan &mdash; pemain belum lihat angka ini.</div>' : '') +
+      '</div>';
+
+    return toggle + '<div class="prize-board-preview"><div class="hint" style="margin:0 2px 6px;">Pratinjau papan yang dilihat pemain:</div>' + renderPrizeBoard(p, true) + '</div>' +
+      head + periodSection + paySection + extrasSection + splitSection + breakdown;
+  }
+  function ensurePrizeDraft(){
+    if(!S.ui.prizeDraft) S.ui.prizeDraft = clonePrize(S.prize);
+    return S.ui.prizeDraft;
+  }
+  // Every Hadiah-tab input writes straight into the draft and re-renders, so the preview and the
+  // breakdown track what's being typed. Number fields keep the raw string until save, so clearing a
+  // field to retype it doesn't snap back to 0 mid-edit.
+  function updatePrizeDraftFromInput(el){
+    if(!S.isAdmin) return;
+    var d = ensurePrizeDraft();
+    var field = el.dataset.prizeField;
+    if(field==='extra' || field==='split'){
+      var list = field==='extra' ? d.extras : d.splits;
+      var item = list[parseInt(el.dataset.idx,10)];
+      if(item) item[el.dataset.key] = el.value;
+    } else if(el.type==='checkbox'){
+      d[field] = el.checked;
+    } else {
+      d[field] = el.value;
+    }
+    render();
+    if(field==='periodStart' || field==='periodEnd'){
+      // New period = new totals; wait for the admin to stop fiddling with the date before fetching.
+      clearTimeout(prizePeriodTimer);
+      prizePeriodTimer = setTimeout(refreshPrizeData, 500);
+    }
+  }
+  var prizePeriodTimer = null;
+  function savePrizeDraft(){
+    var d = S.ui.prizeDraft;
+    if(!d) return;
+    var clean = normalizePrize(d);
+    if(!validPeriod(clean)){ toast('Periode belum valid -- tanggal selesai harus sesudah tanggal mulai.', 'error'); return; }
+    clean.minPoints = Math.max(0, Math.round(num(clean.minPoints)));
+    clean.saweriaPct = Math.min(100, Math.max(0, num(clean.saweriaPct)));
+    clean.ownerPct = Math.min(100, Math.max(0, num(clean.ownerPct)));
+    clean.title = String(clean.title||'').trim() || 'Total Hadiah';
+    clean.extras = clean.extras
+      .map(function(x){ return { label: String(x.label||'').trim(), amount: Math.max(0, Math.round(num(x.amount))) }; })
+      .filter(function(x){ return x.label || x.amount; });
+    clean.splits = clean.splits
+      .map(function(s){ return { label: String(s.label||'').trim() || 'Hadiah', pct: Math.max(0, num(s.pct)) }; });
+    var total = clean.splits.reduce(function(sum, s){ return sum + s.pct; }, 0);
+    if(clean.splits.length && Math.abs(total-100) >= 0.001){
+      toast('Total pembagian hadiah harus pas 100% (sekarang '+total+'%).', 'error');
+      return;
+    }
+    clean.enabled = S.prize.enabled; // the show/hide toggle saves on its own, never via the draft
+    S.prize = clean;
+    S.ui.prizeDraft = null;
+    queueCloudSync();
+    toast('Hadiah disimpan'+(S.prize.enabled ? ' — langsung tampil ke pemain.' : '.'));
+    render();
+    refreshPrizeData();
   }
   function renderAdminRingkasan(){
     var totalTeams = 0, fullVerified = 0, pendingVerif = 0;
@@ -1735,7 +2138,7 @@
       var stageLabel = c.format==='groups' ? (c.groupsLocked ? 'Babak Gugur' : (c.groups ? 'Fase Grup' : 'Belum Dikelompokkan')) : (c.bracket ? 'Bagan Berjalan' : 'Belum Ada Bagan');
       return '<div class="cat-summary-card">' +
         '<div class="cat-summary-title">'+escapeHtml(c.name)+'</div>' +
-        '<div class="cat-summary-meta"><span>'+(c.format==='groups'?'Grup lalu Gugur':'Langsung Gugur')+'</span><span>'+active+' tim aktif</span><span>'+stageLabel+'</span></div>' +
+        '<div class="cat-summary-meta"><span>'+formatLabel(c.format)+'</span><span>'+active+' tim aktif</span><span>'+stageLabel+'</span></div>' +
         '<button class="btn btn-sm" data-action="select-category" data-id="'+c.id+'">Kelola →</button>' +
         '</div>';
     }).join('') + '</div>';
@@ -1766,6 +2169,7 @@
       '<div class="radio-group" style="margin-top:8px;">' +
       '<label class="radio-card '+(cat.format==='knockout'?'checked':'')+'"><input type="radio" name="fmt" value="knockout" '+(cat.format==='knockout'?'checked':'')+' data-action-name="format-radio"><span><span class="radio-card-title">Langsung Gugur</span><br><span class="radio-card-desc">Semua tim langsung masuk satu bagan gugur (single elimination).</span></span></label>' +
       '<label class="radio-card '+(cat.format==='groups'?'checked':'')+'"><input type="radio" name="fmt" value="groups" '+(cat.format==='groups'?'checked':'')+' data-action-name="format-radio"><span><span class="radio-card-title">Grup lalu Gugur</span><br><span class="radio-card-desc">Tim dibagi ke beberapa grup (round robin), lalu terbaik tiap grup lanjut ke bagan gugur.</span></span></label>' +
+      '<label class="radio-card '+(cat.format==='gladiator'?'checked':'')+'"><input type="radio" name="fmt" value="gladiator" '+(cat.format==='gladiator'?'checked':'')+' data-action-name="format-radio"><span><span class="radio-card-title">Gladiator</span><br><span class="radio-card-desc">Boleh daftar sendirian (single) atau berdua (ganda). Semua dicampur di satu bagan gugur &mdash; single bisa ketemu ganda.</span></span></label>' +
       '</div></div>' +
       groupSettings +
       '</div>' +
@@ -1789,6 +2193,16 @@
       (S.categories.length>1 ? '<button class="btn btn-danger" data-action="delete-category">Hapus Kategori Ini</button>' : '') +
       '</div></div>';
   }
+  // One line per player: their leaderboard points in the tournament period vs. the minimum.
+  function eligibilityCell(team){
+    var e = teamEligibility(team);
+    if(!e.known) return '<span class="hint">&mdash; tanpa akun</span>';
+    return '<div class="players-cell">' + e.rows.map(function(r){
+      var mark = r.ok ? '<span style="color:var(--success);font-weight:800;">✓</span>' : '<span style="color:var(--danger);font-weight:800;">✗</span>';
+      var val = !r.userId ? 'belum gabung' : (r.points==null ? '…' : fmtPoints(r.points));
+      return mark+' '+escapeHtml(r.name)+' <span class="em">('+val+')</span>';
+    }).join('<br>') + '</div>';
+  }
   function renderAdminTim(cat){
     var search = (S.ui.teamsSearch||'').toLowerCase();
     var filtered = cat.teams.filter(function(t){
@@ -1807,8 +2221,9 @@
       var doneCount = checksArr.filter(function(k){ return t.checks[k]; }).length;
       var dots = checksArr.map(function(k){ return '<span class="dot '+(t.checks[k]?'done':'')+'" title="'+checksLabel[k]+': '+(t.checks[k]?'lengkap':'belum lengkap')+'"></span>'; }).join('');
       return '<tr>' +
-        '<td data-label="Tim"><span class="team-cell-name">'+escapeHtml(t.name)+'</span>'+(t.subtitle?'<span class="mc-subtitle">'+escapeHtml(t.subtitle)+'</span>':'')+'</td>' +
-        '<td data-label="Pemain"><div class="players-cell">'+escapeHtml(t.players[0].name)+' <span class="em">('+escapeHtml(t.players[0].email)+')</span><br>'+escapeHtml(t.players[1].name)+' <span class="em">('+escapeHtml(t.players[1].email)+')</span></div></td>' +
+        '<td data-label="Tim"><span class="team-cell-name">'+escapeHtml(t.name)+'</span> '+entryTypeTag(cat, t)+(t.subtitle?'<span class="mc-subtitle">'+escapeHtml(t.subtitle)+'</span>':'')+'</td>' +
+        '<td data-label="Pemain"><div class="players-cell">'+t.players.map(function(p){ return escapeHtml(p.name)+' <span class="em">('+escapeHtml(p.email)+')</span>'; }).join('<br>')+'</div></td>' +
+        '<td data-label="Syarat Poin">'+eligibilityCell(t)+'</td>' +
         '<td data-label="Verifikasi"><button class="dots-btn" data-action="open-verify-detail" data-team="'+t.id+'" title="Lihat detail verifikasi (klik buat cek data GoPay/bank dll)"><div class="dots">'+dots+'</div><span class="dots-count">'+doneCount+'/'+checksArr.length+'</span></button></td>' +
         '<td data-label="Status">'+statusPill(t.status)+'</td>' +
         '<td data-label="Aksi"><div class="field-inline" style="gap:6px;">' +
@@ -1821,10 +2236,17 @@
         '<button class="btn btn-sm btn-danger" data-action="delete-team" data-team="'+t.id+'">'+ICONS.trash+'</button>' +
         '</div></td></tr>';
     }).join('');
-    var table = filtered.length ? ('<div class="table-wrap"><table class="data-table"><thead><tr><th>Tim</th><th>Pemain</th><th>Verifikasi</th><th>Status</th><th>Aksi</th></tr></thead><tbody>'+rows+'</tbody></table></div>' + renderPagination(page,totalPages,'teams-page'))
+    var table = filtered.length ? ('<div class="table-wrap"><table class="data-table"><thead><tr><th>Tim</th><th>Pemain</th><th>Syarat Poin</th><th>Verifikasi</th><th>Status</th><th>Aksi</th></tr></thead><tbody>'+rows+'</tbody></table></div>' + renderPagination(page,totalPages,'teams-page'))
       : '<div class="empty-state">'+ICONS.empty+'<div>Tidak ada tim yang cocok.</div></div>';
+    var ineligible = cat.teams.filter(function(t){ var e = teamEligibility(t); return t.status==='active' && e.known && !e.ok; }).length;
+    var eligBar = (S.prize && validPeriod(S.prize))
+      ? '<div class="banner" style="margin-bottom:12px;"><span>Syarat ikut: <strong>'+fmtPoints(S.prize.minPoints)+' poin</strong> per pemain selama '+fmtShortDate(S.prize.periodStart)+' &ndash; '+fmtShortDate(S.prize.periodEnd)+'. '+
+        (ineligible ? '<strong style="color:var(--danger);">'+ineligible+' tim aktif belum memenuhi.</strong>' : 'Semua tim aktif udah memenuhi.')+'</span>' +
+        (ineligible ? '<button class="btn btn-sm btn-danger" data-action="dq-ineligible">DQ yang belum memenuhi</button>' : '') + '</div>'
+      : '';
     return '<div class="panel">' +
       '<div class="panel-head"><div><div class="panel-title">Daftar Tim</div><div class="panel-desc">'+cat.teams.length+' tim terdaftar di kategori ini.</div></div></div>' +
+      eligBar +
       '<div class="toolbar">' +
       '<div class="search-box">'+ICONS.search+'<input id="teamsSearchInput" placeholder="Cari nama tim atau pemain..." value="'+escapeHtml(S.ui.teamsSearch)+'"></div>' +
       '<select id="teamsPerPageSelect" style="width:auto;" data-action-name="teams-per-page">' +
@@ -1878,7 +2300,7 @@
     // Picking an explicit size instead builds an empty/TBD bracket of that shape up front --
     // teams that exist yet get seeded in, the rest stay open for assignSlotTeam (click any
     // TBD/bye slot) to fill in as more teams register.
-    var sizePicker = cat.format==='knockout'
+    var sizePicker = cat.format!=='groups'
       ? '<div class="field-inline" style="align-items:center;">' +
         '<select id="bracketSizeSelect" data-action-name="bracket-size-select" style="width:auto;">' +
         '<option value="auto" '+(S.ui.bracketSizeChoice==='auto'?'selected':'')+'>Otomatis (sesuai tim aktif)</option>' +
@@ -1928,6 +2350,31 @@
       body +
       '</div>';
   }
+  function myEligibilityLine(team){
+    if(!S.prize || !validPeriod(S.prize)) return '';
+    var e = teamEligibility(team);
+    if(!e.known) return '';
+    var short = e.rows.filter(function(r){ return !r.ok; });
+    if(!short.length) return '<div class="hint" style="margin-top:2px;color:var(--success);">⭐ Syarat poin terpenuhi.</div>';
+    return '<div class="hint" style="margin-top:2px;color:var(--danger);">⭐ Belum memenuhi syarat poin: '+short.map(function(r){
+      return escapeHtml(r.name)+(r.userId ? ' ('+fmtPoints(r.points||0)+' / '+fmtPoints(S.prize.minPoints)+')' : ' (belum gabung)');
+    }).join(', ')+'. Bisa ke-DQ panitia kalau belum cukup.</div>';
+  }
+  // How far the viewer is from the entry requirement -- 1 month paid = 1 juta poin, so the gap is
+  // shown in months too, with a link to go pay.
+  function requirementPanel(){
+    if(!S.prize || !validPeriod(S.prize) || !num(S.prize.minPoints)) return '';
+    var min = num(S.prize.minPoints);
+    var mine = memberPointsFor(S.currentUserId);
+    var gap = mine==null ? null : Math.max(0, min - mine);
+    var monthsShort = gap==null ? null : Math.ceil(gap / 1000000);
+    var status = mine==null ? 'Memuat poin lo&hellip;'
+      : (gap===0 ? '<span style="color:var(--success);font-weight:800;">✓ Poin lo '+fmtPoints(mine)+' &mdash; udah memenuhi.</span>'
+        : 'Poin lo sekarang <strong>'+fmtPoints(mine)+'</strong> &mdash; kurang '+fmtPoints(gap)+' (&asymp; '+monthsShort+' bulan bayar). <a href="dashboard.html" style="color:var(--accent2);font-weight:700;">Bayar Elite →</a>');
+    return '<div class="panel"><div class="panel-title" style="font-size:16px;">Syarat Ikut</div>' +
+      '<div class="hint" style="margin-top:8px;">Minimal <strong>'+fmtPoints(min)+' poin</strong> per pemain selama '+fmtShortDate(S.prize.periodStart)+' &ndash; '+fmtShortDate(S.prize.periodEnd)+'. Tiap bayar Elite 1 bulan = 1.000.000 poin (bisa bayar beberapa bulan sekaligus). Boleh daftar dulu, tapi yang belum cukup bisa didiskualifikasi panitia.</div>' +
+      '<div class="hint" style="margin-top:8px;">'+status+'</div></div>';
+  }
   function renderPlayerDaftar(cat){
     syncProfileChecks();
     var catSelect = '';
@@ -1949,7 +2396,8 @@
         var p2 = t.players[1] || {};
         var reinviteBtn = '<button class="btn btn-sm" data-action="reinvite-partner" data-team="'+t.id+'" style="margin-left:6px;">Undang Ulang</button>';
         var partnerLine = '';
-        if(p2.inviteStatus==='accepted') partnerLine = '<div class="hint" style="margin-top:2px;">🤝 Partner sudah bergabung.</div>';
+        if(isSoloTeam(t)) partnerLine = '<div class="hint" style="margin-top:2px;">⚔️ Daftar single (Gladiator).</div>';
+        else if(p2.inviteStatus==='accepted') partnerLine = '<div class="hint" style="margin-top:2px;">🤝 Partner sudah bergabung.</div>';
         else if(p2.inviteStatus==='pending') partnerLine = '<div class="hint" style="margin-top:2px;">🤝 Menunggu partner menerima undangan.'+reinviteBtn+'</div>';
         else if(p2.inviteStatus==='no_account') partnerLine = '<div class="hint" style="margin-top:2px;color:#e5484d;">🤝 Partner belum punya akun di sini.'+reinviteBtn+'</div>';
         else partnerLine = '<div class="hint" style="margin-top:2px;color:#e5484d;">🤝 Undangan partner belum terkirim.'+reinviteBtn+'</div>';
@@ -1957,12 +2405,12 @@
           '<div style="display:flex;justify-content:space-between;align-items:center;">' +
           '<span>'+escapeHtml(t.name)+' '+statusPill(t.status)+'</span>' +
           (t.status==='active' && S.registrationOpen ? '<button class="btn btn-sm btn-danger" data-action="withdraw-self-team" data-team="'+t.id+'">Batalkan</button>' : '') +
-          '</div>' + scheduleLine + partnerLine +
+          '</div>' + scheduleLine + partnerLine + myEligibilityLine(t) +
           '</div>';
       }).join('') + '</div></div>') : '';
 
-    var infoPanel = '<div class="panel"><div class="panel-title" style="font-size:16px;">Info Kategori</div>' +
-      '<div class="hint" style="margin-top:8px;">Format: '+(cat.format==='groups'?'Grup lalu Gugur':'Langsung Gugur')+'<br>Tim aktif: '+cat.teams.filter(function(t){return t.status==='active';}).length+'</div>' +
+    var infoPanel = requirementPanel() + '<div class="panel"><div class="panel-title" style="font-size:16px;">Info Kategori</div>' +
+      '<div class="hint" style="margin-top:8px;">Format: '+formatLabel(cat.format)+(isGladiator(cat)?'<br>Boleh daftar single (sendiri) atau ganda &mdash; single bisa ketemu ganda.':'')+'<br>Tim aktif: '+cat.teams.filter(function(t){return t.status==='active';}).length+'</div>' +
       '</div>';
 
     if(!S.registrationOpen){
@@ -1977,19 +2425,27 @@
         '</div><div>' + myTeamsHtml + infoPanel + '</div></div>';
     }
 
+    var glad = isGladiator(cat);
+    var solo = glad && S.ui.regSolo;
+    // Toggled in place (see the regEntryType change handler) instead of re-rendering, so switching single/ganda
+    // never wipes what's already typed into the form.
+    var entryToggle = glad ? '<div class="entry-toggle">' +
+      '<label class="radio-card '+(!solo?'checked':'')+'"><input type="radio" name="regEntryType" value="duo" '+(!solo?'checked':'')+'><span><span class="radio-card-title">👥 Ganda</span><br><span class="radio-card-desc">Berdua sama partner</span></span></label>' +
+      '<label class="radio-card '+(solo?'checked':'')+'"><input type="radio" name="regEntryType" value="solo" '+(solo?'checked':'')+'><span><span class="radio-card-title">⚔️ Single</span><br><span class="radio-card-desc">Sendirian, bisa ketemu ganda</span></span></label>' +
+      '</div>' : '';
     var form = '<div class="panel reg-grid">' +
-      '<div>' +
+      '<div id="regFormCol" class="'+(solo?'reg-solo':'')+'">' +
       '<div class="panel-title" style="font-size:19px;margin-bottom:4px;">Daftarkan Tim Baru</div>' +
-      '<div class="panel-desc" style="margin-bottom:14px;">Lengkapi data tim dan pasangan Anda untuk bergabung ke turnamen.</div>' +
-      catSelect + lockedNote +
-      '<div class="field" style="margin-bottom:14px;"><label for="teamNameInput">Nama Tim</label><input id="teamNameInput" placeholder="cth: Smash Jaya"></div>' +
+      '<div class="panel-desc" style="margin-bottom:14px;">'+(glad ? 'Kategori Gladiator &mdash; pilih daftar single atau ganda.' : 'Lengkapi data tim dan pasangan Anda untuk bergabung ke turnamen.')+'</div>' +
+      catSelect + lockedNote + entryToggle +
+      '<div class="field" style="margin-bottom:14px;"><label for="teamNameInput">'+(glad?'Nama Tim / Julukan Gladiator':'Nama Tim')+'</label><input id="teamNameInput" placeholder="cth: Smash Jaya"></div>' +
       '<div class="player-block">' +
       '<div class="player-block-head"><span class="player-block-title">Pemain 1</span><button class="btn btn-sm" data-action="quick-self-fill">'+ICONS.user+' + Saya</button></div>' +
       '<div class="field-row">' +
       '<div class="field"><label for="p1NameInput">Nama Player 1</label><input id="p1NameInput" placeholder="Nama lengkap"></div>' +
       '<div class="field"><label for="p1EmailInput">Email Player 1</label><input id="p1EmailInput" type="email" placeholder="nama@email.com"></div>' +
       '</div></div>' +
-      '<div class="player-block" style="margin-top:12px;">' +
+      '<div class="player-block p2-block" style="margin-top:12px;">' +
       '<div class="player-block-head"><span class="player-block-title">Pemain 2 (Partner)</span>' +
       '<span class="verify-badge '+(S.ui.registrationChecks.partnerEmail?'verified':'')+'" id="badge_partnerEmail">'+(S.ui.registrationChecks.partnerEmail?ICONS.check:ICONS.dot)+'</span></div>' +
       '<div class="field-row">' +
@@ -2003,7 +2459,7 @@
       '<div class="verify-grid" style="margin-top:8px;">' +
       profileCheckCard('dob','Tanggal Lahir', S.currentUserDob ? escapeHtml(fmtDobDisplay(S.currentUserDob)) : '') +
       profileCheckCard('payment','Pembayaran', currentUserPaymentLabel()) +
-      verifyCard('email','Email Tim','<div class="hint">Mengecek format email Player 1 &amp; Player 2 di atas.</div>') +
+      verifyCard('email','Email Tim','<div class="hint">Mengecek format email pemain di atas.</div>') +
       '</div></div>' +
       '<div class="status-bar" id="regStatusBar" style="margin-top:16px;"><span id="regStatusText">Lengkapi data &amp; verifikasi di atas.</span></div>' +
       '<button class="btn btn-primary btn-block" data-action="submit-registration" style="margin-top:14px;">Daftar Sekarang</button>' +
@@ -2023,8 +2479,8 @@
         .slice().sort(function(a,b){ return b.createdAt - a.createdAt; });
       var rows = activeTeams.map(function(t, idx){
         return '<div class="live-reg-row"><span class="live-reg-num mono">#'+(activeTeams.length-idx)+'</span>' +
-          '<div class="live-reg-team"><div class="live-reg-name">'+escapeHtml(t.name)+'</div>' +
-          '<div class="live-reg-players">'+escapeHtml(t.players[0].name)+' &amp; '+escapeHtml(t.players[1].name)+'</div></div>' +
+          '<div class="live-reg-team"><div class="live-reg-name">'+escapeHtml(t.name)+' '+entryTypeTag(cat, t)+'</div>' +
+          '<div class="live-reg-players">'+escapeHtml(playerNamesText(t))+'</div></div>' +
           '<span class="live-reg-time">'+fmtRelativeTime(t.createdAt)+'</span></div>';
       }).join('');
       return '<div class="panel">' +
@@ -2173,7 +2629,7 @@
     var c = team.checks;
     var rows = [
       ['Tanggal Lahir', c.dob, team.dob ? escapeHtml(fmtDobDisplay(team.dob)) : 'Belum diisi'],
-      ['Email', c.email, escapeHtml(team.players[0].email)+' &amp; '+escapeHtml(team.players[1].email)],
+      ['Email', c.email, team.players.map(function(p){ return escapeHtml(p.email); }).join(' &amp; ')],
       ['Pembayaran', c.payment, teamPaymentLabel(team)]
     ];
     var body = rows.map(function(r){
@@ -2242,7 +2698,10 @@
     if(S.ui.showCupSwitcher || !S.tournamentId){
       return renderCupSwitcher() + renderNotifDropdown();
     }
-    return '<div class="shell">' + renderTopbar() + renderCategoryTabs() + (isAdminView() ? renderAdmin() : renderPlayer()) + '</div>' +
+    // Live prize board sits above everything for players; on the admin's own Hadiah tab the
+    // preview there already shows it, so it isn't doubled up.
+    var showBoard = S.prize && S.prize.enabled && !(isAdminView() && S.ui.adminTab==='hadiah');
+    return '<div class="shell">' + renderTopbar() + (showBoard ? renderPrizeBoard(S.prize) : '') + renderCategoryTabs() + (isAdminView() ? renderAdmin() : renderPlayer()) + '</div>' +
       renderRulesDrawer() + renderConfirmModal() + renderSlotEditorModal() + renderTeamEditorModal() + renderVerifyDetailModal() + renderNotifDropdown();
   }
   function render(){
@@ -2263,6 +2722,7 @@
       var showingBagan = (isAdminView() && (S.ui.adminTab==='bagan' || S.ui.adminTab==='live')) || (!isAdminView() && S.ui.playerTab==='bagan');
       if(showingBagan) layoutBracketZoom(curCat);
     }
+    animatePrizeAmount();
   }
 
   /* ---------------- REGISTRATION HELPERS (imperative) ---------------- */
@@ -2318,15 +2778,20 @@
     var text = document.getElementById('regStatusText');
     if(!bar || !text) return;
     var c = S.ui.registrationChecks;
-    var done = (c.dob?1:0)+(c.payment?1:0)+(c.email?1:0)+(c.partnerEmail?1:0);
-    if(done===4){
+    var solo = regIsSolo();
+    var total = solo ? 3 : 4;
+    var done = (c.dob?1:0)+(c.payment?1:0)+(c.email?1:0)+(!solo && c.partnerEmail?1:0);
+    if(done===total){
       bar.classList.add('status-bar-ready');
       text.textContent = 'Semua verifikasi selesai — tim siap didaftarkan!';
     } else {
       bar.classList.remove('status-bar-ready');
-      text.textContent = done + '/4 verifikasi selesai. Lengkapi verifikasi lalu daftarkan tim.';
+      text.textContent = done + '/'+total+' verifikasi selesai. Lengkapi verifikasi lalu daftarkan tim.';
     }
   }
+  // The registration form always targets getCat() (picking another category in the form switches
+  // the active one), so "is this a solo Gladiator entry" is just the toggle within that category.
+  function regIsSolo(){ return isGladiator(getCat()) && S.ui.regSolo; }
   // Only 'email' (both players' address format) and 'partnerEmail' still go through a click --
   // dob/payment are read straight off the profile (syncProfileChecks). The badge really does
   // reflect whether the input is actually valid now, not a timer that always resolves true.
@@ -2339,13 +2804,13 @@
     setTimeout(function(){
       var ok = key==='partnerEmail'
         ? isValidEmail(val('p2EmailInput').trim())
-        : (isValidEmail(val('p1EmailInput').trim()) && isValidEmail(val('p2EmailInput').trim()));
+        : (isValidEmail(val('p1EmailInput').trim()) && (regIsSolo() || isValidEmail(val('p2EmailInput').trim())));
       badge.classList.remove('verifying');
       S.ui.registrationChecks[key] = ok;
       badge.classList.toggle('verified', ok);
       badge.innerHTML = ok ? ICONS.check : ICONS.dot;
       updateRegStatusBar();
-      if(!ok) toast(key==='partnerEmail' ? 'Format email partner belum valid.' : 'Format email tim belum valid — cek email Player 1 & 2.', 'error');
+      if(!ok) toast(key==='partnerEmail' ? 'Format email partner belum valid.' : (regIsSolo() ? 'Format email lo belum valid.' : 'Format email tim belum valid — cek email Player 1 & 2.'), 'error');
     }, 400);
   }
   async function submitRegistration(){
@@ -2364,23 +2829,25 @@
       return t.players[1] && t.players[1].userId===S.currentUserId && t.players[1].inviteStatus==='accepted';
     });
     if(alreadyPartner){ toast('Anda sudah jadi partner di tim lain pada kategori ini.', 'error'); return; }
+    var solo = isGladiator(cat) && S.ui.regSolo;
     var teamName = val('teamNameInput').trim();
     var p1n = val('p1NameInput').trim(), p1e = val('p1EmailInput').trim();
     var p2n = val('p2NameInput').trim(), p2e = val('p2EmailInput').trim();
-    if(!teamName || !p1n || !p1e || !p2n || !p2e){
-      toast('Lengkapi nama tim serta nama & email kedua pemain.', 'error');
+    if(solo && !teamName) teamName = p1n; // a solo gladiator can just go by their own name
+    if(!teamName || !p1n || !p1e || (!solo && (!p2n || !p2e))){
+      toast(solo ? 'Lengkapi nama & email lo.' : 'Lengkapi nama tim serta nama & email kedua pemain.', 'error');
       return;
     }
     syncProfileChecks();
     var checks = S.ui.registrationChecks;
-    if(!checks.dob || !checks.payment || !checks.email || !checks.partnerEmail){
+    if(!checks.dob || !checks.payment || !checks.email || (!solo && !checks.partnerEmail)){
       toast('Selesaikan semua verifikasi tambahan dulu sebelum mendaftar.', 'error');
       render();
       return;
     }
     var payload = {
       status:'active',
-      players: [ {name:p1n, email:p1e}, {name:p2n, email:p2e, partnerVerified: checks.partnerEmail} ],
+      players: solo ? [ {name:p1n, email:p1e} ] : [ {name:p1n, email:p1e}, {name:p2n, email:p2e, partnerVerified: checks.partnerEmail} ],
       checks: { dob:checks.dob, email:checks.email, payment:checks.payment },
       dob: S.currentUserDob, paymentMethod: S.currentUserPaymentMethod,
       paymentNumber: S.currentUserPaymentNumber,
@@ -2395,8 +2862,9 @@
       // since they're a live read of the profile, not something this registration "used up".
       S.ui.registrationChecks.email = false;
       S.ui.registrationChecks.partnerEmail = false;
-      toast('Tim "'+teamName+'" berhasil didaftarkan — semua verifikasi lengkap!');
+      toast((solo ? 'Gladiator "' : 'Tim "')+teamName+'" berhasil didaftarkan — semua verifikasi lengkap!');
       render();
+      if(solo) return; // no partner to invite
       // Fires after the team already exists (the invite links to team.id) -- doesn't block the
       // registration itself on whether the partner has an account or the RPC round-trip.
       var inviteStatus = await invitePartner(team.id, p2e);
@@ -2428,7 +2896,9 @@
     'create-tournament':1, 'delete-dummy-teams':1, 'edit-slot':1, 'save-slot-editor':1,
     'close-slot-editor':1, 'edit-team':1, 'save-team-editor':1, 'close-team-editor':1,
     'save-match-schedule':1, 'switch-view':1, 'open-verify-detail':1, 'close-verify-detail':1,
-    'disqualify-from-verify':1, 'archive-cup':1, 'unarchive-cup':1, 'delete-cup':1
+    'disqualify-from-verify':1, 'archive-cup':1, 'unarchive-cup':1, 'delete-cup':1,
+    'prize-save':1, 'prize-cancel':1, 'prize-add-extra':1, 'prize-remove-extra':1,
+    'prize-add-split':1, 'prize-remove-split':1, 'prize-refresh':1, 'dq-ineligible':1
   };
   app.addEventListener('click', function(e){
     var btn = e.target.closest('[data-action]');
@@ -2908,6 +3378,45 @@
         });
         return;
       }
+      case 'prize-save':
+        savePrizeDraft();
+        return;
+      case 'prize-cancel':
+        S.ui.prizeDraft = null;
+        render();
+        return;
+      case 'prize-refresh':
+        refreshPrizeData().then(function(){ toast('Data pembayaran & poin diperbarui.'); });
+        return;
+      case 'dq-ineligible': {
+        var minPts = num(S.prize && S.prize.minPoints);
+        var bad = cat.teams.filter(function(t){ var e = teamEligibility(t); return t.status==='active' && e.known && !e.ok; });
+        if(!bad.length){ toast('Semua tim aktif udah memenuhi syarat poin.'); return; }
+        openConfirm(bad.length+' tim aktif di kategori ini belum punya '+fmtPoints(minPts)+' poin (semua pemainnya) selama periode. Diskualifikasi semuanya?', function(){
+          bad.forEach(function(t){ setTeamStatus(cat.id, t.id, 'disqualified'); });
+          toast(bad.length+' tim didiskualifikasi.');
+          render();
+        });
+        return;
+      }
+      case 'prize-add-extra':
+        ensurePrizeDraft().extras.push({ label:'', amount:'' });
+        render();
+        var extraEl = document.getElementById('prizeExtraLabel_'+(S.ui.prizeDraft.extras.length-1));
+        if(extraEl) extraEl.focus();
+        return;
+      case 'prize-remove-extra':
+        ensurePrizeDraft().extras.splice(parseInt(btn.dataset.idx,10), 1);
+        render();
+        return;
+      case 'prize-add-split':
+        ensurePrizeDraft().splits.push({ label:'Doorprize', pct:0 });
+        render();
+        return;
+      case 'prize-remove-split':
+        ensurePrizeDraft().splits.splice(parseInt(btn.dataset.idx,10), 1);
+        render();
+        return;
       case 'confirm-yes': {
         var cb = S.ui.confirmCb;
         S.ui.confirmOpen = false;
@@ -3038,7 +3547,28 @@
       queueCloudSync();
       render();
     } else if(el.id==='regCategorySelect'){
-      // no state change needed; read at submit time
+      // Switch the whole form to that category -- a Gladiator category renders a different form
+      // (single/ganda toggle), so the form can't stay tied to whatever category was active.
+      S.activeCategoryId = el.value;
+      render();
+    } else if(el.name==='regEntryType'){
+      S.ui.regSolo = el.value==='solo';
+      var col = document.getElementById('regFormCol');
+      if(col) col.classList.toggle('reg-solo', S.ui.regSolo);
+      document.querySelectorAll('input[name="regEntryType"]').forEach(function(r){
+        r.closest('.radio-card').classList.toggle('checked', r.checked);
+      });
+      updateRegStatusBar();
+    } else if(el.id==='prizeEnabledToggle'){
+      // The show/hide switch saves immediately -- it's the "go live" button, no draft involved.
+      if(!S.isAdmin) return;
+      S.prize.enabled = el.checked;
+      if(S.ui.prizeDraft) S.ui.prizeDraft.enabled = el.checked;
+      queueCloudSync();
+      toast(el.checked ? 'Papan hadiah tampil ke pemain.' : 'Papan hadiah disembunyikan.');
+      render();
+    } else if(el.dataset && el.dataset.prizeField && (el.type==='checkbox' || el.tagName==='SELECT')){
+      updatePrizeDraftFromInput(el);
     } else if(actionName==='bracket-size-select'){
       // Backed by state (not just read from the DOM at click time) because render() replaces
       // this whole <select> on every re-render -- a live tournament's realtime updates fire
@@ -3050,7 +3580,9 @@
 
   app.addEventListener('input', function(e){
     var el = e.target;
-    if(el.id==='teamsSearchInput'){
+    if(el.dataset && el.dataset.prizeField && el.type!=='checkbox' && el.tagName!=='SELECT'){
+      updatePrizeDraftFromInput(el);
+    } else if(el.id==='teamsSearchInput'){
       S.ui.teamsSearch = el.value;
       S.ui.teamsPage = 1;
       render();
@@ -3132,6 +3664,7 @@
       S.ui.showCupSwitcher = true;
     }
     render();
+    startPrizePolling();
 
     window.addEventListener('popstate', function(){
       var id = getTournamentIdFromUrl();

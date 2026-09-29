@@ -288,9 +288,11 @@ function renderPayments() {
     // unique_code/base_amount only exist for requests created via the Saweria auto-confirm flow
     // (assets/payment-saweria.js, db/migrations/0018_payment_unique_code.sql) -- older/manual
     // rows just have amount with no code, so fall back to showing the plain amount for those.
-    const codeHint = p.unique_code != null
+    const codeHint = (p.unique_code != null
       ? `<div style="font-size:11px;color:var(--text-faint);font-weight:400;">kode unik: ${p.unique_code}</div>`
-      : '';
+      : '') + ((p.months || 1) > 1
+      ? `<div style="font-size:11px;color:var(--text-faint);font-weight:400;">${p.months} bulan</div>`
+      : '');
     return `
     <tr>
       <td>
@@ -315,7 +317,8 @@ function renderPayments() {
 }
 
 async function setPayment(id, status) {
-  if (status === 'confirmed' && !(await gembelConfirm('Konfirmasi pembayaran ini? User langsung jadi Elite 30 hari.'))) return;
+  const months = (ALL_PAYMENTS.find(p => p.id === id)?.months) || 1;
+  if (status === 'confirmed' && !(await gembelConfirm(`Konfirmasi pembayaran ini? User langsung jadi Elite ${months * 30} hari (${months} bulan).`))) return;
   const patch = status === 'confirmed' ? { status, paid_at: new Date().toISOString() } : { status };
   const { error } = await supabase.from('payment_requests').update(patch).eq('id', id);
   if (error) { await gembelAlert('Gagal: ' + error.message); return; }
