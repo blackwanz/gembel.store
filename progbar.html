@@ -110,9 +110,17 @@
 
             const localStamp = Number(localStorage.getItem(K_STAMP())) || 0;
             const cloudStamp = (meta && Number(meta.updatedAt)) || 0;
+            const localRun = readJSON(K_STATE(), null);
+            // Legacy row (written by the pre-merge client, no updatedAt) racing a device that also
+            // never had a stamp: the old client let an idle-looking device overwrite the live one's
+            // colour switches every heartbeat, so for the SAME session keep whichever copy recorded
+            // more switches instead of blindly adopting the cloud's stale one.
+            const legacyKeepLocal = !cloudStamp && !localStamp && localRun && localRun.active
+                && meta && meta.active && localRun.startTime === meta.startTime
+                && (localRun.segments || []).length > (meta.segments || []).length;
             let runState, stamp, fromCloud;
-            if (localStamp > 0 && localStamp >= cloudStamp) {
-                runState = readJSON(K_STATE(), null); stamp = localStamp; fromCloud = false;
+            if (legacyKeepLocal || (localStamp > 0 && localStamp >= cloudStamp)) {
+                runState = localRun; stamp = localStamp || Date.now(); fromCloud = false;
             } else {
                 runState = null;
                 if (meta && meta.active) {
@@ -121,6 +129,16 @@
                     delete runState.deletedIds;
                 }
                 stamp = cloudStamp; fromCloud = true;
+            }
+
+            // A "running" session whose id is already in history was stopped somewhere else and
+            // this copy is a zombie; resuming it would re-stop it and replace the real history
+            // entry (same id) with the zombie's stale segments.
+            if (runState && runState.active
+                && history.some(h => h.id === 'session-' + new Date(runState.startTime).getTime())) {
+                runState = null;
+                fromCloud = true;
+                stamp = Math.max(stamp, Date.now());
             }
 
             const prevHistory = localStorage.getItem(K_HISTORY()) || '[]';
@@ -166,10 +184,14 @@
                         .select('history, current_state').eq('user_id', UID).maybeSingle();
                     if (error) throw error;
                     const m = mergeWithCloud(data);
-                    if (forcePush || m.cloudBehind) await pushMerged(m);
                     // Another device started/switched/stopped more recently -> mirror it here.
+                    // Must happen BEFORE awaiting the push: the 1s tick rewrites K_STATE from the
+                    // in-memory `state`, so a tick landing mid-push used to put this device's stale
+                    // copy back under the new stamp, and its next heartbeat then overwrote the other
+                    // device's colour switch in the cloud.
                     if (m.stateAdopted) applyLocalStateToUI();
                     if (m.stateAdopted || m.historyChanged) renderReports();
+                    if (forcePush || m.cloudBehind) await pushMerged(m);
                     return m;
                 } catch (e) { console.warn('Cloud sync skip (pakai data lokal):', e.message); return null; }
             };
