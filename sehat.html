@@ -9,10 +9,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/app-theme.css?v=20260930b">
+<link rel="stylesheet" href="assets/app-theme.css?v=20260930c">
 <style>
-  :root{ --hl:#16a34a; --hl-soft:#e7f7ec; --sleep:#6366f1; --sport:#f97316; --food:#e11d48; --body:#0ea5e9; --good:#16a34a; --mid:#d97706; --bad:#dc2626; }
-  [data-theme="dark"]{ --hl:#22c55e; --hl-soft:#15291d; --sleep:#818cf8; --sport:#fb923c; --food:#fb7185; --body:#38bdf8; --good:#22c55e; --mid:#fbbf24; --bad:#f87171; }
+  :root{ --hl:#16a34a; --hl-soft:#e7f7ec; --sleep:#6366f1; --sport:#f97316; --food:#e11d48; --body:#0ea5e9; --kcal:#f59e0b; --good:#16a34a; --mid:#d97706; --bad:#dc2626; }
+  [data-theme="dark"]{ --hl:#22c55e; --hl-soft:#15291d; --sleep:#818cf8; --sport:#fb923c; --food:#fb7185; --body:#38bdf8; --kcal:#fbbf24; --good:#22c55e; --mid:#fbbf24; --bad:#f87171; }
   body{ background:var(--page-bg); }
   .top{ display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid var(--border);background:var(--surface); }
   .wrap{ max-width:880px;margin:0 auto;padding:18px 16px 90px; }
@@ -124,6 +124,30 @@
   .add-row{ display:flex;gap:6px;margin-top:8px; }
   .add-row .in{ padding:7px 10px;font-size:12.5px; }
 
+  /* kalori */
+  .daynav{ display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:14px; }
+  .daynav b{ font-family:var(--font-display);font-size:15px;text-align:center; }
+  .kc-hero{ display:flex;gap:20px;align-items:center;flex-wrap:wrap; }
+  .ring .v b.kc-num{ font-size:24px; }
+  .kc-row{ display:flex;gap:10px;align-items:flex-start;padding:11px 0;border-bottom:1px dashed var(--border); }
+  .kc-row:last-child{ border-bottom:none; }
+  .kc-row.off{ opacity:.5; }
+  .kc-row.off .kc-name{ text-decoration:line-through; }
+  .kc-t{ width:42px;flex:0 0 auto;font-size:11.5px;color:var(--text-muted);padding-top:2px; }
+  .kc-main{ flex:1;min-width:0; }
+  .kc-name{ font-weight:600;font-size:13.5px;word-break:break-word; }
+  .kc-sub{ font-size:11.5px;color:var(--text-faint);margin-top:2px; }
+  .kc-k{ flex:0 0 auto;text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:4px; }
+  .kc-k b{ font-family:var(--font-mono);font-size:13.5px; }
+  .src{ display:inline-block;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:100px;vertical-align:1px;margin-left:4px;white-space:nowrap; }
+  .src-tebak,.src-kasar{ background:var(--warning-bg);color:var(--warning-text); }
+  .src-ingat,.src-fix{ background:var(--success-bg);color:var(--success-text); }
+  .src-manual{ background:var(--border);color:var(--text-muted); }
+  .rice-seg{ display:flex;align-items:center;gap:3px;margin-top:6px;font-size:11px;color:var(--text-muted);flex-wrap:wrap; }
+  .rice-seg button{ border:1px solid var(--border);background:var(--surface);color:var(--text-muted);border-radius:100px;padding:2px 9px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit; }
+  .rice-seg button.on{ background:var(--kcal);border-color:var(--kcal);color:#fff; }
+  .rice-seg button:disabled{ opacity:.5;cursor:wait; }
+
   .gb-overlay{ position:fixed;inset:0;z-index:1500;background:rgba(10,14,25,.6);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:16px; }
   .gb-card{ width:100%;max-width:400px;background:var(--surface);color:var(--text-main);border-radius:var(--radius-lg);padding:22px;box-shadow:var(--shadow-lift); }
   .gb-card h3{ font-family:var(--font-display);font-size:18px;margin-bottom:6px; }
@@ -135,7 +159,7 @@
     .top{ padding:12px 16px; }
     .row2{ flex-direction:column;gap:0; }
     .week{ gap:3px; } .day{ padding:6px 1px; } .day .m{ font-size:9.5px; }
-    .ring{ width:112px;height:112px; } .ring .v b{ font-size:30px; }
+    .ring{ width:112px;height:112px; } .ring .v b{ font-size:30px; } .ring .v b.kc-num{ font-size:20px; }
     .panel-body,.step{ padding:14px; }
   }
 </style>
@@ -178,8 +202,8 @@
   const HEALTHY_RE = /sayur|buah|salad|ikan|telur|tempe|tahu|pecel|gado|jus|oat|pisang|apel|brokoli|sup|soto|dada ayam|kukus|rebus|bening|capcay|susu|yogurt|kacang/i;
 
   let ME = null, PROF = null, SET = null;
-  let RAW = { entries: [], timeGoals: [], timeEntries: [], weights: [] };
-  let TAB = 'ringkasan', RANGE = 30;
+  let RAW = { entries: [], timeGoals: [], timeEntries: [], weights: [], cal: [], foodKcal: [] };
+  let TAB = 'ringkasan', RANGE = 30, CAL_DAY = null, KTP_SEX = null;
 
   const $ = (id) => document.getElementById(id);
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -257,7 +281,15 @@
       timeEntries = await fetchAll(() => supabase.from('calendar_goal_entries')
         .select('goal_id, entry_date, value').in('goal_id', goals.map(g => g.id)).gte('entry_date', since));
     }
-    RAW = { entries, timeGoals: goals, timeEntries, weights };
+    // Kalori tables (0051) and the KTP gender are optional: if they fail, the rest of Sehat still works
+    const soft = (p) => p.then(r => r, () => []);
+    const [cal, foodKcal, ktp] = await Promise.all([
+      soft(fetchAll(() => supabase.from('health_calorie_logs').select('id, log_date, time_at, entry_id, name, kcal, rice, skipped').eq('user_id', ME.id).gte('log_date', since))),
+      soft(fetchAll(() => supabase.from('health_food_kcal').select('name_key, kcal, rice').eq('user_id', ME.id))),
+      supabase.from('profile_ktp').select('gender').eq('user_id', ME.id).maybeSingle().then(r => r, () => ({})),
+    ]);
+    KTP_SEX = (ktp && ktp.data && ktp.data.gender) || null;
+    RAW = { entries, timeGoals: goals, timeEntries, weights, cal, foodKcal };
   }
 
   // Distinct expense tags / timed activities in the user's own data, for the source picker.
@@ -297,7 +329,7 @@
 
     // meals
     const food = RAW.entries.filter(e => e.finance_flag && e.finance_type !== 'income' && foodSet.has(norm(e.finance_tag)))
-      .map(e => ({ day: dayIdx(e.start_date), t: timeMin(e.time_start) ?? 720, name: (e.activity || '').trim() || '(tanpa nama)', amt: Number(e.nominal) || 0 }))
+      .map(e => ({ id: e.id, day: dayIdx(e.start_date), t: timeMin(e.time_start) ?? 720, noTime: !e.time_start, name: (e.activity || '').trim() || '(tanpa nama)', amt: Number(e.nominal) || 0 }))
       .sort((a, b) => a.day - b.day || a.t - b.t);
     const meals = [];
     food.forEach(f => {
@@ -541,9 +573,153 @@
       if(s.food.noBreakfastPct > 0.5) out.push(['🍳', `${Math.round(s.food.noBreakfastPct * 100)}% hari lo gak ada catatan makan sebelum jam 10. Sarapan (walau kecil) bantu energi & nahan lapar kalap siang.`]);
       if(s.food.junk != null && s.food.junk > 0.4) out.push(['🍟', `Sekitar ${Math.round(s.food.junk * 100)}% yang lo makan masuk gorengan/manis/fast food (tebakan dari nama). Selingin sayur, telur, tempe/tahu, buah.`]);
     } else if((SET.food_tags || []).length) out.push(['🍽️', `Belum ada pengeluaran makan di periode ini. Catat di Aktivitas & Pengeluaran dengan tag <b>${esc(SET.food_tags[0])}</b>.`]);
+    const C = s.cal;
+    if(C && C.s7.days >= 3){
+      if(C.s7.avg > C.T.target * 1.15) out.push(['🔥', `Rata-rata kalori 7 hari <b>${kk(C.s7.avg)} kkal</b>, lebih ${kk(C.s7.avg - C.T.target)} dari target ${kk(C.T.target)}. Kurangin nasi ½ piring (~${kk(NASI_KCAL / 2)} kkal) atau minuman manis dulu.`]);
+      else if(C.s7.avg < C.T.target * 0.7) out.push(['🔥', `Rata-rata kalori 7 hari cuma ${kk(C.s7.avg)} kkal — kemungkinan ada makan yang gak kecatat. Tambahin manual di tab <b>Kalori</b> biar angkanya jujur.`]);
+    }
     if(s.bmi && s.bmi.toGo) out.push(['⚖️', `BMI ${s.bmi.bmi.toFixed(1)} (${s.bmi.cat}). Berat ideal lo ${s.bmi.lo.toFixed(0)}–${s.bmi.hi.toFixed(0)} kg — ${s.bmi.toGo > 0 ? 'turun' : 'naik'} <b>${Math.abs(s.bmi.toGo).toFixed(1)} kg</b> buat masuk Normal.`]);
     if(!out.length) out.push(['✅', 'Semua indikator lagi aman. Pertahanin!']);
     return out;
+  }
+
+  // ------------------------------------------------------------------ kalori
+  // Rough kcal for a typical Indonesian portion (TKPI / label-ballpark). The number is the dish
+  // WITHOUT plain white rice; the last field is how many plates of rice it usually comes with, so
+  // "nasi 2 piring" only ever changes the rice part. First match wins: specific names go first.
+  const NASI_KCAL = 260;   // 1 piring nasi putih porsi dewasa ≈ 200 g
+  const RICE_STEPS = [0, 0.5, 1, 1.5, 2];
+  const FOOD_DB = [
+    [/nasi goreng|nasgor/, 'Nasi goreng', 380, 1],
+    [/nasi uduk/, 'Nasi uduk + lauk', 380, 1],
+    [/nasi kuning/, 'Nasi kuning + lauk', 350, 1],
+    [/nasi lemak/, 'Nasi lemak', 400, 1],
+    [/nasi kucing/, 'Nasi kucing', 90, 0.3],
+    [/nasi (padang|kapau)|\bpadang\b|rumah makan/, 'Nasi Padang', 480, 1],
+    [/warteg|nasi (campur|rames|telor|telur)|\brames\b/, 'Nasi campur / warteg', 380, 1],
+    [/nasi (bakar|liwet|timbel)/, 'Nasi bakar / liwet', 280, 1],
+    [/lontong sayur|lontong opor/, 'Lontong sayur', 450, 0],
+    [/ketoprak/, 'Ketoprak', 450, 0],
+    [/gado|karedok|lotek/, 'Gado-gado', 380, 0],
+    [/pecel lele|lele/, 'Pecel lele', 350, 1],
+    [/pecel|nasi pecel/, 'Nasi pecel', 250, 1],
+    [/bubur ayam|\bbubur\b/, 'Bubur ayam', 370, 0],
+    [/mie ayam|mi ayam|bakmi|bakmie/, 'Mie ayam', 480, 0],
+    [/mie aceh|mi aceh/, 'Mie Aceh', 600, 0],
+    [/mie goreng|mi goreng|kwetiau|kwetiaw|ifumie|i fu mie|bihun goreng/, 'Mie goreng / kwetiau', 550, 0],
+    [/indomie|mie instan|mi instan|mie rebus|sarimi|mie sedap|pop mie/, 'Mie instan', 380, 0],
+    [/ramen|udon|spaghetti|spagheti|pasta|lasagna/, 'Ramen / pasta', 550, 0],
+    [/seblak/, 'Seblak', 400, 0],
+    [/bakso|baso|mie bakso/, 'Bakso', 350, 0],
+    [/soto betawi|soto padang/, 'Soto Betawi', 380, 1],
+    [/soto|coto|sop buntut/, 'Soto', 220, 1],
+    [/rawon/, 'Rawon', 260, 1],
+    [/\bsop\b|\bsup\b|sayur asem|sayur bening|sayur lodeh/, 'Sayur / sop', 150, 1],
+    [/sate|satay/, 'Sate (10 tusuk)', 380, 1],
+    [/geprek|penyet/, 'Ayam geprek', 450, 1],
+    [/kfc|mcd|mekdi|mcdonald|richeese|hokben|fried chicken|chicken wing/, 'Fast food ayam', 450, 1],
+    [/ayam bakar|ayam panggang|ayam taliwang/, 'Ayam bakar', 300, 1],
+    [/ayam goreng|ayam/, 'Ayam goreng', 320, 1],
+    [/bebek/, 'Bebek goreng', 520, 1],
+    [/rendang|gulai|tongseng|opor|semur|empal/, 'Rendang / gulai', 330, 1],
+    [/ikan|gurame|\bnila\b|tongkol|salmon|tuna|seafood|udang|cumi/, 'Ikan / seafood', 260, 1],
+    [/capcay|cap cay|tumis|kangkung/, 'Capcay / tumisan', 180, 1],
+    [/burger/, 'Burger', 500, 0],
+    [/steak|steik/, 'Steak + kentang', 650, 0],
+    [/pizza/, 'Pizza (2 slice)', 600, 0],
+    [/kebab|shawarma|burrito/, 'Kebab', 450, 0],
+    [/sushi/, 'Sushi', 400, 0],
+    [/martabak telur|martabak telor/, 'Martabak telur (½)', 550, 0],
+    [/martabak|terang bulan/, 'Martabak manis (½)', 700, 0],
+    [/dimsum|siomay|somay|batagor|pempek|empek/, 'Siomay / pempek', 380, 0],
+    [/roti bakar/, 'Roti bakar', 450, 0],
+    [/sandwich|toast|roti isi/, 'Sandwich', 350, 0],
+    [/croissant|donat|donut|\bkue\b|cake|brownies|pastry|bolu/, 'Kue / donat', 280, 0],
+    [/\broti\b|bread/, 'Roti', 250, 0],
+    [/gorengan|bakwan|pisang goreng|tahu isi|tempe goreng|risol|lumpia|cireng|cilok|cimol|tahu bulat/, 'Gorengan / jajanan', 250, 0],
+    [/chitato|keripik|kripik|snack|chiki|taro|biskuit|oreo|cemilan|camilan|coklat|cokelat/, 'Snack', 220, 0],
+    [/salad/, 'Salad', 200, 0],
+    [/pisang/, 'Pisang', 100, 0],
+    [/buah|apel|jeruk|mangga|semangka|melon|pepaya|anggur/, 'Buah', 90, 0],
+    [/telur|telor/, 'Telur', 90, 0],
+    [/\boat|granola|sereal|cereal/, 'Oatmeal', 250, 0],
+    [/yogurt|yoghurt/, 'Yogurt', 150, 0],
+    [/es krim|ice cream|mcflurry|gelato/, 'Es krim', 220, 0],
+    [/boba|bubble|chatime|xing fu|mixue/, 'Minuman boba', 350, 0],
+    [/thai tea|matcha latte|milk tea|chocolate|coklat panas|milo/, 'Thai tea / susu coklat', 250, 0],
+    [/milkshake|frappe|frappuccino/, 'Milkshake / frappe', 400, 0],
+    [/kopi susu|es kopi|latte|cappuccino|kopi kenangan|janji jiwa|\bfore\b|tomoro/, 'Es kopi susu', 180, 0],
+    [/kopi hitam|americano|espresso|\bkopi\b|coffee/, 'Kopi', 40, 0],
+    [/teh botol|teh pucuk|es teh|teh manis|\bteh\b|\btea\b/, 'Es teh manis', 100, 0],
+    [/jus|juice|smoothie/, 'Jus buah', 150, 0],
+    [/susu|milk/, 'Susu', 150, 0],
+    [/coca|cola|sprite|fanta|soda|pocari|isotonic|kratingdaeng|redbull|red bull/, 'Soda / minuman kemasan', 140, 0],
+    [/\bair\b|aqua|mineral|le minerale/, 'Air mineral', 0, 0],
+  ];
+
+  function estimateFood(name, amt){
+    const n = norm(name);
+    for(const [re, label, kcal, rice] of FOOD_DB) if(re.test(n)) return { kcal, rice, label, rough: false };
+    if(/\bnasi\b/.test(n)) return { kcal: 280, rice: 1, label: 'Nasi + lauk', rough: true };
+    // unknown name: guess by what it cost
+    if(amt >= 15000) return { kcal: 400, rice: 1, label: 'Makan berat', rough: true };
+    if(amt >= 7000) return { kcal: 250, rice: 0, label: 'Jajan', rough: true };
+    return { kcal: 150, rice: 0, label: 'Cemilan / minum', rough: true };
+  }
+  const riceLbl = (r) => ({ 0: '0', 0.5: '½', 1: '1', 1.5: '1½', 2: '2' })[r] ?? String(r).replace('.', ',');
+  const kk = (v) => Math.round(v || 0).toLocaleString('id-ID');
+  const kShort = (v) => v >= 1000 ? (v / 1000).toFixed(1).replace('.', ',') + 'rb' : String(Math.round(v));
+  const SRC_LBL = { tebak: 'tebakan', kasar: 'tebakan kasar', ingat: 'ingatan lo', fix: 'dikoreksi', manual: 'manual' };
+
+  // Every eaten item, grouped per day: food expenses (estimated, remembered or corrected) + manual adds.
+  function calDays(F){
+    const byEntry = new Map(RAW.cal.filter(c => c.entry_id).map(c => [c.entry_id, c]));
+    const learned = new Map(RAW.foodKcal.map(x => [x.name_key, x]));
+    const days = new Map();
+    const push = (it) => {
+      it.total = it.skipped ? 0 : it.kcal + it.rice * NASI_KCAL;
+      const d = days.get(it.day) || { items: [], total: 0 };
+      d.items.push(it); d.total += it.total; days.set(it.day, d);
+    };
+    F.food.forEach(f => {
+      const o = byEntry.get(f.id), l = learned.get(norm(f.name));
+      const it = { day: f.day, t: f.t, noTime: f.noTime, name: f.name, amt: f.amt, entryId: f.id, logId: null, skipped: false };
+      if(o){ Object.assign(it, { kcal: o.kcal, rice: Number(o.rice), skipped: o.skipped, logId: o.id, src: 'fix' }); }
+      else if(l){ Object.assign(it, { kcal: l.kcal, rice: Number(l.rice), src: 'ingat' }); }
+      else { const e = estimateFood(f.name, f.amt); Object.assign(it, { kcal: e.kcal, rice: e.rice, src: e.rough ? 'kasar' : 'tebak', guess: e.label }); }
+      push(it);
+    });
+    RAW.cal.filter(c => !c.entry_id).forEach(c => push({
+      day: dayIdx(c.log_date), t: timeMin(c.time_at) ?? 720, noTime: !c.time_at, name: c.name, amt: 0,
+      entryId: null, logId: c.id, kcal: c.kcal, rice: Number(c.rice), skipped: c.skipped, src: 'manual' }));
+    days.forEach(d => d.items.sort((a, b) => a.t - b.t));
+    return days;
+  }
+
+  // Daily target: Mifflin-St Jeor BMR x activity (from the last 4 weeks of logged sport), nudged by BMI.
+  function calTarget(F){
+    const sex = (SET && SET.sex) || KTP_SEX || null;
+    const age = ageFromDob(PROF.dob) || 30, w = Number(PROF.weight_kg) || 60, h = Number(PROF.height_cm) || 165;
+    const bmr = 10 * w + 6.25 * h - 5 * age + (sex === 'L' ? 5 : sex === 'P' ? -161 : -78);
+    const sportWk = sum(F.sport.filter(s => s.day > TODAY - 28).map(s => s.min)) / 4;
+    const [factor, actLbl] = sportWk < 30 ? [1.2, 'jarang olahraga'] : sportWk < 150 ? [1.375, 'olahraga ringan'] : sportWk < 300 ? [1.55, 'olahraga rutin'] : [1.725, 'aktif banget'];
+    const tdee = bmr * factor, b = bmiInfo();
+    let adj = 0, adjLbl = 'jaga berat';
+    if(b){
+      if(b.bmi >= 25){ adj = -500; adjLbl = 'turun ±0,5 kg/minggu'; }
+      else if(b.bmi >= 23){ adj = -300; adjLbl = 'turun pelan-pelan'; }
+      else if(b.bmi < 18.5){ adj = 300; adjLbl = 'naik pelan-pelan'; }
+    }
+    const auto = Math.round(Math.max(sex === 'P' ? 1200 : 1500, tdee + adj) / 10) * 10;
+    const manual = SET && SET.calorie_target ? SET.calorie_target : null;
+    return { target: manual || auto, auto, manual: !!manual, bmr, tdee, factor, actLbl, adj, adjLbl, sex, age, ageKnown: !!PROF.dob, sportWk };
+  }
+
+  // Averages over days that have at least one (non-skipped) item: an empty day means "didn't log", not "fasted".
+  function calStats(days, n, end = TODAY){
+    const vals = [];
+    for(let d = end - n + 1; d <= end; d++){ const x = days.get(d); if(x && x.total > 0) vals.push(x.total); }
+    return { avg: avg(vals), days: vals.length, vals };
   }
 
   // ------------------------------------------------------------------ gates
@@ -646,6 +822,14 @@
             <div><label class="f">Target olahraga per minggu (menit)</label><input type="number" class="in" id="tg-sport" min="0" max="3000" step="10" value="${cur.sport_target_min}"></div>
           </div>
           <div class="faint" style="margin-top:6px;">Default: tidur 8 jam (rekomendasi dewasa 7–9 jam), olahraga 150 menit/minggu (WHO).</div>
+          <div class="row2">
+            <div><label class="f">Jenis kelamin (buat hitung kalori)</label><select class="in" id="tg-sex">
+              <option value="">${KTP_SEX ? 'Ikut KTP (' + (KTP_SEX === 'P' ? 'Perempuan' : 'Laki-laki') + ')' : '— belum diisi —'}</option>
+              <option value="L" ${cur.sex === 'L' ? 'selected' : ''}>Laki-laki</option>
+              <option value="P" ${cur.sex === 'P' ? 'selected' : ''}>Perempuan</option></select></div>
+            <div><label class="f">Target kalori per hari (kkal)</label><input type="number" class="in" id="tg-kcal" min="800" max="6000" step="50" value="${cur.calorie_target || ''}" placeholder="Kosong = otomatis${first ? '' : ' (' + kk(calTarget(derive()).auto) + ')'}"></div>
+          </div>
+          <div class="faint" style="margin-top:6px;">Otomatis = BMR (Mifflin-St Jeor) × aktivitas olahraga lo, dikurangin kalau BMI di atas normal.</div>
           <label class="f">Mode</label>
           <div class="radio" id="mode-pick">
             <label class="${cur.mode !== 'complex' ? 'on' : ''}"><input type="radio" name="md" value="simple" ${cur.mode !== 'complex' ? 'checked' : ''}><b>Simple</b> — skor kesehatan, 4 kartu, saran minggu ini.</label>
@@ -689,6 +873,8 @@
         sleep_activity: $('sel-sleep-act').value || null,
         sleep_target_min: Math.round(clamp(parseFloat($('tg-sleep').value) || 8, 3, 12) * 60),
         sport_target_min: Math.round(clamp(parseFloat($('tg-sport').value) || 0, 0, 3000)),
+        sex: $('tg-sex').value || null,
+        calorie_target: parseFloat($('tg-kcal').value) ? Math.round(clamp(parseFloat($('tg-kcal').value), 800, 6000)) : null,
         setup_done_at: (SET && SET.setup_done_at) || new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -708,6 +894,7 @@
     $('app-root').innerHTML = `
       <div class="tabs">
         <button class="tab ${TAB==='ringkasan'?'active':''}" data-tab="ringkasan">❤️ Ringkasan</button>
+        <button class="tab ${TAB==='kalori'?'active':''}" data-tab="kalori">🔥 Kalori</button>
         <button class="tab ${TAB==='badan'?'active':''}" data-tab="badan">⚖️ Badan</button>
         <button class="tab ${TAB==='sumber'?'active':''}" data-tab="sumber">🔌 Sumber Data</button>
       </div>
@@ -721,6 +908,7 @@
     renderShell();
     if(t === 'sumber'){ $('view').innerHTML = sourceForm(false); wireSourceForm(false); }
     else if(t === 'badan') renderBody();
+    else if(t === 'kalori') renderCalories();
     else renderSummary();
     window.scrollTo({ top: 0 });
   }
@@ -756,8 +944,9 @@
     </div></div>`;
   }
 
-  function cardsHtml(s, prev){
+  function cardsHtml(s, prev, C){
     const T = SET.sleep_target_min, b = s.bmi;
+    const kc = C.s7.avg == null ? 'none' : Math.abs(C.s7.avg / C.T.target - 1) <= 0.1 ? 'good' : Math.abs(C.s7.avg / C.T.target - 1) <= 0.2 ? 'mid' : 'bad';
     const sleepCls = s.sleep.count ? cls3(s.sleep.avg - T, -30, -90) : 'none';
     const sportCls = s.sport.pct == null ? 'none' : cls3(s.sport.pct, 1, 0.5);
     const foodCls = s.food.count ? cls3(s.score.parts.find(p => p.k === 'Makan')?.v ?? 0, 80, 55) : 'none';
@@ -783,19 +972,25 @@
         <div class="big">${b ? b.bmi.toFixed(1) : '—'}</div>
         <div class="sub">${b ? `${b.h} cm · ${b.w} kg<br>Ideal ${b.lo.toFixed(0)}–${b.hi.toFixed(0)} kg` : 'Isi tinggi & berat di tab Badan'}</div>
       </div>
+      <div class="card" style="--c:var(--kcal);cursor:pointer" id="card-kcal" title="Buka tab Kalori">
+        <div class="k">🔥 Kalori hari ini <span class="pill ${kc}">${{ good: 'Pas', mid: 'Lumayan', bad: C.s7.avg > C.T.target ? 'Kelebihan' : 'Kurang', none: 'No data' }[kc]}</span></div>
+        <div class="big">${kk(C.today)} <small>/ ${kk(C.T.target)} kkal</small></div>
+        <div class="sub">Rata-rata 7 hari: ${C.s7.avg != null ? kk(C.s7.avg) + ' kkal' : '—'} (${C.s7.days} hari tercatat)<br>Tebakan dari nama menu · tap buat koreksi</div>
+      </div>
     </div>`;
   }
 
-  function weekStrip(F){
+  function weekStrip(F, C){
     const days = []; for(let d = TODAY - 6; d <= TODAY; d++) days.push(d);
     const nb = new Map(F.nights.map(n => [n.day, n]));
-    return `<div class="panel"><div class="panel-head"><h2>📅 7 hari terakhir</h2><span class="faint">😴 tidur · 🏸 olahraga · 🍽️ makan</span></div><div class="panel-body"><div class="week">
+    return `<div class="panel"><div class="panel-head"><h2>📅 7 hari terakhir</h2><span class="faint">😴 tidur · 🏸 olahraga · 🍽️ makan · 🔥 kkal</span></div><div class="panel-body"><div class="week">
       ${days.map(d => {
-        const n = nb.get(d), sp = sum(F.sport.filter(s => s.day === d).map(s => s.min)), ml = F.meals.filter(m => m.day === d).length;
+        const n = nb.get(d), sp = sum(F.sport.filter(s => s.day === d).map(s => s.min)), ml = F.meals.filter(m => m.day === d).length, kc = (C.days.get(d) || {}).total || 0;
         return `<div class="day ${d === TODAY ? 'today' : ''}"><div class="d">${DOW[idxDow(d)]} ${shortDate(d).split('/')[0]}</div>
           <div class="m ${n ? '' : 'off'}">😴${n ? dur(n.dur) : '–'}</div>
           <div class="m ${sp ? '' : 'off'}">🏸${sp ? dur(sp) : '–'}</div>
-          <div class="m ${ml ? '' : 'off'}">🍽️${ml || '–'}</div></div>`;
+          <div class="m ${ml ? '' : 'off'}">🍽️${ml || '–'}</div>
+          <div class="m ${kc ? '' : 'off'}" ${kc > C.T.target * 1.1 ? 'style="color:var(--bad)"' : ''}>🔥${kc ? kShort(kc) : '–'}</div></div>`;
       }).join('')}
     </div></div></div>`;
   }
@@ -911,11 +1106,212 @@
     const cx = SET.mode === 'complex';
     const n = cx ? RANGE : 7;
     const s = stats(F, n), prev = stats(F, n, TODAY - n);
-    $('view').innerHTML = modeBar() + heroHtml(s) + cardsHtml(s, prev) +
-      (cx ? complexHtml(F, s) + tipsHtml(s) : tipsHtml(s) + weekStrip(F)) +
+    const cdays = calDays(F);
+    const C = { days: cdays, T: calTarget(F), s7: calStats(cdays, 7), today: (cdays.get(TODAY) || {}).total || 0 };
+    s.cal = C;
+    $('view').innerHTML = modeBar() + heroHtml(s) + cardsHtml(s, prev, C) +
+      (cx ? complexHtml(F, s) + tipsHtml(s) : tipsHtml(s) + weekStrip(F, C)) +
       `<div class="faint" style="text-align:center;margin-top:8px;">Data ditarik dari Aktivitas & Pengeluaran, Kalender, dan profil lo · <a href="#" id="reload">muat ulang</a></div>`;
     wireModeBar();
+    $('card-kcal').addEventListener('click', () => switchTab('kalori'));
     $('reload').addEventListener('click', async e => { e.preventDefault(); $('view').innerHTML = '<div class="empty-hint">Narik data…</div>'; await loadData(); renderSummary(); });
+  }
+
+  // ------------------------------------------------------------------ kalori tab
+  function dayLabel(d){
+    const dt = new Date(d * 864e5);
+    const name = d === TODAY ? 'Hari ini' : d === TODAY - 1 ? 'Kemarin' : ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'][idxDow(d)];
+    return `${name}, ${dt.getUTCDate()} ${['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'][dt.getUTCMonth()]}`;
+  }
+
+  function kcalRing(total, target){
+    const r = 54, c = 2 * Math.PI * r, p = Math.min(1, target ? total / target : 0);
+    const col = !total ? 'var(--border)' : total > target * 1.1 ? 'var(--bad)' : total > target ? 'var(--mid)' : 'var(--kcal)';
+    return `<svg viewBox="0 0 132 132"><circle cx="66" cy="66" r="${r}" fill="none" stroke="var(--border)" stroke-width="12"/>
+      <circle cx="66" cy="66" r="${r}" fill="none" stroke="${col}" stroke-width="12" stroke-linecap="round" stroke-dasharray="${c * p} ${c}"/></svg>`;
+  }
+
+  function renderCalories(){
+    const F = derive(), days = calDays(F), T = calTarget(F);
+    if(CAL_DAY == null || CAL_DAY > TODAY) CAL_DAY = TODAY;
+    const day = days.get(CAL_DAY) || { items: [], total: 0 };
+    const total = day.total, left = T.target - total;
+    const s7 = calStats(days, 7), s30 = calStats(days, 30);
+    const over30 = s30.vals.filter(v => v > T.target * 1.1).length;
+    const chartDays = []; for(let d = TODAY - 13; d <= TODAY; d++) chartDays.push(d);
+    const rice = sum(day.items.filter(i => !i.skipped).map(i => i.rice));
+
+    $('view').innerHTML = `
+      <div class="panel"><div class="panel-body">
+        <div class="daynav">
+          <button class="btn btn-ghost btn-sm" id="cd-prev" title="Hari sebelumnya">‹</button>
+          <b>${dayLabel(CAL_DAY)}</b>
+          <button class="btn btn-ghost btn-sm" id="cd-next" ${CAL_DAY >= TODAY ? 'disabled' : ''} title="Hari berikutnya">›</button>
+        </div>
+        <div class="kc-hero">
+          <div class="ring">${kcalRing(total, T.target)}<div class="v"><b class="kc-num">${kk(total)}</b><span>KKAL MASUK</span></div></div>
+          <div class="hero-side">
+            <div style="font-family:var(--font-display);font-weight:800;font-size:18px;">${!total ? 'Belum ada makanan' : left >= 0 ? `Sisa ${kk(left)} kkal` : `Lebih ${kk(-left)} kkal`}</div>
+            <div class="faint" style="margin-bottom:8px;">Target ${kk(T.target)} kkal/hari ${T.manual ? '(manual)' : '(otomatis)'}</div>
+            <div class="comp" style="grid-template-columns:78px 1fr 52px"><span>Intake</span><div class="bar"><i style="width:${Math.min(100, total / T.target * 100)}%;background:${total > T.target * 1.1 ? 'var(--bad)' : 'var(--kcal)'}"></i></div><span class="mono" style="text-align:right">${Math.round(total / T.target * 100)}%</span></div>
+            <div class="muted">${day.items.filter(i => !i.skipped).length} item · 🍚 ${riceLbl(rice)} piring nasi (${kk(rice * NASI_KCAL)} kkal)</div>
+          </div>
+        </div>
+      </div></div>
+
+      <div class="panel"><div class="panel-head"><h2>🍽️ Yang dimakan</h2><button class="btn btn-hl btn-sm" id="cal-add">+ Tambah makanan</button></div>
+        <div class="panel-body" style="padding-top:4px;padding-bottom:4px;">
+          ${day.items.length ? day.items.map((it, i) => `
+            <div class="kc-row ${it.skipped ? 'off' : ''}">
+              <div class="kc-t mono">${it.noTime ? '—' : hhmm(it.t)}</div>
+              <div class="kc-main">
+                <div class="kc-name">${esc(it.name)}<span class="src src-${it.src}">${it.skipped ? 'diabaikan' : SRC_LBL[it.src]}</span></div>
+                <div class="kc-sub">${it.skipped ? 'Gak dihitung' : `${kk(it.kcal)} kkal menu${it.rice ? ` + ${kk(it.rice * NASI_KCAL)} nasi` : ''}`}${it.guess && !it.skipped ? ` · dikira “${esc(it.guess)}”` : ''}${it.amt ? ' · ' + rpShort(it.amt) : ''}</div>
+                ${it.skipped ? '' : `<div class="rice-seg" data-i="${i}" title="Nasi putih, piring">🍚 ${RICE_STEPS.map(r => `<button data-r="${r}" class="${Math.abs(r - it.rice) < 0.01 ? 'on' : ''}">${riceLbl(r)}</button>`).join('')}</div>`}
+              </div>
+              <div class="kc-k"><b>${it.skipped ? '—' : kk(it.total)}</b><button class="btn btn-ghost btn-sm" data-edit="${i}" title="Ubah">✏️</button></div>
+            </div>`).join('')
+          : `<div class="empty-hint">Belum ada yang kecatat ${CAL_DAY === TODAY ? 'hari ini' : 'di hari ini'}.<br>Pengeluaran bertag <b>${esc((SET.food_tags || [])[0] || 'makan')}</b> otomatis masuk sini — atau tambahin manual (mis. masakan rumah).</div>`}
+        </div>
+      </div>
+
+      <div class="panel"><div class="panel-head"><h2>📊 14 hari terakhir</h2><span class="faint">garis putus = target</span></div><div class="panel-body">
+        ${barChart(chartDays.map(d => (days.get(d) || {}).total || 0), chartDays.map(shortDate), {
+          target: T.target, fmt: v => kShort(v), h: 150,
+          colorFn: v => v > T.target * 1.1 ? 'var(--bad)' : v > T.target ? 'var(--mid)' : 'var(--kcal)' })}
+        <div class="stats">
+          ${stat('Rata-rata 7 hari', s7.avg != null ? kk(s7.avg) + ' kkal' : '—', s7.days + ' hari tercatat')}
+          ${stat('Rata-rata 30 hari', s30.avg != null ? kk(s30.avg) + ' kkal' : '—', s30.days + ' hari tercatat')}
+          ${stat('Hari lewat target', s30.days ? over30 + ' / ' + s30.days : '—', '>110% target, 30 hari')}
+        </div>
+        <div class="faint">Hari yang kosong gak dihitung ke rata-rata (dianggap lupa nyatet, bukan puasa).</div>
+      </div></div>
+
+      <div class="panel"><div class="panel-head"><h2>🎯 Target harian</h2><a href="#sumber" id="cal-set" class="faint">ubah</a></div><div class="panel-body">
+        <div class="stats">
+          ${stat('BMR', kk(T.bmr) + ' kkal', 'energi kalau rebahan seharian')}
+          ${stat('Kebutuhan (TDEE)', kk(T.tdee) + ' kkal', `×${T.factor} · ${T.actLbl} (${dur(T.sportWk)}/minggu)`)}
+          ${stat('Target', kk(T.target) + ' kkal', T.manual ? `manual · otomatis: ${kk(T.auto)}` : (T.adj ? `${T.adj > 0 ? '+' : ''}${T.adj} → ${T.adjLbl}` : T.adjLbl))}
+        </div>
+        <div class="faint">Rumus Mifflin-St Jeor dari berat ${esc(PROF.weight_kg)} kg, tinggi ${esc(PROF.height_cm)} cm, umur ${T.age}${T.ageKnown ? '' : ' (tebakan — isi tanggal lahir di profil)'}, ${T.sex === 'L' ? 'laki-laki' : T.sex === 'P' ? 'perempuan' : 'jenis kelamin belum diisi (atur di Sumber Data)'}.
+          Kalori makanan = tebakan dari nama menu (1 piring nasi ≈ ${NASI_KCAL} kkal). Koreksi sekali, Sehat inget buat menu yang sama berikutnya.</div>
+      </div></div>`;
+
+    $('cd-prev').addEventListener('click', () => { CAL_DAY--; renderCalories(); });
+    $('cd-next').addEventListener('click', () => { if(CAL_DAY < TODAY){ CAL_DAY++; renderCalories(); } });
+    $('cal-add').addEventListener('click', () => calEdit(null));
+    $('cal-set').addEventListener('click', e => { e.preventDefault(); switchTab('sumber'); });
+    $('view').querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => calEdit(day.items[Number(b.dataset.edit)])));
+    $('view').querySelectorAll('.rice-seg').forEach(box => box.addEventListener('click', async e => {
+      const r = e.target.dataset.r; if(r == null) return;
+      const it = day.items[Number(box.dataset.i)];
+      if(Math.abs(Number(r) - it.rice) < 0.01) return;
+      box.querySelectorAll('button').forEach(b => b.disabled = true);
+      try{ await calSave(it, { name: it.name, kcal: it.kcal, rice: Number(r), skipped: false }, true); }
+      catch(err){ toast('Gagal simpan: ' + (err.message || err)); }
+      renderCalories();
+    }));
+  }
+
+  // Writes one item. Expenses get an override row keyed by entry_id; manual items are plain rows.
+  // remember = also teach health_food_kcal so the next same-name expense uses these numbers.
+  async function calSave(it, v, remember){
+    const row = { user_id: ME.id, name: v.name, kcal: Math.round(v.kcal), rice: v.rice, skipped: !!v.skipped, updated_at: new Date().toISOString() };
+    let res;
+    if(it && it.entryId){
+      Object.assign(row, { entry_id: it.entryId, log_date: idxYmd(it.day), time_at: it.noTime ? null : hhmm(it.t) });
+      res = await supabase.from('health_calorie_logs').upsert(row, { onConflict: 'user_id,entry_id' }).select('id, log_date, time_at, entry_id, name, kcal, rice, skipped').single();
+    } else {
+      Object.assign(row, { log_date: idxYmd(it ? it.day : CAL_DAY), time_at: v.time || null });
+      const q = it && it.logId ? supabase.from('health_calorie_logs').update(row).eq('id', it.logId) : supabase.from('health_calorie_logs').insert(row);
+      res = await q.select('id, log_date, time_at, entry_id, name, kcal, rice, skipped').single();
+    }
+    if(res.error) throw res.error;
+    RAW.cal = RAW.cal.filter(c => c.id !== res.data.id).concat(res.data);
+    if(remember && !v.skipped){
+      const k = { user_id: ME.id, name_key: norm(v.name), kcal: Math.round(v.kcal), rice: v.rice, updated_at: new Date().toISOString() };
+      const r2 = await supabase.from('health_food_kcal').upsert(k).select('name_key, kcal, rice').single();
+      if(!r2.error) RAW.foodKcal = RAW.foodKcal.filter(x => x.name_key !== k.name_key).concat(r2.data);
+    }
+  }
+
+  async function calDelete(it){
+    const { error } = await supabase.from('health_calorie_logs').delete().eq('id', it.logId);
+    if(error) throw error;
+    RAW.cal = RAW.cal.filter(c => c.id !== it.logId);
+  }
+
+  function calEdit(it){
+    const isNew = !it, isExp = it && it.entryId;
+    let rice = it ? it.rice : 1, kcalTouched = !!it;
+    const nowT = CAL_DAY === TODAY ? hhmm(new Date().getHours() * 60 + new Date().getMinutes()) : '12:00';
+    const names = [...new Set(FOOD_DB.map(f => f[1]).concat(RAW.foodKcal.map(x => x.name_key)))];
+    const ov = modal(`
+      <h3>${isNew ? '➕ Tambah makanan' : '✏️ ' + esc(it.name)}</h3>
+      <p>${isExp ? `Dari pengeluaran ${it.amt ? rp(it.amt) : ''} · ${it.noTime ? 'tanpa jam' : hhmm(it.t)}.` : `Buat ${dayLabel(it ? it.day : CAL_DAY).toLowerCase()}. Makanan yang gak lewat pengeluaran (masakan rumah, ditraktir, dll).`}</p>
+      ${isExp ? '' : `<div class="row2">
+        <div style="flex:2"><label class="f" for="ce-name">Makanan</label><input class="in" id="ce-name" list="ce-list" maxlength="120" value="${esc(it ? it.name : '')}" placeholder="mis. Nasi Padang"><datalist id="ce-list">${names.map(n => `<option value="${esc(n)}">`).join('')}</datalist></div>
+        <div><label class="f" for="ce-time">Jam</label><input class="in" type="time" id="ce-time" value="${esc(it ? (it.noTime ? '' : hhmm(it.t)) : nowT)}"></div>
+      </div>`}
+      <label class="f" for="ce-kcal">Kalori menu, <b>tanpa</b> nasi putih (kkal)</label>
+      <input class="in" type="number" id="ce-kcal" min="0" max="10000" step="10" inputmode="numeric" value="${it ? it.kcal : ''}" placeholder="mis. 400">
+      <label class="f">🍚 Nasi putih (piring dewasa ≈ ${NASI_KCAL} kkal)</label>
+      <div class="rice-seg" id="ce-rice" style="margin-top:0">${RICE_STEPS.concat([3]).map(r => `<button type="button" data-r="${r}" class="${Math.abs(r - rice) < 0.01 ? 'on' : ''}">${riceLbl(r)}</button>`).join('')}</div>
+      <div style="margin-top:12px;font-size:13px;">Total: <b class="mono" id="ce-total">—</b> kkal <span class="faint" id="ce-hint"></span></div>
+      <label style="display:flex;gap:6px;align-items:center;font-size:12.5px;margin-top:10px;cursor:pointer;"><input type="checkbox" id="ce-remember" checked> Inget angka ini buat menu yang sama berikutnya</label>
+      <div id="ce-err" style="color:var(--danger);font-size:12.5px;margin-top:8px;display:none;"></div>
+      <div class="gb-actions" style="flex-wrap:wrap;">
+        ${isExp && !it.skipped ? `<button class="btn btn-ghost btn-sm" id="ce-skip" title="Mis. beliin orang lain">Bukan gw yang makan</button>` : ''}
+        ${isExp && it.logId ? `<button class="btn btn-ghost btn-sm" id="ce-reset">${it.skipped ? 'Hitung lagi' : 'Hapus koreksi'}</button>` : ''}
+        ${!isExp && it ? `<button class="btn btn-ghost btn-sm" id="ce-del" style="color:var(--danger)">Hapus</button>` : ''}
+        <button class="btn btn-hl btn-sm" id="ce-save">Simpan</button>
+      </div>`);
+    const q = (s) => ov.querySelector(s);
+    const upd = () => {
+      const k = parseFloat(q('#ce-kcal').value) || 0;
+      q('#ce-total').textContent = kk(k + rice * NASI_KCAL);
+    };
+    if(q('#ce-name')){
+      const guess = () => {
+        const n = q('#ce-name').value.trim(); if(!n) { q('#ce-hint').textContent = ''; return; }
+        const l = RAW.foodKcal.find(x => x.name_key === norm(n));
+        const e = l ? { kcal: l.kcal, rice: Number(l.rice), label: 'ingatan lo' } : estimateFood(n, 0);
+        q('#ce-hint').textContent = '· tebakan: ' + e.label;
+        if(!kcalTouched){
+          q('#ce-kcal').value = e.kcal; rice = e.rice;
+          q('#ce-rice').querySelectorAll('button').forEach(b => b.classList.toggle('on', Math.abs(Number(b.dataset.r) - rice) < 0.01));
+        }
+        upd();
+      };
+      q('#ce-name').addEventListener('input', guess);
+      if(isNew) setTimeout(() => q('#ce-name').focus(), 30);
+    }
+    q('#ce-kcal').addEventListener('input', () => { kcalTouched = true; upd(); });
+    q('#ce-rice').addEventListener('click', e => {
+      const r = e.target.dataset.r; if(r == null) return;
+      rice = Number(r);
+      q('#ce-rice').querySelectorAll('button').forEach(b => b.classList.toggle('on', b === e.target));
+      upd();
+    });
+    upd();
+
+    const run = async (btn, fn) => {
+      const err = q('#ce-err'); err.style.display = 'none';
+      ov.querySelectorAll('button').forEach(b => b.disabled = true);
+      try{ await fn(); ov.remove(); renderCalories(); }
+      catch(e){ err.textContent = 'Gagal: ' + (e.message || e); err.style.display = ''; ov.querySelectorAll('button').forEach(b => b.disabled = false); }
+    };
+    q('#ce-save').addEventListener('click', () => {
+      const name = isExp ? it.name : q('#ce-name').value.trim();
+      const kcal = parseFloat(q('#ce-kcal').value);
+      const err = q('#ce-err');
+      if(!name){ err.textContent = 'Isi nama makanannya.'; err.style.display = ''; return; }
+      if(!(kcal >= 0 && kcal <= 10000)){ err.textContent = 'Isi kalori 0–10.000.'; err.style.display = ''; return; }
+      run(q('#ce-save'), () => calSave(it, { name, kcal, rice, skipped: false, time: q('#ce-time') ? q('#ce-time').value : null }, q('#ce-remember').checked));
+    });
+    if(q('#ce-skip')) q('#ce-skip').addEventListener('click', () => run(null, () => calSave(it, { name: it.name, kcal: it.kcal, rice: it.rice, skipped: true }, false)));
+    if(q('#ce-reset')) q('#ce-reset').addEventListener('click', () => run(null, () => calDelete(it)));
+    if(q('#ce-del')) q('#ce-del').addEventListener('click', async () => { if(await gembelConfirm('Hapus makanan ini?')) run(null, () => calDelete(it)); });
   }
 
   function renderBody(){
@@ -1009,7 +1405,7 @@
       return;
     }
     const h = (location.hash || '').slice(1);
-    switchTab(['ringkasan', 'badan', 'sumber'].includes(h) ? h : 'ringkasan');
+    switchTab(['ringkasan', 'kalori', 'badan', 'sumber'].includes(h) ? h : 'ringkasan');
   }
 
   document.addEventListener('DOMContentLoaded', async () => {

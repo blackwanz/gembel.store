@@ -507,16 +507,19 @@ table.data-table tr:hover td { background: var(--surface-hover); }
 @keyframes paySpin { to { transform: rotate(360deg); } }
 
 /* ---- Saweria auto-pay box (assets/payment-saweria.js) ---- */
+/* Light: blue-purple like the discount banner (.pay-banner). Dark: warm orange-pink. */
+.pay-overlay { --sw-1: #4c66e0; --sw-2: #7a5cff; --sw-3: #b84cff; --sw-accent: #7a5cff; --sw-rgb: 122, 92, 255; }
+[data-theme="dark"] .pay-overlay { --sw-1: #f5a623; --sw-2: #ff8a5c; --sw-3: #ff6a88; --sw-accent: #f5a623; --sw-rgb: 245, 166, 35; }
 .pay-sw {
   position: relative; margin: 14px 0; padding: 2px; border-radius: 16px;
-  background: linear-gradient(120deg, #f5a623, #ff6a88, #f5a623, #ffcf5c);
+  background: linear-gradient(120deg, var(--sw-1), var(--sw-2), var(--sw-3), var(--sw-1));
   background-size: 300% 300%; animation: payShift 6s ease infinite;
-  box-shadow: 0 8px 26px rgba(245, 166, 35, 0.22);
+  box-shadow: 0 8px 26px rgba(var(--sw-rgb), 0.22);
 }
 .pay-sw-inner { position: relative; border-radius: 14px; background: var(--surface); padding: 16px 14px 14px; text-align: center; overflow: hidden; }
 .pay-sw-inner::before {
   content: ""; position: absolute; inset: -40% -20% auto; height: 160px; pointer-events: none;
-  background: radial-gradient(closest-side, rgba(245, 166, 35, 0.16), transparent);
+  background: radial-gradient(closest-side, rgba(var(--sw-rgb), 0.16), transparent);
 }
 .pay-sw-cancel {
   position: absolute; top: 8px; right: 8px; z-index: 1; width: 24px; height: 24px; line-height: 1; font-size: 12px;
@@ -525,12 +528,12 @@ table.data-table tr:hover td { background: var(--surface-hover); }
 .pay-sw-head { position: relative; display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0 26px 12px; flex-wrap: wrap; }
 .pay-sw-logo {
   width: 30px; height: 30px; border-radius: 10px; display: grid; place-items: center; flex: none;
-  background: linear-gradient(135deg, #ffb238, #ff6a88); color: #fff; box-shadow: 0 4px 12px rgba(255, 120, 80, 0.35);
+  background: linear-gradient(135deg, var(--sw-1), var(--sw-3)); color: #fff; box-shadow: 0 4px 12px rgba(var(--sw-rgb), 0.35);
   animation: payBob 2.6s ease-in-out infinite;
 }
 @keyframes payBob { 0%,100% { transform: translateY(0) rotate(-4deg); } 50% { transform: translateY(-3px) rotate(4deg); } }
 .pay-sw-title { font-size: 12px; font-weight: 600; color: var(--text-muted); text-align: left; line-height: 1.35; }
-.pay-sw-title .brand { color: #f5a623; font-weight: 800; letter-spacing: .3px; }
+.pay-sw-title .brand { color: var(--sw-accent); font-weight: 800; letter-spacing: .3px; }
 .pay-sw-title strong { color: var(--text-main); }
 .pay-sw-auto {
   font-size: 9.5px; font-weight: 800; letter-spacing: 1px; padding: 3px 7px; border-radius: 999px;
@@ -543,10 +546,10 @@ table.data-table tr:hover td { background: var(--surface-hover); }
   background: var(--surface-hover); border: 1.5px solid var(--border); transition: all .3s ease;
 }
 .pay-sw-step.on { color: var(--text-main); }
-.pay-sw-step.on .ic { background: rgba(245, 166, 35, 0.14); border-color: #f5a623; box-shadow: 0 0 0 4px rgba(245, 166, 35, 0.15); animation: payPulse 1.8s ease-out infinite; }
+.pay-sw-step.on .ic { background: rgba(var(--sw-rgb), 0.14); border-color: var(--sw-accent); box-shadow: 0 0 0 4px rgba(var(--sw-rgb), 0.15); animation: payPulse 1.8s ease-out infinite; }
 .pay-sw-step.done .ic { background: var(--success-bg); border-color: var(--success-text); }
 .pay-sw-link { flex: 0 0 18px; height: 2px; margin-top: 17px; background: repeating-linear-gradient(90deg, var(--border-strong) 0 4px, transparent 4px 8px); }
-@keyframes payPulse { 0% { box-shadow: 0 0 0 0 rgba(245, 166, 35, 0.45); } 100% { box-shadow: 0 0 0 10px rgba(245, 166, 35, 0); } }
+@keyframes payPulse { 0% { box-shadow: 0 0 0 0 rgba(var(--sw-rgb), 0.45); } 100% { box-shadow: 0 0 0 10px rgba(var(--sw-rgb), 0); } }
 .pay-sw-amount-label { font-size: 11px; color: var(--text-faint); font-weight: 600; letter-spacing: .5px; text-transform: uppercase; }
 .pay-sw-amount-row { position: relative; display: flex; align-items: center; justify-content: center; gap: 8px; margin: 2px 0 4px; }
 .pay-sw-amount { font-size: 28px; font-weight: 800; color: var(--text-main); letter-spacing: -.5px; animation: payPop .5s cubic-bezier(0.22,1,0.36,1); }
@@ -554,20 +557,20 @@ table.data-table tr:hover td { background: var(--surface-hover); }
   height: 28px; padding: 0 9px; font-size: 11.5px; font-weight: 700; line-height: 1; border-radius: 8px; cursor: pointer;
   background: var(--surface-hover); border: 1px solid var(--border); color: var(--text-main); transition: all .2s ease;
 }
-.pay-sw-copy:hover { border-color: #f5a623; }
+.pay-sw-copy:hover { border-color: var(--sw-accent); }
 .pay-sw-copy.ok { background: var(--success-bg); border-color: var(--success-border); color: var(--success-text); transform: scale(1.06); }
 .pay-sw-note { font-size: 11px; color: var(--text-faint); margin: 4px 0 10px; line-height: 1.45; }
 .pay-sw-timer { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 11px; color: var(--text-muted); font-weight: 600; }
 .pay-sw-bar { flex: 1; height: 6px; border-radius: 99px; background: var(--surface-hover); border: 1px solid var(--border); overflow: hidden; }
-.pay-sw-bar i { display: block; height: 100%; width: 100%; border-radius: 99px; background: linear-gradient(90deg, #ffcf5c, #f5a623); transition: width 1s linear; }
+.pay-sw-bar i { display: block; height: 100%; width: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--sw-1), var(--sw-3)); transition: width 1s linear; }
 .pay-sw-timer.low { color: var(--danger); }
 .pay-sw-timer.low .pay-sw-bar i { background: linear-gradient(90deg, #ff8a9a, var(--danger)); }
 .pay-sw-go {
   position: relative; overflow: hidden; display: block; width: 100%; padding: 12px 14px; border-radius: 12px; border: 0;
-  background: linear-gradient(120deg, #f5a623, #ff6a88); color: #fff !important; font-weight: 800; font-size: 14.5px;
-  text-decoration: none; text-align: center; box-shadow: 0 6px 18px rgba(255, 120, 80, 0.35); transition: transform .15s ease, box-shadow .15s ease;
+  background: linear-gradient(120deg, var(--sw-1), var(--sw-2) 55%, var(--sw-3)); color: #fff !important; font-weight: 800; font-size: 14.5px;
+  text-decoration: none; text-align: center; box-shadow: 0 6px 18px rgba(var(--sw-rgb), 0.35); transition: transform .15s ease, box-shadow .15s ease;
 }
-.pay-sw-go:hover { transform: translateY(-1px); box-shadow: 0 10px 24px rgba(255, 120, 80, 0.45); }
+.pay-sw-go:hover { transform: translateY(-1px); box-shadow: 0 10px 24px rgba(var(--sw-rgb), 0.45); }
 .pay-sw-go::after {
   content: ""; position: absolute; top: 0; left: -60%; width: 40%; height: 100%;
   background: linear-gradient(100deg, transparent, rgba(255,255,255,0.45), transparent); transform: skewX(-20deg);
@@ -615,7 +618,7 @@ table.data-table tr:hover td { background: var(--surface-hover); }
 .pay-thanks-steps li b { color: var(--text-main); }
 .pay-thanks-steps .dot { flex: none; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 800; background: var(--surface-hover); border: 1.5px solid var(--border); color: var(--text-muted); }
 .pay-thanks-steps li.done .dot { background: var(--success-bg); border-color: var(--success-text); color: var(--success-text); }
-.pay-thanks-steps li.on .dot { border-color: #f5a623; color: #f5a623; animation: payPulse 1.8s ease-out infinite; }
+.pay-thanks-steps li.on .dot { border-color: var(--sw-accent); color: var(--sw-accent); animation: payPulse 1.8s ease-out infinite; }
 .pay-thanks-status { font-size: 10.5px; font-weight: 800; letter-spacing: .5px; padding: 3px 8px; border-radius: 999px; background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); }
 .pay-confetti { position: fixed; top: -12px; width: 8px; height: 14px; border-radius: 2px; pointer-events: none; z-index: 1003; animation: payFall linear forwards; }
 @keyframes payFall { to { transform: translate3d(var(--dx, 0), 105vh, 0) rotate(var(--rot, 540deg)); opacity: .9; } }
