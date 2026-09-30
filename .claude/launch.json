@@ -4,8 +4,25 @@
     {
       "name": "static-site",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["-y", "http-server", "-p", "8080", "-c-1"],
+      "runtimeArgs": [
+        "-y",
+        "http-server",
+        "-p",
+        "8080",
+        "-c-1"
+      ],
       "port": 8080
+    },
+    {
+      "name": "static-site-2",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "-y",
+        "http-server",
+        "-c-1"
+      ],
+      "port": 8081,
+      "autoPort": true
     }
   ]
 }

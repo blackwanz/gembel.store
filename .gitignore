@@ -153,3 +153,6 @@ backup-tool/*.spec
 
 # Local admin check tool (Elite expiry + VPS status) -- never ship to prod
 /cek-tool/
+
+# Python bytecode (backup-tool)
+__pycache__/
