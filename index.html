@@ -213,7 +213,7 @@
         </div>
         <label style="display:flex;gap:9px;align-items:flex-start;font-size:12.5px;line-height:1.55;color:var(--text-muted);margin:4px 0 16px;cursor:pointer;">
           <input type="checkbox" id="signup-terms" style="margin-top:3px;flex-shrink:0;width:16px;height:16px;cursor:pointer;" onchange="document.getElementById('signup-submit').disabled = !this.checked">
-          <span>Saya paham semua aplikasi di sini dibuat dengan AI tanpa jaminan, keamanan data tidak dijamin, dan setiap pembayaran adalah sawer sukarela. Saya menyetujui <a href="terms.html" target="_blank" rel="noopener" style="color:var(--primary);font-weight:600;">Syarat &amp; Ketentuan</a>.</span>
+          <span>Saya paham semua aplikasi di sini dibuat dengan AI tanpa jaminan, keamanan data tidak dijamin, dan setiap pembayaran adalah sawer sukarela. <b>SEMUA ISTILAH INVESTASI, PINJAMAN, ATAU KEUANGAN LAINNYA ADALAH DONASI/SAWERAN, TANPA PERJANJIAN MENGIKAT.</b> Saya menyetujui <a href="terms.html" target="_blank" rel="noopener" style="color:var(--primary);font-weight:600;">Syarat &amp; Ketentuan</a>.</span>
         </label>
         <button type="submit" class="btn btn-primary btn-block" id="signup-submit" onclick="handleSignup()" disabled>Daftar gratis →</button>
         <div class="login-foot">Udah punya akun? <a onclick="switchAuthTab('login')">Masuk di sini</a></div>
@@ -403,7 +403,7 @@ async function offerEliteThenRoute() {
 }
 
 // Naikkan setiap kali isi terms.html berubah secara berarti.
-const TERMS_VERSION = 1;
+const TERMS_VERSION = 2;
 
 async function handleSignup() {
   hideMsg();
