@@ -149,7 +149,7 @@ window.GEMBEL_APPS = [
   {
     id: 'sehat',
     name: 'Sehat',
-    desc: 'Statistik kesehatan otomatis dari catatan lo — makan (tag pengeluaran), olahraga (aktivitas), jam tidur/bangun (Kalender), plus BMI. Mode Simple & Komplex.',
+    desc: 'Statistik kesehatan otomatis dari catatan lo — makan (tag pengeluaran), olahraga (aktivitas), jam tidur/bangun (Kalender), plus BMI & kalori harian (tebakan dari menu, bisa dikoreksi). Mode Simple & Komplex.',
     icon: '❤️',
     url: 'sehat.html',
     category: 'Hobi & Olahraga',
