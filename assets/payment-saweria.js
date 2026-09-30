@@ -156,28 +156,54 @@
     return digits ? `https://wa.me/${digits}?text=${encodeURIComponent(text)}` : '';
   }
 
+  // Lights up the 1-2-3 strip in the Saweria box: steps before `n` are done, `n` is current.
+  function setStep(box, n) {
+    box.querySelectorAll('.pay-sw-step').forEach((el) => {
+      const s = Number(el.dataset.step);
+      el.classList.toggle('done', s < n);
+      el.classList.toggle('on', s === n);
+    });
+  }
+
   function buildAmountBox(info) {
     const box = document.createElement('div');
     box.id = 'pay-saweria-amount';
-    box.style.cssText = 'position:relative;margin:14px 0;padding:14px;border-radius:12px;background:var(--surface-2,rgba(127,127,127,.08));text-align:center;';
+    box.className = 'pay-sw';
     box.innerHTML = `
-      <button type="button" id="pay-saweria-cancel-btn" title="Batalkan" aria-label="Batalkan" style="position:absolute;top:6px;right:6px;width:24px;height:24px;line-height:1;font-size:13px;background:none;border:1px solid var(--border);border-radius:8px;cursor:pointer;color:var(--text-muted);">✕</button>
-      <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin:0 24px 8px;">Payment otomatis via <span style="color:#f5a623;font-weight:800;letter-spacing:.3px;">SAWERIA</span> <span style="white-space:nowrap;">a.n. <strong style="color:var(--text);">${SAWERIA_USERNAME.toUpperCase()}</strong></span></div>
-      <div style="display:flex;align-items:center;justify-content:center;gap:8px;">
-        <span style="font-size:17px;font-weight:700;">Bayar ${formatRupiah(info.amount)}</span>
-        <button type="button" id="pay-saweria-copy-btn" title="Salin nominal" style="width:26px;height:26px;font-size:13px;line-height:1;background:none;border:1px solid var(--border);border-radius:8px;cursor:pointer;color:inherit;">📋</button>
+      <div class="pay-sw-inner">
+        <button type="button" id="pay-saweria-cancel-btn" class="pay-sw-cancel" title="Batalkan" aria-label="Batalkan">✕</button>
+        <div class="pay-sw-head">
+          <span class="pay-sw-logo" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></svg></span>
+          <span class="pay-sw-title">Payment otomatis via <span class="brand">SAWERIA</span><br><span style="white-space:nowrap;">a.n. <strong>${SAWERIA_USERNAME.toUpperCase()}</strong></span></span>
+          <span class="pay-sw-auto">AUTO</span>
+        </div>
+        <div class="pay-sw-steps" aria-hidden="true">
+          <div class="pay-sw-step on" data-step="1"><span class="ic">📋</span>Salin<br>nominal</div>
+          <span class="pay-sw-link"></span>
+          <div class="pay-sw-step" data-step="2"><span class="ic">💸</span>Bayar di<br>Saweria</div>
+          <span class="pay-sw-link"></span>
+          <div class="pay-sw-step" data-step="3"><span class="ic">👑</span>Elite aktif<br>otomatis</div>
+        </div>
+        <div class="pay-sw-amount-label">Transfer persis</div>
+        <div class="pay-sw-amount-row">
+          <span class="pay-sw-amount">${formatRupiah(info.amount)}</span>
+          <button type="button" id="pay-saweria-copy-btn" class="pay-sw-copy" title="Salin nominal">Salin</button>
+        </div>
+        <p class="pay-sw-note">Jangan dibulatkan -- kode unik <strong>${info.unique_code}</strong> ditambahin ke harga asli ${formatRupiah(info.base_amount)} biar sistem tau ini tagihan lo${info.months > 1 ? ` (Elite ${monthsLabel(info.months)})` : ''}.</p>
+        <div class="pay-sw-timer" id="pay-saweria-timer"><span>⏱ <span id="pay-saweria-countdown">15:00</span></span><span class="pay-sw-bar"><i id="pay-saweria-bar"></i></span></div>
+        <a href="https://saweria.co/${SAWERIA_USERNAME}" target="_blank" rel="noopener" id="pay-saweria-bayar-btn" class="pay-sw-go">Bayar di Saweria →</a>
+        <button type="button" id="pay-saweria-sudah-btn" class="btn btn-ghost btn-block" style="margin-top:8px;display:none;" disabled></button>
+        <p id="pay-saweria-status" class="pay-sw-status" style="display:none;">⏳ Nunggu donasi masuk ke Saweria...</p>
       </div>
-      <p style="font-size:11px;color:var(--text-faint);margin:6px 0 12px;">Jangan dibulatkan -- kode unik <strong>${info.unique_code}</strong> ditambahin ke harga asli ${formatRupiah(info.base_amount)} biar sistem tau ini tagihan lo${info.months > 1 ? ` (Elite ${monthsLabel(info.months)})` : ''}. Berlaku <span id="pay-saweria-countdown">15:00</span> lagi.</p>
-      <a href="https://saweria.co/${SAWERIA_USERNAME}" target="_blank" rel="noopener" id="pay-saweria-bayar-btn" class="btn btn-primary btn-block">Bayar →</a>
-      <button type="button" id="pay-saweria-sudah-btn" class="btn btn-ghost btn-block" style="margin-top:8px;display:none;" disabled></button>
-      <p id="pay-saweria-status" style="font-size:12px;margin:10px 0 0;color:var(--text-muted);display:none;">⏳ Nunggu donasi masuk ke Saweria...</p>
     `;
     const copyBtn = box.querySelector('#pay-saweria-copy-btn');
     copyBtn.addEventListener('click', async () => {
       try {
         await navigator.clipboard.writeText(String(info.amount));
-        copyBtn.textContent = '✅';
-        setTimeout(() => { copyBtn.textContent = '📋'; }, 1500);
+        copyBtn.textContent = '✓ Tersalin';
+        copyBtn.classList.add('ok');
+        setStep(box, 2);
+        setTimeout(() => { copyBtn.textContent = 'Salin'; copyBtn.classList.remove('ok'); }, 1500);
       } catch (_) { /* clipboard permission denied -- not critical, user can still read the number */ }
     });
     return box;
@@ -197,6 +223,7 @@
     bayarBtn.addEventListener('click', () => {
       if (armed) return;
       armed = true;
+      setStep(box, 2);
       sudahBtn.style.display = 'block';
       sudahBtn.disabled = true;
       let remaining = SUDAH_BAYAR_GATE_MS / 1000;
@@ -216,6 +243,7 @@
     sudahBtn.addEventListener('click', () => {
       if (sudahBtn.disabled) return;
       sudahBtn.remove();
+      setStep(box, 3);
       onProceed();
     });
   }
@@ -223,10 +251,14 @@
   function startCountdown(box, expiresAtIso) {
     const el = box.querySelector('#pay-saweria-countdown');
     const statusEl = box.querySelector('#pay-saweria-status');
+    const bar = box.querySelector('#pay-saweria-bar');
+    const timerRow = box.querySelector('#pay-saweria-timer');
     if (!el) return () => {};
     const expiresAt = new Date(expiresAtIso).getTime();
     const tick = () => {
       const remaining = expiresAt - Date.now();
+      if (bar) bar.style.width = Math.max(0, Math.min(100, (remaining / EXPIRES_MS) * 100)) + '%';
+      if (timerRow) timerRow.classList.toggle('low', remaining < 2 * 60 * 1000);
       if (remaining <= 0) {
         el.textContent = '0:00';
         if (statusEl) statusEl.textContent = '⌛ Kode kadaluarsa -- tutup dan buka lagi buat kode baru.';
@@ -250,7 +282,67 @@
   // through "Saya sudah Bayar" -- e.g. Saweria matches the donation fast), but the 30s
   // "processing" / 60s "stuck" timers below only make sense to count once the user says they've
   // actually gone and paid, so those are armed later via the returned `reveal()`.
-  function watchRowStatus(box, amount) {
+  // ---- Part 3: thank-you popup once the payment is confirmed ----
+  // Replaces the old "status text, then reload after 1.5s" -- a paid member now gets a proper
+  // moment (animated check, confetti, receipt) and moves on when they click, not on a timer.
+  function burstConfetti() {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const colors = ['#f5a623', '#ff6a88', '#7a5cff', '#4f7cff', '#4cd98a', '#ffcf5c'];
+    for (let i = 0; i < 90; i++) {
+      const c = document.createElement('i');
+      c.className = 'pay-confetti';
+      c.style.left = Math.random() * 100 + 'vw';
+      c.style.background = colors[i % colors.length];
+      c.style.setProperty('--dx', (Math.random() * 160 - 80) + 'px');
+      c.style.setProperty('--rot', (Math.random() * 900 - 450) + 'deg');
+      c.style.animationDuration = (2.2 + Math.random() * 1.8) + 's';
+      c.style.animationDelay = (Math.random() * 0.5) + 's';
+      if (i % 3 === 0) { c.style.width = '7px'; c.style.height = '7px'; c.style.borderRadius = '50%'; }
+      document.body.appendChild(c);
+      setTimeout(() => c.remove(), 5000);
+    }
+  }
+
+  function showThankYou(info, onDone) {
+    const existing = document.getElementById('pay-thanks');
+    if (existing) existing.remove();
+    const until = new Date(Date.now() + info.months * 30 * 86400000)
+      .toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+    const overlay = document.createElement('div');
+    overlay.id = 'pay-thanks';
+    overlay.className = 'pay-overlay pay-thanks';
+    overlay.innerHTML = `
+      <div class="pay-card" role="dialog" aria-modal="true" aria-labelledby="pay-thanks-title">
+        <div class="pay-thanks-hero">
+          <svg class="pay-thanks-check" viewBox="0 0 80 80" aria-hidden="true"><circle cx="40" cy="40" r="36"/><path d="M24 41l11 11 22-24"/></svg>
+          <span class="pay-thanks-crown" aria-hidden="true">👑</span>
+          <h3 id="pay-thanks-title">Makasih, bro! 🙏</h3>
+          <p>Pembayaran lo udah masuk. Selamat, lo resmi <b>Elite</b>!</p>
+        </div>
+        <div class="pay-thanks-body">
+          <div class="pay-thanks-receipt">
+            <span>Dibayar</span><b>${formatRupiah(info.amount)}</b>
+            <span>Paket</span><b>Elite ${monthsLabel(info.months)}</b>
+            <span>Aktif sampai</span><b>± ${until}</b>
+          </div>
+          <ul class="pay-thanks-perks">
+            <li style="animation-delay:1.1s">✨ Semua fitur Elite udah kebuka</li>
+            <li style="animation-delay:1.25s">🎁 Bonus poin langsung masuk ke akun</li>
+            <li style="animation-delay:1.4s">💬 Ada kendala? Chat Gembel Master aja</li>
+          </ul>
+          <button type="button" class="btn btn-primary btn-block" id="pay-thanks-go">Gas, masuk →</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    burstConfetti();
+    const payModal = document.getElementById('pay-modal');
+    if (payModal) payModal.style.display = 'none';
+    const goBtn = overlay.querySelector('#pay-thanks-go');
+    goBtn.addEventListener('click', () => { goBtn.disabled = true; onDone(); });
+  }
+
+  function watchRowStatus(box, info) {
+    const amount = info.amount;
     const statusEl = box.querySelector('#pay-saweria-status');
     if (!statusEl) return { reveal() {}, cleanup() {} };
 
@@ -297,8 +389,9 @@
       statusEl.style.display = 'block';
       if (status === 'confirmed') {
         statusEl.textContent = '✅ Pembayaran sukses! Ngupgrade akun lo...';
-        statusEl.style.color = 'var(--success, #22c55e)';
-        setTimeout(proceedToApp, 1500);
+        statusEl.style.color = 'var(--success-text, #22c55e)';
+        setStep(box, 4);
+        showThankYou(info, proceedToApp);
       } else {
         statusEl.textContent = status === 'expired' ? '⌛ Kadaluarsa, buka ulang buat kode baru.' : '❌ Ditolak admin.';
       }
@@ -364,7 +457,7 @@
     const box = buildAmountBox(info);
     waiting.insertBefore(box, waiting.firstChild);
     const stopCountdown = startCountdown(box, info.expires_at);
-    const { reveal, cleanup } = watchRowStatus(box, info.amount);
+    const { reveal, cleanup } = watchRowStatus(box, info);
 
     wireBayarHandoff(box, () => {
       nativeChildren.forEach((el, i) => { el.style.display = nativeDisplay[i]; });

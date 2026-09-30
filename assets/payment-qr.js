@@ -71,14 +71,51 @@
     overlay.querySelector('#pay-qr-close-btn').addEventListener('click', close);
 
     const doneBtn = overlay.querySelector('#pay-qr-done-btn');
-    doneBtn.addEventListener('click', async () => {
-      const msg = 'Pembayaran diterima, mohon tunggu konfirmasi admin (maksimal 1x24 jam) ya. Kalau mau lebih cepat, notify Gembel Master langsung lewat WhatsApp.';
+    doneBtn.addEventListener('click', () => {
       doneBtn.disabled = true;
-      doneBtn.textContent = '✅ Oke, ditunggu ya';
-      if (window.gembelAlert) await window.gembelAlert(msg); else alert(msg);
       close();
+      openPendingThanks(waUrl);
     });
 
+    document.body.appendChild(overlay);
+  }
+
+  // Thank-you popup after "Selesai Transfer" -- same look as payment-saweria.js's confirmed
+  // popup (shared .pay-thanks CSS in app-theme.css), but a ticking clock instead of a check and
+  // no confetti, since nothing is confirmed yet: an admin still has to approve it in admin.html.
+  function openPendingThanks(waUrl) {
+    const existing = document.getElementById('pay-thanks');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'pay-thanks';
+    overlay.className = 'pay-overlay pay-thanks';
+    overlay.innerHTML = `
+      <div class="pay-card" role="dialog" aria-modal="true" aria-labelledby="pay-thanks-title">
+        <div class="pay-thanks-hero pending">
+          <svg class="pay-thanks-clock" viewBox="0 0 80 80" aria-hidden="true"><circle cx="40" cy="40" r="36"/><line class="hr" x1="40" y1="40" x2="40" y2="26"/><line class="min" x1="40" y1="40" x2="40" y2="17"/></svg>
+          <h3 id="pay-thanks-title">Makasih udah transfer! 🙏</h3>
+          <p>Pembayaran lo lagi dicek sama admin.</p>
+        </div>
+        <div class="pay-thanks-body">
+          <div class="pay-thanks-receipt">
+            <span>Metode</span><b>QRIS (manual)</b>
+            <span>Status</span><b><span class="pay-thanks-status">MENUNGGU ADMIN</span></b>
+            <span>Estimasi</span><b>maks. 1×24 jam</b>
+          </div>
+          <ul class="pay-thanks-steps">
+            <li class="done" style="animation-delay:.2s"><span class="dot">✓</span><span><b>Transfer QRIS</b> — beres</span></li>
+            <li class="on" style="animation-delay:.35s"><span class="dot">2</span><span><b>Admin cek mutasi</b> — lagi diproses</span></li>
+            <li style="animation-delay:.5s"><span class="dot">3</span><span><b>Elite aktif</b> — otomatis kebuka abis dikonfirmasi</span></li>
+          </ul>
+          ${waUrl ? `<a class="btn btn-ghost btn-block" href="${waUrl}" target="_blank" rel="noopener" style="margin-bottom:8px;">📱 Biar cepet, chat admin (WA)</a>` : ''}
+          <button type="button" class="btn btn-primary btn-block" id="pay-thanks-ok">Oke, ditunggu ya</button>
+        </div>
+      </div>`;
+
+    function close() { overlay.remove(); }
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    overlay.querySelector('#pay-thanks-ok').addEventListener('click', close);
     document.body.appendChild(overlay);
   }
 
@@ -96,9 +133,12 @@
     // Own labelled section, same look as payment-saweria.js's "Payment otomatis via SAWERIA"
     // box, so members can tell the two ways to pay apart.
     const section = document.createElement('div');
-    section.style.cssText = 'margin:14px 0 0;padding:12px 14px;border-radius:12px;border:1px dashed var(--border);text-align:center;';
+    section.className = 'pay-qr-alt';
     section.innerHTML = `
-      <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:4px;">Payment manual via <span style="color:var(--text);font-weight:800;letter-spacing:.3px;">QRIS</span></div>
+      <div class="pay-qr-alt-head">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/></svg>
+        <span>Payment manual via <span style="color:var(--text-main);font-weight:800;letter-spacing:.3px;">QRIS</span></span>
+      </div>
       <p style="font-size:11px;color:var(--text-faint);margin:0 0 10px;">Scan QRIS, terus admin konfirmasi manual (bisa agak lama).</p>`;
     const btn = document.createElement('button');
     btn.type = 'button';
