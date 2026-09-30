@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kokoin — Gembel Store</title>
+<meta name="description" content="Kokoin — order matcha gummy pake merit poin, dianter ke rumah, tracking live.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27%3E%3Crect width=%2764%27 height=%2764%27 rx=%2716%27 fill=%27%234d7c0f%27/%3E%3Ctext x=%2732%27 y=%2744%27 font-size=%2732%27 text-anchor=%27middle%27%3E%F0%9F%8D%AC%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/app-theme.css">
+<style>
+  :root{ --hl:#4d7c0f; --hl-2:#65a30d; --hl-soft:#eef7e0; --gold:#b45309; --bad:#dc2626; --gum:#84cc16; }
+  [data-theme="dark"]{ --hl:#a3e635; --hl-2:#84cc16; --hl-soft:#1d2a10; --gold:#fbbf24; --bad:#f87171; --gum:#a3e635; }
+  body{ background:var(--page-bg); }
+  .top{ display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid var(--border);background:var(--surface); }
+  .brand{ font-family:var(--font-display);font-weight:800;font-size:19px;letter-spacing:.04em;text-decoration:none;color:var(--text-main);display:flex;align-items:center;gap:8px; }
+  .brand .k{ color:var(--hl); }
+  .brand small{ font-size:10.5px;font-weight:600;letter-spacing:.02em;color:var(--text-faint); }
+  .wrap{ max-width:880px;margin:0 auto;padding:18px 16px 90px; }
+  .tabs{ display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:100px;padding:4px;margin-bottom:16px;position:sticky;top:8px;z-index:20;box-shadow:var(--shadow-card);overflow-x:auto; }
+  .tab{ flex:1;border:none;background:none;padding:9px 10px;border-radius:100px;font-weight:700;font-size:12.5px;color:var(--text-muted);cursor:pointer;font-family:inherit;white-space:nowrap; }
+  .tab.active{ background:var(--hl);color:#fff; }
+  [data-theme="dark"] .tab.active{ color:#1a2e05; }
+  .tab .n{ display:inline-block;min-width:18px;padding:0 5px;border-radius:100px;background:var(--danger);color:#fff;font-size:10.5px;margin-left:4px; }
+
+  .panel{ background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);margin-bottom:16px;overflow:hidden; }
+  .panel-head{ padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap; }
+  .panel-head h2{ font-size:15px;display:flex;align-items:center;gap:8px; }
+  .panel-body{ padding:16px 18px; }
+  .muted{ color:var(--text-muted);font-size:12.5px;line-height:1.55; }
+  .faint{ color:var(--text-faint);font-size:11.5px; }
+  .empty-hint{ color:var(--text-faint);font-size:13px;padding:26px 16px;text-align:center;line-height:1.6; }
+  .mono{ font-family:var(--font-mono); }
+
+  /* hero */
+  .hero{ position:relative;overflow:hidden;border-radius:var(--radius-xl);padding:22px 22px 20px;margin-bottom:16px;color:#f7fee7;
+    background:radial-gradient(circle at 85% 20%, rgba(190,242,100,.35), transparent 45%), linear-gradient(135deg,#1a2e05 0%,#365314 55%,#4d7c0f 100%); }
+  .hero .bal-k{ font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;opacity:.75; }
+  .hero .bal{ font-family:var(--font-mono);font-weight:700;font-size:34px;margin-top:4px;line-height:1.1; }
+  .hero .bal small{ font-size:14px;font-weight:600;opacity:.8; }
+  .hero .sub{ font-size:12.5px;opacity:.85;margin-top:6px; }
+  .hero .can{ display:inline-flex;align-items:center;gap:6px;margin-top:12px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);border-radius:100px;padding:5px 12px;font-size:12px;font-weight:700; }
+  .hero .deco{ position:absolute;right:18px;bottom:-8px;font-size:72px;opacity:.9;transform:rotate(-12deg);filter:drop-shadow(0 8px 14px rgba(0,0,0,.35)); }
+  .live{ display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800;letter-spacing:.1em;color:var(--text-faint); }
+  .live i{ width:8px;height:8px;border-radius:50%;background:var(--text-faint); }
+  .live.on{ color:var(--success-text); }
+  .live.on i{ background:#22c55e;animation:pulse 1.6s infinite; }
+  @keyframes pulse{ 0%{ box-shadow:0 0 0 0 rgba(34,197,94,.6); } 70%{ box-shadow:0 0 0 8px rgba(34,197,94,0); } 100%{ box-shadow:0 0 0 0 rgba(34,197,94,0); } }
+
+  /* product */
+  .prod{ display:grid;grid-template-columns:150px 1fr;gap:18px;align-items:center; }
+  .gummy-stage{ height:150px;border-radius:var(--radius-lg);background:var(--hl-soft);display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden; }
+  .gummy{ width:78px;height:78px;border-radius:26px;background:linear-gradient(145deg,#bef264,#65a30d 70%,#4d7c0f);position:relative;
+    box-shadow:inset -6px -8px 14px rgba(26,46,5,.35), inset 6px 6px 12px rgba(255,255,255,.45), 0 12px 20px rgba(77,124,15,.35);animation:wobble 3.2s ease-in-out infinite; }
+  .gummy::before{ content:'';position:absolute;left:14px;top:12px;width:22px;height:12px;border-radius:50%;background:rgba(255,255,255,.55);transform:rotate(-20deg); }
+  .gummy::after{ content:'';position:absolute;inset:0;border-radius:inherit;
+    background-image:radial-gradient(circle,rgba(255,255,255,.85) 1px,transparent 1.6px);background-size:11px 11px;opacity:.55; }
+  @keyframes wobble{ 0%,100%{ transform:translateY(0) rotate(-6deg) scale(1); } 50%{ transform:translateY(-8px) rotate(6deg) scale(1.04,.97); } }
+  .prod h3{ font-family:var(--font-display);font-size:20px; }
+  .price{ font-family:var(--font-mono);font-weight:700;font-size:18px;color:var(--hl);margin-top:4px; }
+  .qty{ display:inline-flex;align-items:center;border:1px solid var(--border);border-radius:100px;overflow:hidden;margin-top:12px; }
+  .qty button{ width:40px;height:40px;font-size:20px;font-weight:700;color:var(--text-main);background:var(--surface-hover); }
+  .qty button:disabled{ opacity:.35;cursor:not-allowed; }
+  .qty input{ width:56px;height:40px;border:none;text-align:center;font-family:var(--font-mono);font-weight:700;font-size:16px;background:var(--surface);color:var(--text-main); }
+  .sum{ display:grid;grid-template-columns:1fr auto;gap:6px 12px;font-size:13.5px;margin-top:14px;padding:12px 14px;border-radius:var(--radius-md);background:var(--surface-muted); }
+  .sum .v{ font-family:var(--font-mono);font-weight:700;text-align:right; }
+  .sum .tot{ border-top:1px dashed var(--border-strong);padding-top:8px;font-weight:700; }
+  .sum .neg{ color:var(--bad); }
+
+  /* forms */
+  .grid2{ display:grid;grid-template-columns:1fr 1fr;gap:10px 12px; }
+  .grid2 .wide{ grid-column:1/-1; }
+  label.f{ display:block;font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:5px; }
+  .in{ width:100%;padding:10px 12px;border-radius:var(--radius-md);border:1px solid var(--border);background:var(--surface);color:var(--text-main);font:inherit;font-size:14px; }
+  .in:focus{ outline:none;border-color:var(--hl); }
+  textarea.in{ resize:vertical;min-height:64px;line-height:1.5; }
+  .hint{ font-size:11.5px;color:var(--text-faint);margin-top:5px;line-height:1.5; }
+  .chips{ display:flex;flex-wrap:wrap;gap:6px;margin-top:6px; }
+  .chip{ border:1px solid var(--border);border-radius:100px;padding:4px 11px;font-size:12px;cursor:pointer;background:var(--surface);color:var(--text-main);font-family:inherit; }
+  .chip:hover,.chip.on{ border-color:var(--hl);color:var(--hl); }
+  .row-act{ display:flex;justify-content:flex-end;gap:8px;margin-top:14px;flex-wrap:wrap; }
+  .btn-hl{ background:var(--hl);color:#fff;border:none; }
+  [data-theme="dark"] .btn-hl{ color:#1a2e05; }
+  .btn-hl:hover{ filter:brightness(1.07); }
+  .btn-big{ width:100%;padding:14px;font-size:15px;border-radius:var(--radius-md);margin-top:14px; }
+  .addr{ display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:var(--radius-md);border:1px dashed var(--border-strong);font-size:13px;line-height:1.55;margin-top:14px; }
+  .addr b{ font-size:13.5px; }
+
+  /* orders + tracking */
+  .order{ padding:16px 18px;border-bottom:1px solid var(--border); }
+  .order:last-child{ border-bottom:none; }
+  .order.flash{ animation:flash 2.4s ease-out; }
+  @keyframes flash{ 0%{ background:var(--hl-soft); } 100%{ background:transparent; } }
+  .o-top{ display:flex;justify-content:space-between;gap:10px;align-items:flex-start; }
+  .o-no{ font-family:var(--font-mono);font-weight:700;font-size:15px; }
+  .o-sub{ font-size:12.5px;color:var(--text-muted);margin-top:2px; }
+  .pill{ font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:100px;white-space:nowrap; }
+  .pill.ok{ background:var(--success-bg);color:var(--success-text); }
+  .pill.warn{ background:var(--warning-bg);color:var(--warning-text); }
+  .pill.bad{ background:var(--danger-bg);color:var(--bad); }
+  .pill.mute{ background:var(--surface-muted);color:var(--text-muted); }
+  .pill.hl{ background:var(--hl-soft);color:var(--hl); }
+
+  .track{ position:relative;margin:22px 6px 6px; }
+  .track .rail{ position:absolute;left:18px;right:18px;top:17px;height:6px;border-radius:100px;background:var(--surface-muted);overflow:hidden; }
+  .track .rail i{ display:block;height:100%;border-radius:100px;background:linear-gradient(90deg,var(--hl),var(--gum));transition:width .8s cubic-bezier(.22,1,.36,1); }
+  .track .rail.moving i{ background-size:28px 100%;background-image:linear-gradient(90deg,var(--hl),var(--gum)),repeating-linear-gradient(90deg,transparent 0 14px,rgba(255,255,255,.35) 14px 28px);animation:road 0.9s linear infinite; }
+  @keyframes road{ to{ background-position:0 0, 28px 0; } }
+  .steps{ display:flex;justify-content:space-between;position:relative; }
+  .st{ display:flex;flex-direction:column;align-items:center;gap:6px;width:25%;text-align:center; }
+  .st .d{ width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;background:var(--surface);border:2px solid var(--border);position:relative;z-index:1;transition:all .4s; filter:grayscale(1);opacity:.6; }
+  .st.done .d{ border-color:var(--hl);background:var(--hl-soft);filter:none;opacity:1; }
+  .st.now .d{ border-color:var(--hl);background:var(--hl);filter:none;opacity:1;box-shadow:0 0 0 6px var(--hl-soft);animation:bob 1.4s ease-in-out infinite; }
+  @keyframes bob{ 0%,100%{ transform:translateY(0); } 50%{ transform:translateY(-4px); } }
+  .st .t{ font-size:11.5px;font-weight:700;color:var(--text-faint);line-height:1.3; }
+  .st.done .t,.st.now .t{ color:var(--text-main); }
+  .st .w{ font-size:10.5px;color:var(--text-faint); }
+  .scooter{ position:absolute;top:-22px;font-size:22px;transition:left .8s cubic-bezier(.22,1,.36,1);transform:translateX(-50%) scaleX(-1);animation:ride .5s ease-in-out infinite alternate;z-index:2; }
+  @keyframes ride{ to{ margin-top:-2px; } }
+  .cancelled-box{ margin-top:14px;padding:10px 12px;border-radius:var(--radius-md);background:var(--danger-bg);color:var(--bad);font-size:13px;font-weight:600; }
+
+  .tl{ margin-top:14px;border-left:2px solid var(--border);padding-left:14px;display:flex;flex-direction:column;gap:10px; }
+  .tl .ev{ position:relative;font-size:13px;line-height:1.5; }
+  .tl .ev::before{ content:'';position:absolute;left:-20px;top:5px;width:10px;height:10px;border-radius:50%;background:var(--border-strong);border:2px solid var(--surface); }
+  .tl .ev:first-child::before{ background:var(--hl);box-shadow:0 0 0 3px var(--hl-soft); }
+  .tl .ev b{ font-size:13px; }
+  .tl .ev .when{ font-size:11px;color:var(--text-faint); }
+  .tl-toggle{ font-size:12px;font-weight:700;color:var(--hl);margin-top:10px; }
+  .ship{ margin-top:12px;font-size:12.5px;color:var(--text-muted);line-height:1.55; }
+  .acts{ display:flex;gap:8px;flex-wrap:wrap;margin-top:12px; }
+
+  /* admin */
+  .seg{ display:inline-flex;gap:4px;background:var(--surface-muted);border:1px solid var(--border);border-radius:100px;padding:3px;flex-wrap:wrap; }
+  .seg button{ border:none;background:none;color:var(--text-muted);border-radius:100px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit; }
+  .seg button.active{ background:var(--text-main);color:var(--surface); }
+  .adm-addr{ margin-top:10px;padding:10px 12px;border-radius:var(--radius-md);background:var(--surface-muted);font-size:13px;line-height:1.55; }
+  .st-btns{ display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px; }
+  .st-btns button{ border:1px solid var(--border);background:var(--surface);color:var(--text-main);border-radius:var(--radius-md);padding:8px 4px;font-size:11.5px;font-weight:700;line-height:1.3; }
+  .st-btns button:hover{ border-color:var(--hl); }
+  .st-btns button.cur{ background:var(--hl);border-color:var(--hl);color:#fff; }
+  [data-theme="dark"] .st-btns button.cur{ color:#1a2e05; }
+  .note-row{ display:flex;gap:6px;margin-top:8px; }
+  .note-row .in{ padding:8px 10px;font-size:13px; }
+  table.tb{ width:100%;border-collapse:collapse;font-size:13px; }
+  table.tb th,table.tb td{ text-align:left;padding:9px 8px;border-bottom:1px solid var(--border); }
+  table.tb th{ font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--text-faint); }
+  table.tb td.r,table.tb th.r{ text-align:right; }
+  .led{ display:flex;justify-content:space-between;gap:10px;padding:10px 18px;border-bottom:1px solid var(--border);font-size:13px; }
+  .led:last-child{ border-bottom:none; }
+  .led .v{ font-family:var(--font-mono);font-weight:700;white-space:nowrap; }
+  .led .v.plus{ color:var(--success-text); } .led .v.min{ color:var(--bad); }
+
+  .foot{ text-align:center;font-size:11.5px;color:var(--text-faint);margin-top:26px;line-height:1.6; }
+  .toast{ position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:var(--text-main);color:var(--surface);padding:10px 18px;border-radius:100px;font-size:13px;font-weight:600;z-index:1600;box-shadow:var(--shadow-lift);max-width:calc(100% - 32px); }
+
+  @media (max-width:640px){
+    .top{ padding:12px 16px; }
+    .brand small{ display:none; }
+    .prod{ grid-template-columns:1fr; }
+    .gummy-stage{ height:120px; }
+    .grid2{ grid-template-columns:1fr; }
+    .hero .bal{ font-size:28px; }
+    .hero .deco{ font-size:56px; }
+    .st .t{ font-size:10.5px; }
+    .st .d{ width:34px;height:34px;font-size:15px; }
+    .track .rail{ top:14px; }
+    .st-btns{ grid-template-columns:repeat(2,1fr); }
+  }
+</style>
+</head>
+<body>
+
+<div class="top">
+  <a href="kokoin.html" class="brand"><span>🍬</span><span><span class="k">KOKO</span>IN</span><small>kartel matcha gummy</small></a>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <button class="theme-toggle" onclick="toggleTheme()" title="Ganti tema">🌙</button>
+    <a href="dashboard.html" class="btn btn-ghost btn-sm" style="text-decoration:none;">Dashboard</a>
+  </div>
+</div>
+
+<div class="wrap" id="app-root">
+  <div class="empty-hint">Memuat…</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/dist/umd/supabase.min.js"></script>
+<script src="assets/supabaseClient.js"></script>
+<script src="assets/notif-bell.js"></script>
+<script src="assets/auth.js"></script>
+<script src="assets/popup.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  // Kokoin -- see db/migrations/0050_kokoin.sql. Short version:
+  //   * Merit poin = sum of merit_ledger rows. The admin grants them (kokoin_grant); an order
+  //     debits (kokoin_order), a cancel refunds. The page never writes the ledger or orders itself.
+  //   * The delivery address is profile_address (owner-only, admin can read) -- also editable in
+  //     the dashboard profile.
+  //   * Tracking = kokoin_events, written by the admin via kokoin_set_status. Realtime on
+  //     kokoin_orders / kokoin_events / merit_ledger re-renders without a reload.
+  const PRICE = 500000;
+  const FLOW = ['pending', 'processing', 'shipping', 'delivered'];
+  const STATUS = {
+    pending:    { t: 'Belum dikerjain', short: 'Masuk', icon: '📝', c: 'warn' },
+    processing: { t: 'Lagi diracik', short: 'Diracik', icon: '🧪', c: 'hl' },
+    shipping:   { t: 'Lagi dianter', short: 'Dianter', icon: '🛵', c: 'hl' },
+    delivered:  { t: 'Udah sampai', short: 'Sampai', icon: '📦', c: 'ok' },
+    cancelled:  { t: 'Dibatalin', short: 'Batal', icon: '❌', c: 'bad' },
+  };
+
+  let ME = null, IS_ADMIN = false, ADDRESS = null, BALANCE = 0, LEDGER = [];
+  let ORDERS = [], EVENTS = {}, PEOPLE = {}, BALANCES = [];
+  let TAB = 'order', QTY = 1, ADM_FILTER = 'active', FLASH = null, OPEN_TL = new Set(), LIVE = false;
+
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const pts = (n) => Math.round(Number(n) || 0).toLocaleString('id-ID');
+  const num = (s) => { const v = parseInt(String(s || '').replace(/[^\d-]/g, ''), 10); return Number.isFinite(v) ? v : 0; };
+  const fmtDT = (s) => new Date(s).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  function relTime(iso){
+    const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+    if(diff < 60) return 'barusan';
+    if(diff < 3600) return Math.floor(diff / 60) + ' menit lalu';
+    if(diff < 86400) return Math.floor(diff / 3600) + ' jam lalu';
+    return fmtDT(iso);
+  }
+  const waLink = (phone) => { let p = String(phone || '').replace(/\D/g, ''); if(p.startsWith('0')) p = '62' + p.slice(1); return p ? 'https://wa.me/' + p : ''; };
+
+  function toast(msg){
+    const el = document.createElement('div'); el.className = 'toast'; el.textContent = msg;
+    document.body.appendChild(el); setTimeout(() => el.remove(), 2600);
+  }
+  async function busy(btn, fn){
+    const old = btn ? btn.textContent : '';
+    if(btn){ btn.disabled = true; btn.textContent = 'Bentar…'; }
+    try{ await fn(); } finally { if(btn && btn.isConnected){ btn.disabled = false; btn.textContent = old; } }
+  }
+  async function rpc(name, args){
+    const { data, error } = await supabase.rpc(name, args || {});
+    if(error){ await gembelAlert(error.message); throw error; }
+    return data;
+  }
+
+  // ------------------------------------------------------------- data ----
+
+  async function loadAll(){
+    const [a, b, l, o, e] = await Promise.all([
+      supabase.from('profile_address').select('*').eq('user_id', ME.id).maybeSingle(),
+      supabase.rpc('kokoin_my_balance'),
+      supabase.from('merit_ledger').select('*').eq('user_id', ME.id).order('created_at', { ascending: false }).limit(100),
+      supabase.from('kokoin_orders').select('*').order('created_at', { ascending: false }).limit(500),
+      supabase.from('kokoin_events').select('*').order('created_at', { ascending: false }).limit(3000),
+    ]);
+    for(const r of [a, b, l, o, e]) if(r.error) throw r.error;
+    ADDRESS = a.data; BALANCE = Number(b.data) || 0; LEDGER = l.data || []; ORDERS = o.data || [];
+    EVENTS = {};
+    (e.data || []).forEach(ev => { (EVENTS[ev.order_id] = EVENTS[ev.order_id] || []).push(ev); });
+    if(IS_ADMIN){
+      const bl = await supabase.rpc('kokoin_balances');
+      if(bl.error) throw bl.error;
+      BALANCES = bl.data || [];
+      PEOPLE = {}; BALANCES.forEach(p => { PEOPLE[p.user_id] = p; });
+    }
+  }
+
+  async function refresh(){ await loadAll(); render(); }
+
+  let rtTimer = null;
+  function subscribe(){
+    const again = () => { clearTimeout(rtTimer); rtTimer = setTimeout(() => refresh().catch(() => {}), 350); };
+    const filter = IS_ADMIN ? {} : { filter: 'user_id=eq.' + ME.id };
+    const ch = supabase.channel('kokoin-' + ME.id);
+    ['kokoin_orders', 'kokoin_events', 'merit_ledger'].forEach(t =>
+      ch.on('postgres_changes', Object.assign({ event: '*', schema: 'public', table: t }, filter), again));
+    ch.subscribe((s) => {
+      LIVE = s === 'SUBSCRIBED';
+      document.querySelectorAll('.live').forEach(el => el.classList.toggle('on', LIVE));
+    });
+  }
+
+  // ---------------------------------------------------------- address ----
+
+  function addressForm(){
+    const a = ADDRESS || {};
+    return `
+      <div class="grid2">
+        <div><label class="f">Atas nama (penerima)</label><input class="in" id="a-name" maxlength="100" placeholder="Nama yang nerima paket" value="${esc(a.recipient_name || '')}"></div>
+        <div><label class="f">No. HP penerima</label><input class="in" id="a-phone" maxlength="20" inputmode="tel" placeholder="08xxxxxxxxxx" value="${esc(a.phone || '')}"></div>
+        <div class="wide"><label class="f">Alamat rumah lengkap</label><textarea class="in" id="a-addr" maxlength="400" placeholder="Jl. …, No., RT/RW, kelurahan, kecamatan">${esc(a.address || '')}</textarea></div>
+        <div><label class="f">Kota</label><input class="in" id="a-city" maxlength="80" placeholder="Jakarta Utara" value="${esc(a.city || '')}"></div>
+        <div><label class="f">Kode pos</label><input class="in mono" id="a-zip" maxlength="10" inputmode="numeric" placeholder="14470" value="${esc(a.postal_code || '')}"></div>
+        <div class="wide"><label class="f">Patokan (opsional)</label><input class="in" id="a-notes" maxlength="200" placeholder="cth: pager ijo sebelah warung" value="${esc(a.notes || '')}"></div>
+      </div>
+      <div class="hint">🔒 Alamat cuma bisa dilihat lo & admin (yang nganter). Bisa juga diubah di Profil dashboard.</div>
+      <div class="row-act"><button class="btn btn-hl btn-sm" id="a-save">Simpan alamat</button></div>`;
+  }
+  function wireAddress(after){
+    $('a-save').onclick = (e) => busy(e.target, async () => {
+      const row = {
+        user_id: ME.id,
+        recipient_name: $('a-name').value.trim(), phone: $('a-phone').value.trim(), address: $('a-addr').value.trim(),
+        city: $('a-city').value.trim() || null, postal_code: $('a-zip').value.trim() || null, notes: $('a-notes').value.trim() || null,
+        updated_at: new Date().toISOString(),
+      };
+      if(row.recipient_name.length < 2){ await gembelAlert('Isi nama penerima.'); return; }
+      if(row.phone.replace(/\D/g, '').length < 6){ await gembelAlert('Isi no. HP penerima — kurir butuh buat ngabarin.'); return; }
+      if(row.address.length < 8){ await gembelAlert('Alamatnya kurang lengkap.'); return; }
+      const { error } = await supabase.from('profile_address').upsert(row, { onConflict: 'user_id' });
+      if(error){ await gembelAlert('Gagal simpan: ' + error.message); return; }
+      ADDRESS = row; toast('Alamat kesimpen 🏠'); await after();
+    });
+  }
+  const addressLine = (a) => [a.address, a.city, a.postal_code].filter(Boolean).join(', ') + (a.notes ? ` (${a.notes})` : '');
+
+  // ------------------------------------------------------------- main ----
+
+  function render(){
+    const active = ORDERS.filter(o => o.user_id === ME.id && !['delivered', 'cancelled'].includes(o.status)).length;
+    const admTodo = IS_ADMIN ? ORDERS.filter(o => o.status === 'pending').length : 0;
+    const tabs = [['order', '🍬 Order', 0], ['track', '📍 Pesanan Gw', active], ['poin', '🪙 Poin', 0], ['alamat', '🏠 Alamat', 0]];
+    if(IS_ADMIN) tabs.push(['admin', '👑 Admin', admTodo]);
+    const canBuy = Math.floor(BALANCE / PRICE);
+    $('app-root').innerHTML = `
+      <div class="hero">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+          <div class="bal-k">Saldo merit poin lo</div>
+          <span class="live${LIVE ? ' on' : ''}" style="color:#d9f99d;"><i></i>LIVE</span>
+        </div>
+        <div class="bal">${pts(BALANCE)} <small>poin</small></div>
+        <div class="sub">1 matcha gummy = ${pts(PRICE)} poin</div>
+        <div class="can">🍬 cukup buat ${canBuy} biji</div>
+        <div class="deco">🍵</div>
+      </div>
+      <div class="tabs">${tabs.map(([k, t, n]) => `<button class="tab${TAB === k ? ' active' : ''}" data-tab="${k}">${t}${n ? `<span class="n">${n}</span>` : ''}</button>`).join('')}</div>
+      <div id="tab-body"></div>
+      <div class="foot">Kokoin cuma jualan permen matcha. 100% legal, 0% narkoba 😇<br>Poin gak bisa dituker duit — cuma bisa jadi gummy.</div>`;
+    document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { TAB = b.dataset.tab; history.replaceState(null, '', '#' + TAB); render(); });
+    const body = $('tab-body');
+    if(TAB === 'order') body.innerHTML = tabOrder();
+    else if(TAB === 'track') body.innerHTML = tabTrack();
+    else if(TAB === 'poin') body.innerHTML = tabPoin();
+    else if(TAB === 'alamat') body.innerHTML = `<div class="panel"><div class="panel-head"><h2>🏠 Alamat pengiriman</h2></div><div class="panel-body">${addressForm()}</div></div>`;
+    else if(TAB === 'admin' && IS_ADMIN) body.innerHTML = tabAdmin();
+    wireTab();
+    placeScooters();
+    if(FLASH){
+      const el = document.querySelector(`[data-order="${FLASH}"]`);
+      if(el){ el.classList.add('flash'); el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+      FLASH = null;
+    }
+  }
+
+  function tabOrder(){
+    if(!ADDRESS) return `
+      <div class="panel">
+        <div class="panel-head"><h2>🏠 Isi alamat dulu</h2><span class="pill warn">wajib</span></div>
+        <div class="panel-body"><div class="muted" style="margin-bottom:12px;">Gummy-nya dianter langsung ke rumah. Kasih tau mau dikirim ke mana & atas nama siapa.</div>${addressForm()}</div>
+      </div>`;
+    const maxQty = Math.max(1, Math.min(50, Math.floor(BALANCE / PRICE)));
+    if(QTY > maxQty) QTY = maxQty;
+    const total = QTY * PRICE, after = BALANCE - total;
+    return `
+      <div class="panel">
+        <div class="panel-body">
+          <div class="prod">
+            <div class="gummy-stage"><div class="gummy"></div></div>
+            <div>
+              <h3>Matcha Gummy</h3>
+              <div class="muted">Permen kenyal rasa matcha, manis-pahit pas. Satu biji, efeknya: bahagia. 🍵</div>
+              <div class="price">${pts(PRICE)} poin <span class="faint">/ biji</span></div>
+              <div class="qty">
+                <button id="q-min" ${QTY <= 1 ? 'disabled' : ''}>−</button>
+                <input id="q-in" inputmode="numeric" value="${QTY}">
+                <button id="q-plus" ${QTY >= maxQty ? 'disabled' : ''}>+</button>
+              </div>
+            </div>
+          </div>
+          <div class="sum">
+            <div>${QTY} × ${pts(PRICE)}</div><div class="v">${pts(total)}</div>
+            <div>Saldo sekarang</div><div class="v">${pts(BALANCE)}</div>
+            <div class="tot">Sisa abis order</div><div class="v tot ${after < 0 ? 'neg' : ''}">${pts(after)}</div>
+          </div>
+          <div class="addr">
+            <div style="font-size:20px;">📍</div>
+            <div style="flex:1;min-width:0;"><b>${esc(ADDRESS.recipient_name)}</b> · ${esc(ADDRESS.phone)}<br><span class="muted">${esc(addressLine(ADDRESS))}</span></div>
+            <button class="btn btn-ghost btn-sm" data-goto="alamat">Ubah</button>
+          </div>
+          <div style="margin-top:12px;"><label class="f">Catatan buat admin (opsional)</label>
+            <input class="in" id="o-note" maxlength="300" placeholder="cth: anter sore aja, titip satpam"></div>
+          <button class="btn btn-hl btn-big" id="o-send" ${after < 0 ? 'disabled' : ''}>${after < 0 ? `Poin kurang ${pts(-after)}` : `🍬 Pesen ${QTY} gummy — ${pts(total)} poin`}</button>
+          ${BALANCE < PRICE ? '<div class="hint" style="text-align:center;">Poin lo belum cukup buat 1 biji. Tunggu dibagiin admin ya.</div>' : ''}
+        </div>
+      </div>`;
+  }
+
+  function stepper(o){
+    if(o.status === 'cancelled') return `<div class="cancelled-box">❌ Order dibatalin — ${pts(o.total)} poin udah balik ke saldo.</div>`;
+    const idx = FLOW.indexOf(o.status);
+    const evs = EVENTS[o.id] || [];
+    const whenOf = (s) => { const e = evs.filter(x => x.status === s).slice(-1)[0]; return e ? fmtDT(e.created_at) : ''; };
+    const pct = idx / (FLOW.length - 1) * 100;
+    return `
+      <div class="track" data-track="${o.id}" data-idx="${idx}">
+        <div class="rail${o.status === 'shipping' ? ' moving' : ''}"><i style="width:${pct}%"></i></div>
+        ${o.status === 'shipping' ? '<div class="scooter">🛵</div>' : ''}
+        <div class="steps">
+          ${FLOW.map((s, i) => `
+            <div class="st ${i < idx || (i === idx && s === 'delivered') ? 'done' : i === idx ? 'now' : ''}">
+              <div class="d">${STATUS[s].icon}</div>
+              <div class="t">${STATUS[s].short}</div>
+              <div class="w">${i <= idx ? whenOf(s) : ''}</div>
+            </div>`).join('')}
+        </div>
+      </div>`;
+  }
+  // The scooter sits between "Diracik" and "Sampai", over the rail's real pixel position.
+  function placeScooters(){
+    document.querySelectorAll('.track').forEach(tr => {
+      const sc = tr.querySelector('.scooter'); if(!sc) return;
+      const dots = tr.querySelectorAll('.st .d');
+      const a = dots[2].getBoundingClientRect(), b = dots[3].getBoundingClientRect(), base = tr.getBoundingClientRect();
+      sc.style.left = ((a.left + a.width / 2 + b.left + b.width / 2) / 2 - base.left) + 'px';
+    });
+  }
+
+  function timeline(o){
+    const evs = (EVENTS[o.id] || []).slice().reverse();
+    if(!evs.length) return '';
+    const open = OPEN_TL.has(o.id);
+    const shown = open ? evs : evs.slice(0, 1);
+    return `
+      <div class="tl">${shown.map(e => `
+        <div class="ev"><b>${STATUS[e.status] ? STATUS[e.status].icon + ' ' + STATUS[e.status].t : esc(e.status)}</b>
+          ${e.note ? `<div>${esc(e.note)}</div>` : ''}
+          <div class="when">${relTime(e.created_at)}</div></div>`).join('')}
+      </div>
+      ${evs.length > 1 ? `<button class="tl-toggle" data-tl="${o.id}">${open ? 'Tutup riwayat ▲' : `Lihat riwayat (${evs.length}) ▼`}</button>` : ''}`;
+  }
+
+  function orderHead(o, who){
+    const st = STATUS[o.status];
+    return `
+      <div class="o-top">
+        <div style="min-width:0;">
+          <div class="o-no">#${o.order_no} · ${o.qty} matcha gummy</div>
+          <div class="o-sub">${who ? `<b>${esc(who)}</b> · ` : ''}${pts(o.total)} poin · ${fmtDT(o.created_at)}</div>
+        </div>
+        <span class="pill ${st.c}">${st.icon} ${st.t}</span>
+      </div>`;
+  }
+
+  function tabTrack(){
+    const mine = ORDERS.filter(o => o.user_id === ME.id);
+    if(!mine.length) return `<div class="panel"><div class="empty-hint">Belum pernah order.<br>Mampir ke tab <b>Order</b> — gummy-nya nungguin. 🍬</div></div>`;
+    return `
+      <div class="panel">
+        <div class="panel-head"><h2>📍 Tracking pesanan</h2><span class="live${LIVE ? ' on' : ''}"><i></i>LIVE</span></div>
+        ${mine.map(o => `
+          <div class="order" data-order="${o.id}">
+            ${orderHead(o)}
+            ${stepper(o)}
+            ${timeline(o)}
+            <div class="ship">📍 Ke <b>${esc(o.ship_name)}</b> · ${esc(o.ship_phone)}<br>${esc(o.ship_address)}${o.note ? `<br>📝 ${esc(o.note)}` : ''}</div>
+            ${o.status === 'pending' ? `<div class="acts"><button class="btn btn-ghost btn-sm" data-cancel="${o.id}">Batalin (poin balik)</button></div>` : ''}
+          </div>`).join('')}
+      </div>
+      <div class="muted" style="padding:0 4px;">Status di-update manual sama admin. Halaman ini auto-refresh sendiri — gak perlu reload.</div>`;
+  }
+
+  function tabPoin(){
+    return `
+      <div class="panel">
+        <div class="panel-head"><h2>🪙 Riwayat poin</h2><span class="faint">saldo ${pts(BALANCE)}</span></div>
+        ${LEDGER.length ? LEDGER.map(l => `
+          <div class="led">
+            <div style="min-width:0;"><div>${esc(l.reason)}</div><div class="faint">${fmtDT(l.created_at)}</div></div>
+            <div class="v ${l.delta > 0 ? 'plus' : 'min'}">${l.delta > 0 ? '+' : ''}${pts(l.delta)}</div>
+          </div>`).join('') : '<div class="empty-hint">Belum ada poin masuk. Nanti admin yang bagiin. 🎁</div>'}
+      </div>`;
+  }
+
+  // ------------------------------------------------------------ admin ----
+
+  function tabAdmin(){
+    const list = ORDERS.filter(o => ADM_FILTER === 'all' || (ADM_FILTER === 'active' ? !['delivered', 'cancelled'].includes(o.status) : o.status === ADM_FILTER));
+    const count = (f) => ORDERS.filter(o => f === 'active' ? !['delivered', 'cancelled'].includes(o.status) : o.status === f).length;
+    const nameOf = (id) => (PEOPLE[id] && PEOPLE[id].name) || 'Member';
+    return `
+      <div style="margin-bottom:12px;text-align:center;"><div class="seg">
+        ${[['active', 'Aktif'], ['pending', '📝 Belum'], ['processing', '🧪 Diracik'], ['shipping', '🛵 Dianter'], ['delivered', '📦 Sampai'], ['all', 'Semua']]
+          .map(([k, t]) => `<button class="${ADM_FILTER === k ? 'active' : ''}" data-af="${k}">${t}${k !== 'all' ? ' ' + count(k) : ''}</button>`).join('')}
+      </div></div>
+      <div class="panel">
+        <div class="panel-head"><h2>👑 Order masuk</h2><span class="live${LIVE ? ' on' : ''}"><i></i>LIVE</span></div>
+        ${list.length ? list.map(o => `
+          <div class="order" data-order="${o.id}">
+            ${orderHead(o, nameOf(o.user_id))}
+            <div class="adm-addr">📍 <b>${esc(o.ship_name)}</b> · ${esc(o.ship_phone)}
+              ${waLink(o.ship_phone) ? `<a class="chip" style="margin-left:6px;" href="${waLink(o.ship_phone)}" target="_blank" rel="noopener">💬 WA</a>` : ''}
+              <br>${esc(o.ship_address)}${o.note ? `<br>📝 <i>${esc(o.note)}</i>` : ''}</div>
+            ${o.status !== 'cancelled' ? `
+              <div class="st-btns">${FLOW.map(s => `<button class="${o.status === s ? 'cur' : ''}" data-set="${s}" data-id="${o.id}">${STATUS[s].icon}<br>${STATUS[s].t}</button>`).join('')}</div>
+              <div class="note-row">
+                <input class="in" id="n-${o.id}" maxlength="300" placeholder="Update/catatan buat pembeli (opsional) — cth: kurir udah di gang depan">
+                <button class="btn btn-ghost btn-sm" data-note="${o.id}">Kirim</button>
+              </div>
+              <div class="acts"><button class="btn btn-ghost btn-sm" data-set="cancelled" data-id="${o.id}" style="color:var(--bad);">❌ Batalin & refund</button></div>` : stepper(o)}
+            ${timeline(o)}
+          </div>`).join('') : '<div class="empty-hint">Gak ada order di filter ini.</div>'}
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>🎁 Bagiin merit poin</h2></div>
+        <div class="panel-body">
+          <div class="grid2">
+            <div><label class="f">Ke siapa</label>
+              <select class="in" id="g-user"><option value="">🌍 Semua member (${BALANCES.length})</option>
+                ${BALANCES.slice().sort((a, b) => String(a.name).localeCompare(String(b.name))).map(p => `<option value="${p.user_id}">${esc(p.name)} — ${pts(p.balance)}</option>`).join('')}</select></div>
+            <div><label class="f">Jumlah poin (minus = tarik)</label><input class="in mono" id="g-amt" inputmode="numeric" placeholder="500.000">
+              <div class="chips">${[500000, 1000000, 2500000, 5000000].map(v => `<button class="chip" data-gamt="${v}">${pts(v)}</button>`).join('')}</div></div>
+            <div class="wide"><label class="f">Alasan</label><input class="in" id="g-reason" maxlength="200" placeholder="Modal awal / hadiah / bonus rajin"></div>
+          </div>
+          <div class="row-act"><button class="btn btn-hl" id="g-send">Kirim poin</button></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>📊 Saldo member</h2><span class="faint">${pts(BALANCES.reduce((s, p) => s + Number(p.balance), 0))} poin beredar</span></div>
+        <div class="panel-body" style="overflow-x:auto;padding-top:4px;">
+          <table class="tb"><thead><tr><th>Member</th><th class="r">Saldo</th><th class="r">Kepake</th><th class="r">Bisa beli</th></tr></thead><tbody>
+          ${BALANCES.map(p => `<tr><td>${esc(p.name)}<div class="faint">${esc(p.email || '')}</div></td><td class="r mono">${pts(p.balance)}</td><td class="r mono">${pts(p.spent)}</td><td class="r mono">${Math.floor(p.balance / PRICE)} 🍬</td></tr>`).join('')}
+          </tbody></table>
+        </div>
+      </div>`;
+  }
+
+  // ---------------------------------------------------------- actions ----
+
+  function wireTab(){
+    document.querySelectorAll('[data-goto]').forEach(b => b.onclick = () => { TAB = b.dataset.goto; render(); });
+    document.querySelectorAll('[data-tl]').forEach(b => b.onclick = () => { const id = b.dataset.tl; OPEN_TL.has(id) ? OPEN_TL.delete(id) : OPEN_TL.add(id); render(); });
+    document.querySelectorAll('[data-af]').forEach(b => b.onclick = () => { ADM_FILTER = b.dataset.af; render(); });
+    if($('a-save')) wireAddress(async () => { if(TAB === 'alamat') TAB = 'order'; await refresh(); });
+
+    if($('q-in')){
+      const maxQty = Math.max(1, Math.min(50, Math.floor(BALANCE / PRICE)));
+      const set = (v) => { QTY = Math.max(1, Math.min(maxQty, v || 1)); render(); };
+      $('q-min').onclick = () => set(QTY - 1);
+      $('q-plus').onclick = () => set(QTY + 1);
+      $('q-in').onchange = () => set(num($('q-in').value));
+      $('o-send').onclick = (e) => busy(e.target, async () => {
+        if(!(await gembelConfirm(`Pesen ${QTY} matcha gummy seharga ${pts(QTY * PRICE)} poin?\n\nDianter ke ${ADDRESS.recipient_name} — ${addressLine(ADDRESS)}`))) return;
+        let id;
+        try{ id = await rpc('kokoin_order', { p_qty: QTY, p_note: $('o-note').value.trim() || null }); }catch(_){ return; }
+        QTY = 1; TAB = 'track'; FLASH = id; history.replaceState(null, '', '#track');
+        toast('Order masuk! 🍬 Pantau di sini'); await refresh();
+      });
+    }
+
+    document.querySelectorAll('[data-cancel]').forEach(b => b.onclick = async () => {
+      if(!(await gembelConfirm('Batalin order ini? Poin lo balik semua.'))) return;
+      await busy(b, async () => { try{ await rpc('kokoin_cancel', { p_id: b.dataset.cancel }); }catch(_){ return; } toast('Dibatalin, poin balik'); await refresh(); });
+    });
+
+    document.querySelectorAll('[data-set]').forEach(b => b.onclick = async () => {
+      const id = b.dataset.id, s = b.dataset.set, o = ORDERS.find(x => x.id === id);
+      if(!o || (s === o.status && !$('n-' + id).value.trim())) return;
+      if(s === 'cancelled' && !(await gembelConfirm(`Batalin order #${o.order_no} & balikin ${pts(o.total)} poin?`))) return;
+      await busy(b, async () => {
+        try{ await rpc('kokoin_set_status', { p_id: id, p_status: s, p_note: $('n-' + id).value.trim() || null }); }catch(_){ return; }
+        toast(`#${o.order_no} → ${STATUS[s].t}`); await refresh();
+      });
+    });
+    document.querySelectorAll('[data-note]').forEach(b => b.onclick = async () => {
+      const id = b.dataset.note, o = ORDERS.find(x => x.id === id), note = $('n-' + id).value.trim();
+      if(!o || !note) return;
+      await busy(b, async () => {
+        try{ await rpc('kokoin_set_status', { p_id: id, p_status: o.status, p_note: note }); }catch(_){ return; }
+        toast('Update dikirim ke pembeli'); await refresh();
+      });
+    });
+
+    if($('g-send')){
+      const amt = $('g-amt');
+      amt.oninput = () => { const neg = amt.value.trim().startsWith('-'), v = Math.abs(num(amt.value)); amt.value = v ? (neg ? '-' : '') + pts(v) : (neg ? '-' : ''); };
+      document.querySelectorAll('[data-gamt]').forEach(b => b.onclick = () => { amt.value = pts(+b.dataset.gamt); });
+      $('g-send').onclick = (e) => busy(e.target, async () => {
+        const v = num(amt.value), user = $('g-user').value || null;
+        if(!v){ await gembelAlert('Isi jumlah poin.'); return; }
+        const who = user ? (PEOPLE[user] ? PEOPLE[user].name : 'member ini') : `SEMUA member (${BALANCES.length} orang)`;
+        if(!(await gembelConfirm(`${v > 0 ? 'Kasih' : 'Tarik'} ${pts(Math.abs(v))} poin ${v > 0 ? 'ke' : 'dari'} ${who}?`))) return;
+        let n;
+        try{ n = await rpc('kokoin_grant', { p_user: user, p_amount: v, p_reason: $('g-reason').value.trim() || null }); }catch(_){ return; }
+        toast(`Poin terkirim ke ${n} member 🎁`); await refresh();
+      });
+    }
+  }
+
+  // ------------------------------------------------------------- boot ----
+
+  function readHash(){
+    const h = (location.hash || '').slice(1);
+    if(h.startsWith('order-')){
+      FLASH = h.slice(6);
+      const o = ORDERS.find(x => x.id === FLASH);
+      TAB = o && o.user_id !== ME.id && IS_ADMIN ? 'admin' : 'track';
+      if(TAB === 'admin') ADM_FILTER = 'all';
+      OPEN_TL.add(FLASH);
+    } else if(['order', 'track', 'poin', 'alamat'].includes(h) || (h === 'admin' && IS_ADMIN)) TAB = h;
+  }
+
+  window.addEventListener('hashchange', () => { readHash(); render(); });
+  window.addEventListener('resize', placeScooters);
+  // Relative times ("5 menit lalu") drift; re-render every minute unless something is being typed.
+  setInterval(() => { const a = document.activeElement; if(ME && !(a && /INPUT|TEXTAREA|SELECT/.test(a.tagName))) render(); }, 60000);
+
+  document.addEventListener('DOMContentLoaded', async () => {
+    const authCtx = await requireAuth('index.html');
+    if(!authCtx) return;
+    ME = authCtx.user;
+    try{
+      const { data } = await supabase.rpc('kokoin_is_admin');
+      IS_ADMIN = data === true;
+      await loadAll();
+    }catch(err){
+      $('app-root').innerHTML = `<div class="panel"><div class="empty-hint">Gagal memuat: ${esc(err.message || err)}</div></div>`;
+      return;
+    }
+    readHash();
+    render();
+    subscribe();
+  });
+})();
+</script>
+</body>
+</html>

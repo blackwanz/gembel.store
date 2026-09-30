@@ -23,6 +23,7 @@
     archery_gift: '🎁 Kiriman Data',
     tournament_schedule: '📅 Jadwal Pertandingan',
     team_invite: '🤝 Undangan Tim',
+    kokoin: '🍬 Kokoin',
   };
 
   let user = null;

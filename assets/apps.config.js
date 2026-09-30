@@ -120,6 +120,15 @@ window.GEMBEL_APPS = [
     enabled: true,
   },
   {
+    id: 'kokoin',
+    name: 'Kokoin',
+    desc: 'Kartel matcha gummy 🍬 — tuker merit poin jadi permen matcha (500rb poin/biji), dianter ke rumah, tracking pesanan live.',
+    icon: '🍬',
+    url: 'kokoin.html',
+    category: 'Belanja',
+    enabled: true,
+  },
+  {
     id: 'gebet',
     name: 'Gebet',
     desc: 'Dating ala Tinder — swipe kiri/kanan, langsung DM lewat komen di foto. 1 foto terbaru (wajib ganti tiap bulan) + bio. Profil bisa di-share tanpa login.',

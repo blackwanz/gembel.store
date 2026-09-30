@@ -30,6 +30,11 @@
 }
 .dash-tab { cursor: pointer; }
 
+/* Placeholders shown only until the first data arrives -- a returning member never sees them,
+   the dashboard paints straight from the local cache (see "Instant paint" in the script). */
+.skeleton.sk-inline { display: inline-block; width: 3ch; height: .9em; vertical-align: middle; border-radius: 6px; }
+.skeleton.sk-tile { height: 190px; }
+
 /* ---- Profil ---- */
 .profile-card { max-width: 720px; }
 .profile-hero {
@@ -169,7 +174,7 @@
     <div class="user-chip">
       <div class="avatar" id="chip-avatar">··</div>
       <div>
-        <div class="name" id="chip-name">…</div>
+        <div class="name" id="chip-name"><span class="skeleton sk-inline"></span></div>
         <div class="role" id="chip-role">MEMBER</div>
       </div>
     </div>
@@ -200,9 +205,9 @@
     </div>
 
     <div class="stat-row">
-      <div class="stat"><div class="label">Total Request</div><div class="value" id="stat-total">0</div></div>
-      <div class="stat"><div class="label">Lagi Diproses</div><div class="value" id="stat-proses">0</div></div>
-      <div class="stat"><div class="label">Selesai</div><div class="value" id="stat-selesai">0</div></div>
+      <div class="stat"><div class="label">Total Request</div><div class="value" id="stat-total"><span class="skeleton sk-inline"></span></div></div>
+      <div class="stat"><div class="label">Lagi Diproses</div><div class="value" id="stat-proses"><span class="skeleton sk-inline"></span></div></div>
+      <div class="stat"><div class="label">Selesai</div><div class="value" id="stat-selesai"><span class="skeleton sk-inline"></span></div></div>
     </div>
 
     <!-- Command the AI: always the first thing on the page, full-width, never mixed in with
@@ -252,7 +257,7 @@
       <div class="apps-sub-label" id="other-apps-label">Lainnya</div>
     </div>
     <div class="apps-grid" id="apps-grid">
-      <div id="builtin-apps-slot"></div>
+      <div id="builtin-apps-slot"><div class="skeleton sk-tile"></div><div class="skeleton sk-tile"></div><div class="skeleton sk-tile"></div></div>
     </div>
     <p id="apps-empty" style="display:none;color:var(--text-faint);padding:18px 0;">Gak ada app yang cocok. Coba kata kunci lain.</p>
     <p class="apps-hint">Tip: klik 📌 buat nyematin app ke atas, atau ⋯ buat ganti nama, deskripsi & kategori versi lo sendiri.</p>
@@ -314,6 +319,7 @@
         <div class="profile-item"><div class="k">Pembayaran</div><div class="v" id="profil-wallet">—</div></div>
         <div class="profile-item"><div class="k">KTP</div><div class="v" id="profil-ktp">—</div></div>
         <div class="profile-item"><div class="k">Member sejak</div><div class="v" id="profil-since">—</div></div>
+        <div class="profile-item wide"><div class="k">Alamat pengiriman</div><div class="v" id="profil-address">—</div></div>
         <div class="profile-item wide"><div class="k">Bio</div><div class="v" id="profil-bio">—</div></div>
       </div>
 
@@ -369,6 +375,31 @@
           <label>Tempat lahir</label>
           <input type="text" id="edit-ktp-place" placeholder="JAKARTA" maxlength="80">
         </div>
+        <div class="field">
+          <label>Alamat — atas nama (penerima)</label>
+          <input type="text" id="edit-addr-name" placeholder="Nama yang nerima paket" maxlength="100">
+        </div>
+        <div class="field">
+          <label>No. HP penerima</label>
+          <input type="tel" id="edit-addr-phone" placeholder="08xxxxxxxxxx" maxlength="20">
+        </div>
+        <div class="field wide">
+          <label>Alamat rumah lengkap</label>
+          <textarea id="edit-addr" placeholder="Jl. …, No., RT/RW, kelurahan, kecamatan — kosongin kalau belum mau isi" maxlength="400" style="min-height:64px;"></textarea>
+        </div>
+        <div class="field">
+          <label>Kota</label>
+          <input type="text" id="edit-addr-city" placeholder="Jakarta Utara" maxlength="80">
+        </div>
+        <div class="field">
+          <label>Kode pos</label>
+          <input type="text" id="edit-addr-zip" placeholder="14470" maxlength="10" inputmode="numeric">
+        </div>
+        <div class="field wide">
+          <label>Patokan (opsional)</label>
+          <input type="text" id="edit-addr-notes" placeholder="cth: pager ijo sebelah warung" maxlength="200">
+          <div class="ktp-hint">🔒 Alamat cuma bisa dilihat lo & admin. Dipakai buat nganter pesanan Kokoin.</div>
+        </div>
         <div class="field wide">
           <label>Bio</label>
           <textarea id="edit-bio" placeholder="Cerita singkat tentang lo…" maxlength="300"></textarea>
@@ -418,9 +449,65 @@ let CURRENT_PROFILE = null;
 // KTP lives in its own owner-only table (profile_ktp, 0045_pintol.sql) -- profiles rows are
 // readable by everyone, a NIK must not be.
 let CURRENT_KTP = null;
+let KTP_LOADED = false;
 async function loadKtp() {
   const { data } = await supabase.from('profile_ktp').select('*').eq('user_id', CURRENT_USER.id).maybeSingle();
   CURRENT_KTP = data || null;
+  KTP_LOADED = true;
+}
+// Delivery address, same owner-only reasoning (profile_address, 0050_kokoin.sql; admin can read it).
+let CURRENT_ADDRESS = null;
+let ADDRESS_LOADED = false;
+async function loadAddress() {
+  const { data } = await supabase.from('profile_address').select('*').eq('user_id', CURRENT_USER.id).maybeSingle();
+  CURRENT_ADDRESS = data || null;
+  ADDRESS_LOADED = true;
+}
+
+// ---- Instant paint ----
+// Every Supabase round trip costs ~600 ms from Indonesia, so the dashboard never waits on one to
+// show itself: the last-seen profile, app prefs and requests are kept in localStorage and painted
+// straight away, then everything is re-fetched in parallel and repainted. KTP and address are
+// deliberately NOT cached -- they're owner-only tables, and a shared computer shouldn't keep a NIK.
+// The cache is keyed to the user id and only written once requireAuth has confirmed the session,
+// so a dead token's empty RLS answers never overwrite it.
+const DASH_CACHE_KEY = 'gembel-dash-cache-v1';
+let AUTH_CONFIRMED = false;
+let resolveProfileReady;
+// Anything that renders plan-dependent UI (Elite badge, free-tier expiry on tickets) waits on this,
+// so a request list that lands before the profile doesn't briefly show an Elite member as FREE.
+const profileReady = new Promise(r => { resolveProfileReady = r; });
+
+// The Supabase session lives in localStorage; reading it synchronously skips the client's async
+// init and tells us who is (probably) logged in at 0 ms. requireAuth still has the final word.
+function readSessionUser() {
+  try {
+    const key = supabase.auth.storageKey || Object.keys(localStorage).find(k => /^sb-.+-auth-token$/.test(k));
+    const user = key && JSON.parse(localStorage.getItem(key) || 'null')?.user;
+    return user?.id ? user : null;
+  } catch { return null; }
+}
+function readDashCache(userId) {
+  try {
+    const c = JSON.parse(localStorage.getItem(DASH_CACHE_KEY) || 'null');
+    return c && c.uid === userId ? c : null;
+  } catch { return null; }
+}
+function persistDashCache() {
+  if (!AUTH_CONFIRMED || !CURRENT_USER) return;
+  try {
+    localStorage.setItem(DASH_CACHE_KEY, JSON.stringify({
+      uid: CURRENT_USER.id, profile: CURRENT_PROFILE, prefs: APP_PREFS, requests: lastRequestsData, at: Date.now(),
+    }));
+  } catch { /* storage full or blocked -- the page just falls back to skeletons next time */ }
+}
+// Wrap auth.js's logout so the next person on this browser starts from a clean slate.
+if (typeof window.logout === 'function') {
+  const _logout = window.logout;
+  window.logout = function (...args) {
+    try { localStorage.removeItem(DASH_CACHE_KEY); } catch {}
+    return _logout.apply(this, args);
+  };
 }
 
 const DASH_TABS = ['apps', 'profil', 'leaderboard'];
@@ -507,8 +594,10 @@ async function loadRequests() {
   if (reqErr) { console.error(reqErr); return; }
 
   lastRequestsData = reqData || [];
+  await profileReady;
   updateStats(lastRequestsData);
   renderRequestsList();
+  persistDashCache();
 }
 
 // Notifications used to be mixed into this list; they now have their own 🔔 panel
@@ -668,11 +757,16 @@ function fillProfile() {
   document.getElementById('profil-wallet').textContent = paymentSummary(CURRENT_PROFILE);
   document.getElementById('profil-ktp').textContent = CURRENT_KTP
     ? `${GembelKTP.mask(CURRENT_KTP.nik)} · ${CURRENT_KTP.verified ? '✓ valid' : '⚠️ tgl lahir gak cocok'}`
-    : 'Belum diisi';
+    : (KTP_LOADED ? 'Belum diisi' : 'Memuat…');
   document.getElementById('profil-since').textContent = CURRENT_PROFILE?.created_at
     ? new Date(CURRENT_PROFILE.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
     : '—';
   document.getElementById('profil-bio').textContent = CURRENT_PROFILE?.bio || '—';
+  const a = CURRENT_ADDRESS;
+  document.getElementById('profil-address').textContent = a
+    ? `a.n. ${a.recipient_name} · ${a.phone} — ${[a.address, a.city, a.postal_code].filter(Boolean).join(', ')}${a.notes ? ` (${a.notes})` : ''}`
+    : (ADDRESS_LOADED ? 'Belum diisi' : 'Memuat…');
+  persistDashCache();
 }
 
 // The form is only filled when entering edit mode -- fillProfile() also runs on the realtime
@@ -691,6 +785,12 @@ function setProfileEditing(on) {
     document.getElementById('edit-ktp-nik').value = CURRENT_KTP?.nik || '';
     document.getElementById('edit-ktp-name').value = CURRENT_KTP?.ktp_name || '';
     document.getElementById('edit-ktp-place').value = CURRENT_KTP?.birth_place || '';
+    document.getElementById('edit-addr-name').value = CURRENT_ADDRESS?.recipient_name || '';
+    document.getElementById('edit-addr-phone').value = CURRENT_ADDRESS?.phone || '';
+    document.getElementById('edit-addr').value = CURRENT_ADDRESS?.address || '';
+    document.getElementById('edit-addr-city').value = CURRENT_ADDRESS?.city || '';
+    document.getElementById('edit-addr-zip').value = CURRENT_ADDRESS?.postal_code || '';
+    document.getElementById('edit-addr-notes').value = CURRENT_ADDRESS?.notes || '';
     updatePaymentFieldsUI();
     checkKtpInput();
   }
@@ -762,6 +862,26 @@ async function saveKtp() {
   return error ? { message: 'KTP: ' + error.message } : null;
 }
 
+// Empty address = delete the row; otherwise all three required parts must be there.
+async function saveAddress() {
+  const v = (id) => document.getElementById(id).value.trim();
+  const row = {
+    user_id: CURRENT_USER.id, recipient_name: v('edit-addr-name'), phone: v('edit-addr-phone'), address: v('edit-addr'),
+    city: v('edit-addr-city') || null, postal_code: v('edit-addr-zip') || null, notes: v('edit-addr-notes') || null,
+    updated_at: new Date().toISOString(),
+  };
+  if (!row.recipient_name && !row.phone && !row.address) {
+    if (!CURRENT_ADDRESS) return null;
+    const { error } = await supabase.from('profile_address').delete().eq('user_id', CURRENT_USER.id);
+    return error ? { message: 'Alamat: ' + error.message } : null;
+  }
+  if (row.recipient_name.length < 2) return { message: 'Alamat: isi nama penerima' };
+  if (row.phone.replace(/\D/g, '').length < 6) return { message: 'Alamat: isi no. HP penerima' };
+  if (row.address.length < 8) return { message: 'Alamat: alamat rumahnya kurang lengkap' };
+  const { error } = await supabase.from('profile_address').upsert(row, { onConflict: 'user_id' });
+  return error ? { message: 'Alamat: ' + error.message } : null;
+}
+
 async function saveProfile() {
   const btn = document.getElementById('save-profile-btn');
   btn.disabled = true; btn.textContent = 'Menyimpan…';
@@ -780,10 +900,12 @@ async function saveProfile() {
     bio: document.getElementById('edit-bio').value.trim() || null,
   }).eq('id', CURRENT_USER.id);
   const ktpError = error ? null : await saveKtp();
+  const addrError = error ? null : await saveAddress();
   btn.disabled = false; btn.textContent = 'Simpan profil';
   if (error) { await gembelAlert('Gagal simpan: ' + error.message); return; }
-  await loadKtp();
-  if (ktpError) { CURRENT_PROFILE = await getProfile(CURRENT_USER.id); fillProfile(); await gembelAlert('Profil kesimpen, tapi ' + ktpError.message); return; }
+  await Promise.all([loadKtp(), loadAddress()]);
+  const partError = ktpError || addrError;
+  if (partError) { CURRENT_PROFILE = await getProfile(CURRENT_USER.id); fillProfile(); await gembelAlert('Profil kesimpen, tapi ' + partError.message); return; }
   CURRENT_PROFILE = await getProfile(CURRENT_USER.id);
   fillProfile();
   setProfileEditing(false);
@@ -867,6 +989,7 @@ async function loadAppPrefs() {
   const { data, error } = await supabase.from('user_app_prefs').select('*').eq('user_id', CURRENT_USER.id);
   if (error) { console.warn('user_app_prefs:', error.message); return; }
   APP_PREFS = Object.fromEntries((data || []).map(row => [row.app_id, row]));
+  persistDashCache();
 }
 
 // Config entry + the member's overrides, flattened into what the tile actually shows.
@@ -906,7 +1029,9 @@ async function saveAppPref(appId, patch) {
     if (prev) APP_PREFS[appId] = prev; else delete APP_PREFS[appId];
     renderBuiltinApps();
     await gembelAlert('Gagal nyimpen: ' + error.message);
+    return;
   }
+  persistDashCache();
 }
 
 function toggleAppPin(appId) {
@@ -1070,18 +1195,53 @@ function saveAppEditor(e) {
 }
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && editingAppId) closeAppEditor(); });
 
+// Fires every per-user fetch at once instead of one after another (4 x ~600 ms -> ~600 ms total).
+// Each piece repaints the moment it lands.
+function loadDashboardData() {
+  return Promise.all([
+    Promise.all([loadKtp(), loadAddress()]).then(() => profileReady).then(fillProfile),
+    loadAppPrefs().then(renderBuiltinApps),
+    loadRequests(),
+  ]);
+}
+
 (async () => {
+  // 1) Paint from cache before touching the network.
+  const sessionUser = readSessionUser();
+  const cache = sessionUser && readDashCache(sessionUser.id);
+  if (sessionUser) CURRENT_USER = sessionUser;
+  if (cache) {
+    CURRENT_PROFILE = cache.profile;
+    APP_PREFS = cache.prefs || {};
+    lastRequestsData = cache.requests || [];
+    resolveProfileReady();
+    fillProfile();
+    renderBuiltinApps();
+    updateStats(lastRequestsData);
+    renderRequestsList();
+  }
+  if (location.hash) switchTab(location.hash.slice(1)); // also loads the leaderboard if that's the tab
+
+  // 2) Start the data fetches alongside requireAuth rather than after it.
+  let dataLoad = sessionUser ? loadDashboardData() : null;
   const ctx = await requireAuth('index.html');
   if (!ctx) return;
+  if (ctx.user.id !== sessionUser?.id) {
+    // Stored session belonged to someone else (or none was stored) -- drop what was painted.
+    CURRENT_PROFILE = null; APP_PREFS = {}; lastRequestsData = [];
+    CURRENT_KTP = CURRENT_ADDRESS = null; KTP_LOADED = ADDRESS_LOADED = false;
+    dataLoad = null;
+  }
   CURRENT_USER = ctx.user;
-  CURRENT_PROFILE = ctx.profile;
-  await loadKtp();
+  // A failed profile fetch comes back as null; keep the cached one rather than blanking the UI
+  // (and the cache) over a flaky connection.
+  CURRENT_PROFILE = ctx.profile || CURRENT_PROFILE;
+  AUTH_CONFIRMED = true;
+  resolveProfileReady();
   fillProfile();
-  if (location.hash) switchTab(location.hash.slice(1)); // also loads the leaderboard if that's the tab
-  renderBuiltinApps();
-  await loadAppPrefs();
-  renderBuiltinApps();
-  await loadRequests();
+  if (!sessionUser && location.hash === '#leaderboard') loadLeaderboard(); // switchTab above skipped it (no user yet)
+  await (dataLoad || loadDashboardData());
+  persistDashCache(); // pieces that landed before AUTH_CONFIRMED weren't stored yet
 
   // live-update ticket status the moment an admin changes it
   supabase
