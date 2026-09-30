@@ -5,11 +5,11 @@
 // string-array-obfuscated, not just minified, so its openPaymentModal internals can't be
 // hand-edited safely):
 //
-// 1. Patches supabase.from('payment_requests').insert(...) to append a random 0-999 "unique
-//    code" onto whatever amount auth.js was about to insert (base_amount stays the real tier
-//    price). This is what lets services/saweria-listener match an incoming Saweria donation
-//    (which only reports an amount, no user id) back to the one request that has it -- see
-//    db/migrations/0018_payment_unique_code.sql for the full rationale. The mutation happens
+// 1. Patches supabase.from('payment_requests').insert(...) to set the months/base price; the DB
+//    trigger then adds the smallest free 1-999 "unique code" onto that price (see
+//    db/migrations/0049_payment_code_slots.sql). This is what lets services/saweria-listener
+//    match an incoming Saweria donation (which only reports an amount, no user id) back to the
+//    one request that has it -- see db/migrations/0018_payment_unique_code.sql for the rationale. The mutation happens
 //    synchronously in place, so the builder auth.js gets back is still the real
 //    PostgrestFilterBuilder (chainable/awaitable exactly as before) -- not a wrapping Promise.
 // 2. Once the modal reaches its #pay-waiting panel, injects the exact amount to transfer (the
@@ -21,8 +21,6 @@
 (function () {
   if (!window.supabase || typeof window.supabase.from !== 'function') return;
 
-  const CODE_MIN = 0;
-  const CODE_MAX = 999;
   const EXPIRES_MS = 15 * 60 * 1000;
   const SUDAH_BAYAR_GATE_MS = 60 * 1000;
   const PROCESSING_AFTER_MS = 30 * 1000;
@@ -127,15 +125,16 @@
       list.forEach((row) => {
         if (row == null || row.amount == null || row.unique_code != null) return; // already has one, or nothing to base a code on
         // auth.js always sends its own one-month price; the picker (Part 0) decides the real total.
+        // The code itself is handed out by the DB (smallest free 1-999, see
+        // db/migrations/0049_payment_code_slots.sql), which also overwrites amount/expires_at --
+        // these are placeholders; Part 2 reads the real values back from the inserted row.
         const months = Math.max(1, Math.min(MAX_MONTHS, selectedMonths || 1));
         const base = PRICE_PER_MONTH * months;
-        const code = CODE_MIN + Math.floor(Math.random() * (CODE_MAX - CODE_MIN + 1));
         row.base_amount = base;
-        row.amount = base + code;
-        row.unique_code = code;
+        row.amount = base;
         row.months = months;
         row.expires_at = new Date(Date.now() + EXPIRES_MS).toISOString();
-        lastInserted = { amount: row.amount, base_amount: base, unique_code: code, expires_at: row.expires_at, months };
+        lastInserted = { months, insertedAt: Date.now() };
       });
 
       return originalInsert(isArray ? list : list[0], options);
@@ -436,15 +435,45 @@
     return { reveal, cleanup };
   }
 
+  // The DB picks the code, so the amount to show only exists on the inserted row. RLS limits
+  // payment_requests to your own rows (admins see all, hence the user_id filter too).
+  async function fetchInsertedRow() {
+    const { data: auth } = await window.supabase.auth.getSession();
+    const uid = auth && auth.session && auth.session.user && auth.session.user.id;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      let q = window.supabase
+        .from('payment_requests')
+        .select('amount, base_amount, unique_code, expires_at, months')
+        .eq('status', 'pending')
+        .not('unique_code', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (uid) q = q.eq('user_id', uid);
+      const { data } = await q.maybeSingle();
+      if (data) return data;
+      await new Promise((r) => setTimeout(r, 600));
+    }
+    return null;
+  }
+
   let pending = false;
-  function tryInjectAmount() {
+  async function tryInjectAmount() {
     const waiting = document.getElementById('pay-waiting');
     if (!waiting || waiting.style.display === 'none') { pending = false; return; }
     if (pending || document.getElementById('pay-saweria-amount') || !lastInserted) return;
     pending = true;
 
-    const info = lastInserted;
+    const placed = lastInserted;
     lastInserted = null; // one-shot: don't re-attach to a later, unrelated waiting panel
+    const row = await fetchInsertedRow();
+    if (!row || !document.getElementById('pay-waiting')) { pending = false; return; }
+    const info = {
+      amount: Number(row.amount),
+      base_amount: Number(row.base_amount),
+      unique_code: row.unique_code,
+      expires_at: row.expires_at,
+      months: row.months || placed.months,
+    };
 
     // Snapshot auth.js's own native children (spinner, "Menunggu konfirmasi..." heading/text,
     // its own 05:00 countdown) before we add anything, and hide them -- they don't make sense
