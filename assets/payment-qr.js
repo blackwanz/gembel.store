@@ -93,13 +93,21 @@
     if (pending || document.getElementById('pay-qr-manual-btn')) return;
     pending = true;
 
+    // Own labelled section, same look as payment-saweria.js's "Payment otomatis via SAWERIA"
+    // box, so members can tell the two ways to pay apart.
+    const section = document.createElement('div');
+    section.style.cssText = 'margin:14px 0 0;padding:12px 14px;border-radius:12px;border:1px dashed var(--border);text-align:center;';
+    section.innerHTML = `
+      <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:4px;">Payment manual via <span style="color:var(--text);font-weight:800;letter-spacing:.3px;">QRIS</span></div>
+      <p style="font-size:11px;color:var(--text-faint);margin:0 0 10px;">Scan QRIS, terus admin konfirmasi manual (bisa agak lama).</p>`;
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.id = 'pay-qr-manual-btn';
-    btn.style.cssText = 'display:block;margin:10px auto 0;background:none;border:none;font-size:12px;text-decoration:underline;color:var(--text-muted);cursor:pointer;';
-    btn.textContent = 'atau bayar manual pakai QRIS';
+    btn.className = 'btn btn-ghost btn-block';
+    btn.textContent = 'Buka QRIS';
     btn.addEventListener('click', () => openQrPopup('Bayar manual pake QRIS ini ya:'));
-    waiting.appendChild(btn);
+    section.appendChild(btn);
+    waiting.appendChild(section);
   }
 
   const observer = new MutationObserver(tryInjectIntoWaiting);

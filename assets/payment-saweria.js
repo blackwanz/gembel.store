@@ -162,7 +162,7 @@
     box.style.cssText = 'position:relative;margin:14px 0;padding:14px;border-radius:12px;background:var(--surface-2,rgba(127,127,127,.08));text-align:center;';
     box.innerHTML = `
       <button type="button" id="pay-saweria-cancel-btn" title="Batalkan" aria-label="Batalkan" style="position:absolute;top:6px;right:6px;width:24px;height:24px;line-height:1;font-size:13px;background:none;border:1px solid var(--border);border-radius:8px;cursor:pointer;color:var(--text-muted);">✕</button>
-      <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin:0 24px 8px;">Bayar otomatis via <span style="color:#f5a623;font-weight:800;letter-spacing:.3px;">SAWERIA</span> <span style="white-space:nowrap;">a.n. <strong style="color:var(--text);">${SAWERIA_USERNAME.toUpperCase()}</strong></span></div>
+      <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin:0 24px 8px;">Payment otomatis via <span style="color:#f5a623;font-weight:800;letter-spacing:.3px;">SAWERIA</span> <span style="white-space:nowrap;">a.n. <strong style="color:var(--text);">${SAWERIA_USERNAME.toUpperCase()}</strong></span></div>
       <div style="display:flex;align-items:center;justify-content:center;gap:8px;">
         <span style="font-size:17px;font-weight:700;">Bayar ${formatRupiah(info.amount)}</span>
         <button type="button" id="pay-saweria-copy-btn" title="Salin nominal" style="width:26px;height:26px;font-size:13px;line-height:1;background:none;border:1px solid var(--border);border-radius:8px;cursor:pointer;color:inherit;">📋</button>
