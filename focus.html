@@ -497,7 +497,12 @@
 
     .task-card { background-color: var(--panel-bg); border: 1px solid var(--border); border-left: 4px solid var(--accent); padding: 10px; border-radius: 4px; margin-bottom: 10px; transition: transform 0.1s; cursor: grab; position: relative; }
     .task-card:hover { transform: translateY(-2px); }
-    .task-card.dragging { opacity: 0.35; }
+    /* While dragging, the card itself moves live through the list (see setupDragAndDrop) and shows
+       as a dashed "shadow" slot where it will land; the other cards slide out of its way. */
+    .task-card.dragging { opacity: 0.45; border-style: dashed; border-color: var(--accent); background-color: transparent; box-shadow: none; }
+    .task-card.dragging > * { visibility: hidden; }
+    .task-card.dragging:hover { transform: none; }
+    .col-body:has(.task-card) .empty-hint { display: none; }
     .task-card.high { border-left-color: var(--high); }
     .task-card.medium { border-left-color: var(--med); }
     .task-card.low { border-left-color: var(--low); }
@@ -4019,29 +4024,62 @@
     // ---------- Drag & drop: reorder priority within/across columns ----------
     let draggedTaskId = null;
 
+    // Measures each card's resting (layout) position, ignoring any slide animation in flight —
+    // otherwise a card mid-slide would read as being somewhere else and the slot would flicker
+    // back and forth as the cursor sits still.
+    function restingTop(card) {
+        const box = card.getBoundingClientRect();
+        const tf = getComputedStyle(card).transform;
+        const ty = tf && tf !== 'none' ? new DOMMatrixReadOnly(tf).m42 : 0;
+        return { top: box.top - ty, height: box.height };
+    }
+
     function getDragAfterElement(container, y) {
         const cards = [...container.querySelectorAll('.task-card:not(.dragging)')];
         return cards.reduce((closest, card) => {
-            const box = card.getBoundingClientRect();
+            const box = restingTop(card);
             const offset = y - box.top - box.height / 2;
             if (offset < 0 && offset > closest.offset) return { offset, element: card };
             return closest;
         }, { offset: -Infinity, element: null }).element;
     }
 
+    // FLIP: remember where every card is on screen, let `mutate` move the DOM, then animate each
+    // card from its old spot to its new one so the reshuffle slides instead of snapping.
+    function flipCards(mutate) {
+        const cards = [...document.querySelectorAll('#kanban-view .task-card')];
+        const before = new Map(cards.map(c => [c, c.getBoundingClientRect()]));
+        cards.forEach(c => c.getAnimations().forEach(a => a.cancel()));
+        mutate();
+        cards.forEach(c => {
+            const a = before.get(c), b = c.getBoundingClientRect();
+            const dx = a.left - b.left, dy = a.top - b.top;
+            if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+            c.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'translate(0, 0)' }],
+                { duration: 200, easing: 'cubic-bezier(.2,.8,.2,1)' });
+        });
+    }
+
     function setupDragAndDrop() {
         const board = document.getElementById('kanban-view');
+        let droppedOnColumn = false;
         board.addEventListener('dragstart', e => {
             const card = e.target.closest('.task-card');
             if (!card) return;
             draggedTaskId = card.dataset.id;
-            card.classList.add('dragging');
+            droppedOnColumn = false;
+            // Deferred a frame so the browser's drag image is snapshotted from the normal card,
+            // not the dashed placeholder it turns into.
+            requestAnimationFrame(() => card.classList.add('dragging'));
             e.dataTransfer.effectAllowed = 'move';
             e.dataTransfer.setData('text/plain', draggedTaskId);
         });
         board.addEventListener('dragend', e => {
             const card = e.target.closest('.task-card');
             if (card) card.classList.remove('dragging');
+            // Dropped anywhere but a column (cancelled, or onto a goal): the card was moved live
+            // through the DOM while dragging, so put the board back the way the data says.
+            if (!droppedOnColumn) renderBoard();
             document.querySelectorAll('.kanban-column.drag-over').forEach(c => c.classList.remove('drag-over'));
             // Also clear any goal card left highlighted mid-drag (e.g. the drag ended outside any
             // valid drop target, so the goals-list 'drop'/'dragleave' handlers never fired) -- see
@@ -4051,31 +4089,44 @@
         });
 
         document.querySelectorAll('.kanban-column').forEach(col => {
-            col.addEventListener('dragover', e => { e.preventDefault(); col.classList.add('drag-over'); });
+            col.addEventListener('dragover', e => {
+                e.preventDefault();
+                col.classList.add('drag-over');
+                // Move the dragged card to where it would land right now, sliding the others
+                // up/down (or across columns) so the drop spot is visible before letting go.
+                const dragging = board.querySelector('.task-card.dragging');
+                if (!dragging) return;
+                const colBody = col.querySelector('.col-body');
+                const afterElement = getDragAfterElement(colBody, e.clientY);
+                let next = dragging.nextElementSibling;
+                while (next && !next.classList.contains('task-card')) next = next.nextElementSibling;
+                if (dragging.parentElement === colBody && next === afterElement) return; // already there
+                flipCards(() => colBody.insertBefore(dragging, afterElement));
+            });
             col.addEventListener('dragleave', () => col.classList.remove('drag-over'));
             col.addEventListener('drop', e => {
                 e.preventDefault();
                 col.classList.remove('drag-over');
+                droppedOnColumn = true;
                 const id = draggedTaskId || e.dataTransfer.getData('text/plain');
                 const t = state.tasks.find(x => x.id === id);
                 if (!t) return;
 
                 const colBody = col.querySelector('.col-body');
-                const afterElement = getDragAfterElement(colBody, e.clientY);
-                const siblingCards = [...colBody.querySelectorAll('.task-card:not(.dragging)')];
+                // The card already sits in its final slot (moved live on dragover), so its new
+                // order just slots between whatever cards are now directly above and below it.
+                const placed = board.querySelector(`.task-card[data-id="${CSS.escape(id)}"]`);
+                if (placed && placed.parentElement !== colBody) colBody.insertBefore(placed, getDragAfterElement(colBody, e.clientY));
+                const siblingCards = [...colBody.querySelectorAll('.task-card')];
+                const idx = placed ? siblingCards.indexOf(placed) : siblingCards.length;
+                const prevCard = siblingCards[idx - 1];
+                const nextCard = placed ? siblingCards[idx + 1] : null;
+                const prevTask = prevCard ? state.tasks.find(x => x.id === prevCard.dataset.id) : null;
+                const nextTask = nextCard ? state.tasks.find(x => x.id === nextCard.dataset.id) : null;
 
                 let newOrder;
-                if (!afterElement) {
-                    const lastCard = siblingCards[siblingCards.length - 1];
-                    const lastTask = lastCard ? state.tasks.find(x => x.id === lastCard.dataset.id) : null;
-                    newOrder = lastTask ? lastTask.order + 10 : computeInitialOrder(t.priority);
-                } else {
-                    const beforeTask = state.tasks.find(x => x.id === afterElement.dataset.id);
-                    const idx = siblingCards.indexOf(afterElement);
-                    const prevCard = siblingCards[idx - 1];
-                    const prevTask = prevCard ? state.tasks.find(x => x.id === prevCard.dataset.id) : null;
-                    newOrder = prevTask ? (prevTask.order + beforeTask.order) / 2 : beforeTask.order - 10;
-                }
+                if (!nextTask) newOrder = prevTask ? prevTask.order + 10 : computeInitialOrder(t.priority);
+                else newOrder = prevTask ? (prevTask.order + nextTask.order) / 2 : nextTask.order - 10;
 
                 t.order = newOrder;
                 const wasDone = t.status === 'done';
